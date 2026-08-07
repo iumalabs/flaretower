@@ -9,14 +9,21 @@ import type {
   ZoneEvaluation,
 } from "./types.ts";
 
-// Basic evaluation for User Story 1: passes through proxied status,
-// returns not_evaluated when the record carries an evaluationError.
-// Dangling-target detection (User Story 2) and DNS-only-of-note (User
-// Story 3) extend this in their own phases — see git history for the
-// incremental extension, same as Module 1's evaluate.ts.
+function findDanglingMatch(
+  record: DnsRecord,
+  insights: DanglingInsight[],
+): DanglingInsight | undefined {
+  return insights.find((i) =>
+    i.zoneName === record.zoneName &&
+    i.recordName === record.recordName &&
+    i.recordType === record.recordType
+  );
+}
+
+// DNS-only-of-note (User Story 3) extends this in its own follow-up work.
 export function evaluateRecord(
   record: DnsRecord,
-  _danglingInsights: DanglingInsight[] | null,
+  danglingInsights: DanglingInsight[] | null,
 ): DnsRecordEvaluation {
   const base = {
     zoneName: record.zoneName,
@@ -29,6 +36,25 @@ export function evaluateRecord(
 
   if (record.evaluationError) {
     return { ...base, status: "not_evaluated", reason: record.evaluationError };
+  }
+
+  // Dangling-target detection only applies to record types capable of
+  // pointing at an external, potentially-decommissioned resource — the
+  // same set that can be proxied (A/AAAA/CNAME). A record type like MX or
+  // TXT is never evaluated for dangling status.
+  if (record.proxyCapable) {
+    if (danglingInsights === null) {
+      return {
+        ...base,
+        status: "not_evaluated",
+        reason: "could not evaluate dangling-target status (Security Insights API error)",
+      };
+    }
+
+    const match = findDanglingMatch(record, danglingInsights);
+    if (match) {
+      return { ...base, status: "critical", reason: match.reason };
+    }
   }
 
   return {
