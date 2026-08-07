@@ -12,11 +12,12 @@ README covers day-to-day setup and operation only.
 
 ## Status
 
-Module 1 (**Workers & Access exposure**), Module 2 (**DNS**), and Module 3 (**Zero Trust / Access**)
-are implemented — see [`specs/001-workers-access-exposure/`](specs/001-workers-access-exposure/),
-[`specs/002-dns/`](specs/002-dns/), and [`specs/003-zero-trust/`](specs/003-zero-trust/) for their
-specs, plans, and tasks. Everything else in the constitution's product scope (§2) is documented as
-future work, not yet built.
+Module 1 (**Workers & Access exposure**), Module 2 (**DNS**), Module 3 (**Zero Trust / Access**),
+and Module 4 (**Pages**) are implemented — see
+[`specs/001-workers-access-exposure/`](specs/001-workers-access-exposure/),
+[`specs/002-dns/`](specs/002-dns/), [`specs/003-zero-trust/`](specs/003-zero-trust/), and
+[`specs/004-pages/`](specs/004-pages/) for their specs, plans, and tasks. Everything else in the
+constitution's product scope (§2) is documented as future work, not yet built.
 
 ## Prerequisites
 
@@ -82,15 +83,16 @@ degraded-but-permitted mode.
 Every module needs a **read-only** token — per constitution Principle VIII, write scopes are added
 only when a module's mutation features actually land, never ahead of need.
 
-| Scope                                  | Why                                                                                                                                                                                                                                                      | Module             |
-| -------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------ |
-| `Workers Scripts Read`                 | List Workers, per-script `workers.dev`/Preview URL status                                                                                                                                                                                                | Module 1           |
-| `Workers Routes Read`                  | (reserved — custom domains are read via the Scripts scope; kept for future route-level checks)                                                                                                                                                           | Module 1           |
-| `Access: Apps and Policies Read`       | List Access applications and their policies (Module 1: Worker-hostname-linked apps; Module 3: every account-wide Access application)                                                                                                                     | Module 1, Module 3 |
-| `Zone Read`                            | List zones                                                                                                                                                                                                                                               | Module 2           |
-| `DNS Read`                             | List DNS records per zone                                                                                                                                                                                                                                | Module 2           |
-| `Zone Security Center Insights` (read) | Dangling A/AAAA/CNAME record findings (Cloudflare's own Security Insights scan — not reimplemented; see [`specs/002-dns/research.md`](specs/002-dns/research.md#2-dangling-record-detection--use-cloudflares-own-security-insights-dont-reimplement-it)) | Module 2           |
-| `Access: Service Tokens Read`          | List service tokens and their expiration dates                                                                                                                                                                                                           | Module 3           |
+| Scope                                  | Why                                                                                                                                                                                                                                                      | Module                       |
+| -------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------- |
+| `Workers Scripts Read`                 | List Workers, per-script `workers.dev`/Preview URL status                                                                                                                                                                                                | Module 1                     |
+| `Workers Routes Read`                  | (reserved — custom domains are read via the Scripts scope; kept for future route-level checks)                                                                                                                                                           | Module 1                     |
+| `Access: Apps and Policies Read`       | List Access applications and their policies (Module 1: Worker-hostname-linked apps; Module 3: every account-wide Access application; Module 4: checked against each Pages project's `pages.dev` subdomain)                                               | Module 1, Module 3, Module 4 |
+| `Zone Read`                            | List zones                                                                                                                                                                                                                                               | Module 2                     |
+| `DNS Read`                             | List DNS records per zone                                                                                                                                                                                                                                | Module 2                     |
+| `Zone Security Center Insights` (read) | Dangling A/AAAA/CNAME record findings (Cloudflare's own Security Insights scan — not reimplemented; see [`specs/002-dns/research.md`](specs/002-dns/research.md#2-dangling-record-detection--use-cloudflares-own-security-insights-dont-reimplement-it)) | Module 2                     |
+| `Access: Service Tokens Read`          | List service tokens and their expiration dates                                                                                                                                                                                                           | Module 3                     |
+| `Cloudflare Pages Read`                | List Pages projects, their custom domains, and their deployments                                                                                                                                                                                         | Module 4                     |
 
 Store the token only via `wrangler secret put CF_API_TOKEN` — never as a `vars` entry in
 `wrangler.jsonc`, never accepted through the web UI at request time.
