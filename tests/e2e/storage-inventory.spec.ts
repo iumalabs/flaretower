@@ -5,9 +5,14 @@ const MOCK_STORAGE_INVENTORY = {
   evaluated_at: "2026-08-08T12:00:00Z",
   buckets: [
     {
-      bucket_name: "uploads",
+      bucket_name: "public-uploads",
+      status: "critical",
+      reason: "r2.dev managed public URL is enabled",
+    },
+    {
+      bucket_name: "private-backups",
       status: "safe",
-      reason: "R2 exposure evaluation not yet implemented",
+      reason: "no r2.dev domain and no enabled custom domains",
     },
   ],
   kv_namespaces: [
@@ -69,7 +74,15 @@ test.beforeEach(async ({ page }) => {
 });
 
 test("US1 — every bucket, namespace, and database appears, none omitted", async ({ page }) => {
-  await expect(page.locator("tr", { hasText: "uploads" })).toBeVisible();
+  await expect(page.locator("tr", { hasText: "public-uploads" })).toBeVisible();
   await expect(page.locator("tr", { hasText: "SESSIONS" })).toBeVisible();
   await expect(page.locator("tr", { hasText: "flaretower" })).toBeVisible();
+});
+
+test("US2 — an r2.dev-exposed bucket renders critical, a private bucket renders safe", async ({ page }) => {
+  const exposedRow = page.locator("tr", { hasText: "public-uploads" });
+  await expect(exposedRow.getByText("CRITICAL")).toBeVisible();
+
+  const privateRow = page.locator("tr", { hasText: "private-backups" });
+  await expect(privateRow.getByText("PROTECTED")).toBeVisible();
 });
