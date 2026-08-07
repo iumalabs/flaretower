@@ -1,16 +1,13 @@
 <!--
 Sync Impact Report
 ==================
-Version change: [TEMPLATE] → 1.0.0 (initial ratification)
-Modified principles: n/a (first version — all principles newly defined)
-Added sections:
-  - Core Principles (I–X)
-  - Product Scope & Module Roadmap
-  - Identity, Authorization & Audit Data Model
-  - Design System
-  - Deployment & Operations
-  - Governance
+Version change: 1.0.0 → 1.0.1 (patch — wording clarification)
+Modified principles: n/a
+Added sections: n/a
 Removed sections: n/a
+Clarified: Design System — docs/design.zip is a local, .gitignore'd asset
+  obtained out-of-band, not committed to the repository (it was tracked in
+  the initial bootstrap commit; untracked in a follow-up chore commit).
 Templates requiring alignment:
   - .specify/templates/plan-template.md — ⚠ pending review (verify it references
     Constitution Check gates matching principles I–X)
@@ -217,10 +214,12 @@ before/after values.
 
 ## Design System
 
-The visual layer is sourced from `docs/design.zip` (logo, favicon, color
-tokens, typography scale, component patterns, reference screens) — it MUST be
-unpacked and read before any UI decision is made, and treated as the source
-of truth for the visual layer:
+The visual layer is sourced from the `docs/design.zip` package (logo,
+favicon, color tokens, typography scale, component patterns, reference
+screens) — it MUST be unpacked and read before any UI decision is made, and
+treated as the source of truth for the visual layer. The package itself is
+a local, out-of-band asset: it is `.gitignore`d rather than committed, so
+each contributor obtains it separately (not through `git clone`).
 - Color and spacing tokens are extracted into CSS custom properties in a
   single place; hex values MUST NOT be hardcoded across components.
 - Component patterns from the package are followed rather than invented
@@ -266,4 +265,4 @@ begins. Deviations discovered during implementation MUST be raised for
 resolution (either fixing the implementation or amending the constitution)
 before merge, not silently absorbed.
 
-**Version**: 1.0.0 | **Ratified**: 2026-08-07 | **Last Amended**: 2026-08-07
+**Version**: 1.0.1 | **Ratified**: 2026-08-07 | **Last Amended**: 2026-08-07
