@@ -4,7 +4,10 @@ import {
   evaluateDeployment,
   evaluateSubdomainExposure,
 } from "../../worker/modules/pages/evaluate.ts";
-import type { PagesProjectInventoryItem } from "../../worker/modules/pages/types.ts";
+import type {
+  AccessApplication,
+  PagesProjectInventoryItem,
+} from "../../worker/modules/pages/types.ts";
 
 Deno.test("evaluateCustomDomain - safe when the domain is active", () => {
   const result = evaluateCustomDomain("marketing-site", {
@@ -49,9 +52,69 @@ function project(overrides: Partial<PagesProjectInventoryItem> = {}): PagesProje
   };
 }
 
-Deno.test("evaluateSubdomainExposure - US1 stub always returns not_evaluated (US2 implements the real check)", () => {
-  const result = evaluateSubdomainExposure(project());
+function scopedApp(appId: string, appDomain: string): AccessApplication {
+  return {
+    appId,
+    appDomain,
+    policies: [{ decision: "allow", includesEveryone: false, hasScopedInclude: true }],
+  };
+}
+
+function everyoneApp(appId: string, appDomain: string): AccessApplication {
+  return {
+    appId,
+    appDomain,
+    policies: [{ decision: "allow", includesEveryone: true, hasScopedInclude: false }],
+  };
+}
+
+Deno.test("evaluateSubdomainExposure - critical when no Access application covers the pages.dev subdomain", () => {
+  const result = evaluateSubdomainExposure(
+    project(),
+    [scopedApp("app-1", "other.pages.dev")],
+  );
+  assertEquals(result.status, "critical");
+});
+
+Deno.test("evaluateSubdomainExposure - safe when covered by a scoped-policy application", () => {
+  const result = evaluateSubdomainExposure(
+    project(),
+    [scopedApp("app-1", "marketing-site.pages.dev")],
+  );
+  assertEquals(result.status, "safe");
+});
+
+Deno.test("evaluateSubdomainExposure - warning when covered by an Allow-Everyone application", () => {
+  const result = evaluateSubdomainExposure(
+    project(),
+    [everyoneApp("app-1", "marketing-site.pages.dev")],
+  );
+  assertEquals(result.status, "warning");
+});
+
+Deno.test("evaluateSubdomainExposure - warning when the covering application has zero policies", () => {
+  const result = evaluateSubdomainExposure(
+    project(),
+    [{ appId: "app-1", appDomain: "marketing-site.pages.dev", policies: [] }],
+  );
+  assertEquals(result.status, "warning");
+});
+
+Deno.test("evaluateSubdomainExposure - not_evaluated when the Access applications list could not be fetched at all", () => {
+  const result = evaluateSubdomainExposure(project(), null);
   assertEquals(result.status, "not_evaluated");
+});
+
+Deno.test("evaluateSubdomainExposure - a deny-Everyone policy is not 'open' (decision matters, not just includesEveryone)", () => {
+  const result = evaluateSubdomainExposure(
+    project(),
+    [{
+      appId: "app-1",
+      appDomain: "marketing-site.pages.dev",
+      policies: [{ decision: "deny", includesEveryone: true, hasScopedInclude: false }],
+    }],
+  );
+  assertEquals(result.status, "safe");
 });
 
 Deno.test("evaluateDeployment - US1 stub always returns not_evaluated (US3 implements the real check)", () => {

@@ -8,8 +8,8 @@ const MOCK_PAGES_INVENTORY = {
       project_name: "marketing-site",
       subdomain: {
         subdomain: "marketing-site.pages.dev",
-        status: "not_evaluated",
-        reason: "pages.dev exposure evaluation not yet implemented",
+        status: "safe",
+        reason: "covered by Access application(s): app-1",
       },
       deployment: {
         deployment_id: null,
@@ -29,8 +29,8 @@ const MOCK_PAGES_INVENTORY = {
       project_name: "empty-project",
       subdomain: {
         subdomain: "empty-project.pages.dev",
-        status: "not_evaluated",
-        reason: "pages.dev exposure evaluation not yet implemented",
+        status: "critical",
+        reason: "no Access application covers this hostname",
       },
       deployment: {
         deployment_id: null,
@@ -91,4 +91,12 @@ test("US1 — an active domain renders safe, a non-active one renders warning", 
 
   const pendingRow = page.locator("tr", { hasText: "staging.example.com" });
   await expect(pendingRow.getByText("WARNING")).toBeVisible();
+});
+
+test("US2 — a covered pages.dev subdomain renders safe, an uncovered one renders critical", async ({ page }) => {
+  const coveredRow = page.locator("tr", { hasText: "marketing-site.pages.dev" });
+  await expect(coveredRow.getByText("PROTECTED")).toBeVisible();
+
+  const uncoveredRow = page.locator("tr", { hasText: "empty-project.pages.dev" });
+  await expect(uncoveredRow.getByText("CRITICAL")).toBeVisible();
 });

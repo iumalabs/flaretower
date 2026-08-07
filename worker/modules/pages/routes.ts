@@ -30,11 +30,11 @@ export async function runPagesEvaluation(
   }
 > {
   const creds = { accountId: env.CF_ACCOUNT_ID, apiToken: env.CF_API_TOKEN };
-  const inventory = await buildPagesInventory(creds);
+  const { projects, accessApplications } = await buildPagesInventory(creds);
 
-  const domainResults = evaluateCustomDomains(inventory);
-  const subdomainResults = evaluateSubdomainExposures(inventory);
-  const deploymentResults = evaluateDeployments(inventory);
+  const domainResults = evaluateCustomDomains(projects);
+  const subdomainResults = evaluateSubdomainExposures(projects, accessApplications);
+  const deploymentResults = evaluateDeployments(projects);
 
   const runId = crypto.randomUUID();
   const evaluatedAt = new Date().toISOString();

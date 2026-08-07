@@ -2,6 +2,8 @@
 // Principle III) so the fetch and scheduled entry points share this
 // identically.
 import type {
+  AccessApplication,
+  AccessPolicy,
   CustomDomain,
   DeploymentEvaluation,
   DomainEvaluation,
@@ -40,16 +42,93 @@ export function evaluateCustomDomain(
   };
 }
 
-// US2 replaces this stub with the real pages.dev hostname-coverage and
-// policy-openness check (research.md §2).
+// Local re-implementation of Module 1/3's hostname-coverage and
+// policy-openness decision logic (research.md §2 — duplication beats
+// premature cross-module coupling), applied to each project's pages.dev
+// subdomain instead of a Worker hostname or an account-wide app scope.
+
+// Access app "domain" may include a path (e.g. "example.com/admin*") —
+// only the host part determines coverage here.
+function hostnameCoveredByAppDomain(hostname: string, appDomain: string): boolean {
+  const host = hostname.toLowerCase();
+  const domainHost = appDomain.toLowerCase().split("/")[0];
+
+  if (domainHost.startsWith("*.")) {
+    const suffix = domainHost.slice(1); // ".example.com"
+    return host.endsWith(suffix) && host !== suffix.slice(1);
+  }
+  return host === domainHost;
+}
+
+function findCoveringApps(hostname: string, apps: AccessApplication[]): AccessApplication[] {
+  return apps.filter((app) => hostnameCoveredByAppDomain(hostname, app.appDomain));
+}
+
+// A policy that grants access ("allow" or "bypass") to Everyone is
+// effectively open regardless of any other, more restrictive policy on
+// the same application. A "deny" policy that happens to target Everyone
+// is the opposite of open, so `includesEveryone` alone is not sufficient.
+function isPolicyEffectivelyOpen(policy: AccessPolicy): boolean {
+  if (policy.decision === "bypass") return true;
+  return policy.decision === "allow" && policy.includesEveryone;
+}
+
+// An application with zero policies attached denies everyone by default
+// in Cloudflare Access — not open in the security sense — but is still
+// flagged warning per spec User Story 2, Acceptance Scenario 2: the
+// absence of any explicit policy is itself worth surfacing, most likely
+// an incomplete setup.
+function isAppOpenOrUnconfigured(app: AccessApplication): boolean {
+  if (app.policies.length === 0) return true;
+  return app.policies.some(isPolicyEffectivelyOpen);
+}
+
 export function evaluateSubdomainExposure(
   project: PagesProjectInventoryItem,
+  apps: AccessApplication[] | null,
 ): SubdomainEvaluation {
+  if (apps === null) {
+    return {
+      projectName: project.projectName,
+      subdomain: project.subdomain,
+      status: "not_evaluated",
+      reason: "could not evaluate Access coverage (Access applications API error)",
+    };
+  }
+
+  const covering = findCoveringApps(project.subdomain, apps);
+
+  if (covering.length === 0) {
+    return {
+      projectName: project.projectName,
+      subdomain: project.subdomain,
+      status: "critical",
+      reason: "no Access application covers this hostname",
+    };
+  }
+
+  const openApps = covering.filter(isAppOpenOrUnconfigured);
+  if (openApps.length > 0) {
+    const reasons = openApps.map((a) =>
+      a.policies.length === 0
+        ? `${a.appId} has no policies attached`
+        : `${a.appId} has a policy that allows Everyone`
+    );
+    return {
+      projectName: project.projectName,
+      subdomain: project.subdomain,
+      status: "warning",
+      reason: `covering Access application(s) do not meaningfully restrict access: ${
+        reasons.join("; ")
+      }`,
+    };
+  }
+
   return {
     projectName: project.projectName,
     subdomain: project.subdomain,
-    status: "not_evaluated",
-    reason: "pages.dev exposure evaluation not yet implemented",
+    status: "safe",
+    reason: `covered by Access application(s): ${covering.map((a) => a.appId).join(", ")}`,
   };
 }
 
@@ -76,8 +155,9 @@ export function evaluateCustomDomains(
 
 export function evaluateSubdomainExposures(
   inventory: PagesProjectInventoryItem[],
+  apps: AccessApplication[] | null,
 ): SubdomainEvaluation[] {
-  return inventory.map((project) => evaluateSubdomainExposure(project));
+  return inventory.map((project) => evaluateSubdomainExposure(project, apps));
 }
 
 export function evaluateDeployments(
