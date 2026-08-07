@@ -20,7 +20,6 @@ function findDanglingMatch(
   );
 }
 
-// DNS-only-of-note (User Story 3) extends this in its own follow-up work.
 export function evaluateRecord(
   record: DnsRecord,
   danglingInsights: DanglingInsight[] | null,
@@ -57,12 +56,19 @@ export function evaluateRecord(
     }
   }
 
+  // DNS-only exposure on an origin-facing record type (User Story 3): not
+  // dangling, but bypasses Cloudflare's WAF/DDoS protection and reveals the
+  // origin — worth the operator's attention, distinct from both critical
+  // (dangling) and safe (proxied). Record types that are inherently
+  // DNS-only (MX, TXT, NS, etc.) are never flagged this way — FR-004.
+  if (record.proxyCapable && !record.proxied) {
+    return { ...base, status: "warning", reason: "DNS-only — bypasses Cloudflare protection" };
+  }
+
   return {
     ...base,
     status: "safe",
-    reason: record.proxyCapable
-      ? (record.proxied ? "proxied through Cloudflare" : "DNS-only")
-      : "not proxy-capable",
+    reason: record.proxyCapable ? "proxied through Cloudflare" : "not proxy-capable",
   };
 }
 
