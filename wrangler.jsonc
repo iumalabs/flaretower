@@ -15,7 +15,22 @@
   "assets": {
     "directory": "./dist/client",
     "binding": "ASSETS",
-    "not_found_handling": "single-page-application"
+    "not_found_handling": "single-page-application",
+  },
+
+  "vars": {
+    // Non-secret configuration (identifies which team/account, not a
+    // credential) — constitution Principle VIII reserves Worker secrets for
+    // the API token itself.
+    "TEAM_DOMAIN": "https://REPLACE_WITH_REAL_TEAM.cloudflareaccess.com",
+    "POLICY_AUD": "REPLACE_WITH_REAL_ACCESS_APP_AUD_TAG",
+    "CF_ACCOUNT_ID": "REPLACE_WITH_REAL_ACCOUNT_ID",
+  },
+  "secrets": {
+    // Declared here for validation/type-generation only (constitution
+    // Principle VIII) — the actual value is set via
+    // `wrangler secret put CF_API_TOKEN`, never in this file.
+    "required": ["CF_API_TOKEN"],
   },
 
   "d1_databases": [
@@ -25,19 +40,19 @@
       // TODO(deploy): replace once `wrangler d1 create flaretower` has been
       // run against the real Cloudflare account — not fabricated here.
       "database_id": "REPLACE_WITH_REAL_D1_DATABASE_ID",
-      "migrations_dir": "worker/db/migrations"
-    }
+      "migrations_dir": "worker/db/migrations",
+    },
   ],
 
   "triggers": {
     // Placeholder cadence for the Module 1 drift audit — exact frequency is
     // a deployment-time decision (research.md §5), not fixed by the spec.
-    "crons": ["0 * * * *"]
+    "crons": ["0 * * * *"],
   },
 
   "limits": {
     // I/O-bound workload (research.md §5) — explicit headroom, not the
     // full 5-minute ceiling.
-    "cpu_ms": 50000
-  }
+    "cpu_ms": 50000,
+  },
 }

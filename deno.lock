@@ -1,17 +1,33 @@
 {
   "version": "5",
   "specifiers": {
+    "jsr:@std/assert@1": "1.0.19",
+    "jsr:@std/internal@^1.0.12": "1.0.14",
     "npm:@cloudflare/vite-plugin@^1.51.0": "1.51.0_vite@8.2.1_wrangler@4.119.0__@cloudflare+workers-types@5.20260804.1_@cloudflare+workers-types@5.20260804.1",
     "npm:@cloudflare/workers-types@^5.20260804.1": "5.20260804.1",
     "npm:@playwright/test@^1.62.1": "1.62.1",
+    "npm:@types/react-dom@^19.2.4": "19.2.4_@types+react@19.2.18",
+    "npm:@types/react@^19.2.18": "19.2.18",
     "npm:@vitejs/plugin-react@5": "5.2.0_vite@8.2.1",
     "npm:hono@^4.13.0": "4.13.0",
     "npm:jose@^6.2.8": "6.2.8",
     "npm:react-dom@^19.2.8": "19.2.8_react@19.2.8",
     "npm:react@^19.2.8": "19.2.8",
+    "npm:vite@8": "8.2.1",
     "npm:vite@^8.2.0": "8.2.1",
     "npm:wrangler@4": "4.119.0_@cloudflare+workers-types@5.20260804.1",
     "npm:wrangler@^4.118.0": "4.119.0_@cloudflare+workers-types@5.20260804.1"
+  },
+  "jsr": {
+    "@std/assert@1.0.19": {
+      "integrity": "eaada96ee120cb980bc47e040f82814d786fe8162ecc53c91d8df60b8755991e",
+      "dependencies": [
+        "jsr:@std/internal"
+      ]
+    },
+    "@std/internal@1.0.14": {
+      "integrity": "291516b3d4c35024d6ffbc0a9df5bf4c64116e05b50012cf846710152d2ffdf7"
+    }
   },
   "npm": {
     "@babel/code-frame@7.29.7": {
@@ -687,6 +703,18 @@
         "@babel/types"
       ]
     },
+    "@types/react-dom@19.2.4_@types+react@19.2.18": {
+      "integrity": "sha512-Bsc+QHgp+P/F02XDzNCY9jnZNCUuLki36KT7VKrTXXLdHf+vHMNZnW1rVu5DNW/rCK+fya3DATySbLM4yhtKUw==",
+      "dependencies": [
+        "@types/react"
+      ]
+    },
+    "@types/react@19.2.18": {
+      "integrity": "sha512-AnzbBERsrLKtk2XSfTbYRLjQPdy116Sty4q+T+Bp3IC4l6jNBvreVPAHmpq9qhXQM7CXZPjLVmGMw9sy+hxQ3w==",
+      "dependencies": [
+        "csstype"
+      ]
+    },
     "@vitejs/plugin-react@5.2.0_vite@8.2.1": {
       "integrity": "sha512-YmKkfhOAi3wsB1PhJq5Scj3GXMn3WvtQ/JC0xoopuHoXSdmtdStOpFrYaT1kie2YgFBcIe64ROzMYRjCrYOdYw==",
       "dependencies": [
@@ -725,6 +753,9 @@
     },
     "cookie@1.1.1": {
       "integrity": "sha512-ei8Aos7ja0weRpFzJnEA9UHJ/7XQmqglbRwnf2ATjcB9Wq874VKH9kfjjirM6UhU2/E5fFYadylyhFldcqSidQ=="
+    },
+    "csstype@3.2.3": {
+      "integrity": "sha512-z1HGKcYy2xA8AGQfwrn0PAy+PB7X/GSj3UVJW9qKyn43xWa+gl5nXmU4qqLMRzWVLFC8KusUX8T/0kCiOYpAIQ=="
     },
     "debug@4.4.3": {
       "integrity": "sha512-RGwwWnwQvkVfavKVt22FGLw+xYSdzARwm0ru6DhTVA3umU5hZc28V3kO4stgYryrTlLpuvgI9GiijltAjNbcqA==",
@@ -1144,9 +1175,12 @@
   },
   "workspace": {
     "dependencies": [
+      "jsr:@std/assert@1",
       "npm:@cloudflare/vite-plugin@^1.51.0",
       "npm:@cloudflare/workers-types@^5.20260804.1",
       "npm:@playwright/test@^1.62.1",
+      "npm:@types/react-dom@^19.2.4",
+      "npm:@types/react@^19.2.18",
       "npm:@vitejs/plugin-react@5",
       "npm:hono@^4.13.0",
       "npm:jose@^6.2.8",
