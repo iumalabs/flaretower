@@ -2,14 +2,22 @@ import { useState } from "react";
 import type { JSX } from "react";
 import { ExposureInventory } from "./pages/ExposureInventory.tsx";
 import { DnsInventory } from "./pages/DnsInventory.tsx";
+import { ZeroTrustInventory } from "./pages/ZeroTrustInventory.tsx";
 
-type Page = "exposure" | "dns";
+const PAGES = [
+  { key: "exposure", label: "Workers & Access", render: () => <ExposureInventory /> },
+  { key: "dns", label: "DNS", render: () => <DnsInventory /> },
+  { key: "zero-trust", label: "Zero Trust", render: () => <ZeroTrustInventory /> },
+] as const;
+
+type PageKey = typeof PAGES[number]["key"];
 
 // Minimal state-based nav — no router dependency yet. Revisit once enough
 // modules land that a real router earns its keep (constitution Principle
 // IV/V's minimal-dependency spirit applies to the frontend too).
 export function App(): JSX.Element {
-  const [page, setPage] = useState<Page>("exposure");
+  const [page, setPage] = useState<PageKey>("exposure");
+  const active = PAGES.find((p) => p.key === page) ?? PAGES[0];
 
   return (
     <div>
@@ -26,36 +34,25 @@ export function App(): JSX.Element {
           textTransform: "uppercase",
         }}
       >
-        <button
-          type="button"
-          onClick={() => setPage("exposure")}
-          style={{
-            background: "none",
-            border: "none",
-            cursor: "pointer",
-            padding: 0,
-            color: page === "exposure" ? "var(--brand-primary)" : "var(--fg-faint)",
-            font: "inherit",
-          }}
-        >
-          Workers &amp; Access
-        </button>
-        <button
-          type="button"
-          onClick={() => setPage("dns")}
-          style={{
-            background: "none",
-            border: "none",
-            cursor: "pointer",
-            padding: 0,
-            color: page === "dns" ? "var(--brand-primary)" : "var(--fg-faint)",
-            font: "inherit",
-          }}
-        >
-          DNS
-        </button>
+        {PAGES.map((p) => (
+          <button
+            key={p.key}
+            type="button"
+            onClick={() => setPage(p.key)}
+            style={{
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              padding: 0,
+              color: page === p.key ? "var(--brand-primary)" : "var(--fg-faint)",
+              font: "inherit",
+            }}
+          >
+            {p.label}
+          </button>
+        ))}
       </nav>
-      {page === "exposure" ? <ExposureInventory /> : <DnsInventory />}
+      {active.render()}
     </div>
   );
 }
