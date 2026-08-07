@@ -1,5 +1,5 @@
 import { assertEquals } from "@std/assert";
-import { buildDnsInventory } from "../../worker/modules/dns/inventory.ts";
+import { buildDnsInventory, listDanglingInsights } from "../../worker/modules/dns/inventory.ts";
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -132,4 +132,44 @@ Deno.test("buildDnsInventory - two zones with the same-name-different-type recor
   const zones = await buildDnsInventory(creds, fetchImpl);
 
   assertEquals(zones[0].records.length, 2);
+});
+
+Deno.test("listDanglingInsights - filters to only dangling A/AAAA/CNAME issue types, maps fields", async () => {
+  const fetchImpl = mockFetch([
+    ["/insights", () =>
+      jsonResponse({
+        success: true,
+        result: [
+          {
+            issue_type: "dangling_dns_cname",
+            zone_name: "example.com",
+            subject: "old-blog.example.com",
+            description: "target no longer exists",
+          },
+          {
+            issue_type: "missing_dmarc_record", // unrelated insight type — must be filtered out
+            zone_name: "example.com",
+            subject: "example.com",
+          },
+        ],
+        errors: [],
+      })],
+  ]);
+
+  const insights = await listDanglingInsights(creds, fetchImpl);
+
+  assertEquals(insights?.length, 1);
+  assertEquals(insights?.[0].zoneName, "example.com");
+  assertEquals(insights?.[0].recordName, "old-blog.example.com");
+  assertEquals(insights?.[0].recordType, "CNAME");
+});
+
+Deno.test("listDanglingInsights - returns null (not throws, not empty array) when the insights API itself fails", async () => {
+  const fetchImpl = mockFetch([
+    ["/insights", () => jsonResponse({ success: false, result: null, errors: [] }, 403)],
+  ]);
+
+  const insights = await listDanglingInsights(creds, fetchImpl);
+
+  assertEquals(insights, null);
 });
