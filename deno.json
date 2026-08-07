@@ -1,12 +1,13 @@
 {
+  "nodeModulesDir": "auto",
   "imports": {
-    "hono": "npm:hono@^4.13.1",
+    "hono": "npm:hono@^4.13.0",
     "jose": "npm:jose@^6.2.8",
     "react": "npm:react@^19.2.8",
     "react-dom": "npm:react-dom@^19.2.8",
     "react-dom/client": "npm:react-dom@^19.2.8/client",
     "vite": "npm:vite@^8.2.0",
-    "@cloudflare/vite-plugin": "npm:@cloudflare/vite-plugin@^1.51.1",
+    "@cloudflare/vite-plugin": "npm:@cloudflare/vite-plugin@^1.51.0",
     "@vitejs/plugin-react": "npm:@vitejs/plugin-react@^5",
     "wrangler": "npm:wrangler@^4.118.0",
     "@playwright/test": "npm:@playwright/test@^1.62.1",
@@ -26,7 +27,7 @@
   },
   "compilerOptions": {
     "strict": true,
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "lib": ["ES2022", "DOM", "DOM.Iterable", "deno.ns"],
     "jsx": "react-jsx",
     "jsxImportSource": "react",
     "types": ["@cloudflare/workers-types"]
