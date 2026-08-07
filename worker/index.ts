@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { accessAuth, type AccessIdentity } from "./auth/access-jwt.ts";
 import { exposureRoutes, runEvaluation } from "./modules/workers-access-exposure/routes.ts";
+import { dnsRoutes } from "./modules/dns/routes.ts";
 
 interface Env {
   ASSETS: Fetcher;
@@ -17,6 +18,7 @@ const app = new Hono<{ Bindings: Env; Variables: { identity: AccessIdentity } }>
 // Principle II) before it reaches any module's router.
 app.use("/api/*", accessAuth);
 app.route("/api/exposure", exposureRoutes);
+app.route("/api/dns", dnsRoutes);
 
 export default {
   fetch(request: Request, env: Env, ctx: ExecutionContext): Response | Promise<Response> {
