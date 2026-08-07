@@ -4,12 +4,14 @@ import { ExposureInventory } from "./pages/ExposureInventory.tsx";
 import { DnsInventory } from "./pages/DnsInventory.tsx";
 import { ZeroTrustInventory } from "./pages/ZeroTrustInventory.tsx";
 import { PagesInventory } from "./pages/PagesInventory.tsx";
+import { StorageInventory } from "./pages/StorageInventory.tsx";
 
 const PAGES = [
   { key: "exposure", label: "Workers & Access", render: () => <ExposureInventory /> },
   { key: "dns", label: "DNS", render: () => <DnsInventory /> },
   { key: "zero-trust", label: "Zero Trust", render: () => <ZeroTrustInventory /> },
   { key: "pages", label: "Pages", render: () => <PagesInventory /> },
+  { key: "storage", label: "R2 / KV / D1", render: () => <StorageInventory /> },
 ] as const;
 
 type PageKey = typeof PAGES[number]["key"];
