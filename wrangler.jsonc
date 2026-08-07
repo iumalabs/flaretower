@@ -1,0 +1,42 @@
+{
+  "name": "flaretower",
+  "main": "worker/index.ts",
+  // Verified against the wrangler version pinned in deno.json (T001 smoke
+  // test). Bump deliberately when upgrading wrangler, not automatically.
+  "compatibility_date": "2026-08-06",
+
+  // Non-negotiable (constitution Principle VII) — FlareTower must never be
+  // reachable on a *.workers.dev URL.
+  "workers_dev": false,
+  // Preview URLs stay enabled for reviewing builds, but MUST be put behind
+  // Cloudflare Access manually post-deploy — see README.
+  "preview_urls": true,
+
+  "assets": {
+    "directory": "./dist/client",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application"
+  },
+
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "flaretower",
+      // TODO(deploy): replace once `wrangler d1 create flaretower` has been
+      // run against the real Cloudflare account — not fabricated here.
+      "database_id": "REPLACE_WITH_REAL_D1_DATABASE_ID"
+    }
+  ],
+
+  "triggers": {
+    // Placeholder cadence for the Module 1 drift audit — exact frequency is
+    // a deployment-time decision (research.md §5), not fixed by the spec.
+    "crons": ["0 * * * *"]
+  },
+
+  "limits": {
+    // I/O-bound workload (research.md §5) — explicit headroom, not the
+    // full 5-minute ceiling.
+    "cpu_ms": 50000
+  }
+}
