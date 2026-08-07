@@ -14,10 +14,12 @@ setup and operation only.
 
 ## Status
 
-Module 1 (**Workers & Access exposure**) is implemented — see
+Module 1 (**Workers & Access exposure**) and Module 2 (**DNS**) are
+implemented — see
 [`specs/001-workers-access-exposure/`](specs/001-workers-access-exposure/)
-for its spec, plan, and tasks. Everything else in the constitution's product
-scope (§2) is documented as future work, not yet built.
+and [`specs/002-dns/`](specs/002-dns/) for their specs, plans, and tasks.
+Everything else in the constitution's product scope (§2) is documented as
+future work, not yet built.
 
 ## Prerequisites
 
@@ -86,15 +88,18 @@ degraded-but-permitted mode.
 
 ## Required API token scopes
 
-Module 1 (Workers & Access exposure) needs a **read-only** token — per
-constitution Principle VIII, write scopes are added only when a module's
-mutation features actually land, never ahead of need.
+Every module needs a **read-only** token — per constitution Principle
+VIII, write scopes are added only when a module's mutation features
+actually land, never ahead of need.
 
-| Scope | Why |
-|---|---|
-| `Workers Scripts Read` | List Workers, per-script `workers.dev`/Preview URL status |
-| `Workers Routes Read` | (reserved — custom domains are read via the Scripts scope; kept for future route-level checks) |
-| `Access: Apps and Policies Read` | List Access applications and their policies |
+| Scope | Why | Module |
+|---|---|---|
+| `Workers Scripts Read` | List Workers, per-script `workers.dev`/Preview URL status | Module 1 |
+| `Workers Routes Read` | (reserved — custom domains are read via the Scripts scope; kept for future route-level checks) | Module 1 |
+| `Access: Apps and Policies Read` | List Access applications and their policies | Module 1 |
+| `Zone Read` | List zones | Module 2 |
+| `DNS Read` | List DNS records per zone | Module 2 |
+| `Zone Security Center Insights` (read) | Dangling A/AAAA/CNAME record findings (Cloudflare's own Security Insights scan — not reimplemented; see [`specs/002-dns/research.md`](specs/002-dns/research.md#2-dangling-record-detection--use-cloudflares-own-security-insights-dont-reimplement-it)) | Module 2 |
 
 Store the token only via `wrangler secret put CF_API_TOKEN` — never as a
 `vars` entry in `wrangler.jsonc`, never accepted through the web UI at
