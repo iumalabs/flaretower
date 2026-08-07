@@ -14,6 +14,18 @@ function scopedApp(id: string, domain: string): AccessApplicationSummary {
   };
 }
 
+function everyoneApp(id: string, domain: string): AccessApplicationSummary {
+  return {
+    id,
+    domain,
+    policies: [{ decision: "allow", includesEveryone: true, hasScopedInclude: false }],
+  };
+}
+
+function policylessApp(id: string, domain: string): AccessApplicationSummary {
+  return { id, domain, policies: [] };
+}
+
 Deno.test("hostnameCoveredByAppDomain - exact match", () => {
   assertEquals(hostnameCoveredByAppDomain("billing.example.com", "billing.example.com"), true);
   assertEquals(hostnameCoveredByAppDomain("billing.example.com", "other.example.com"), false);
@@ -68,6 +80,54 @@ Deno.test("evaluateHostname - not_evaluated when the hostname itself has an eval
   // we couldn't actually confirm coverage, so we must not claim safe.
   assertEquals(result.status, "not_evaluated");
   assertEquals(result.reason, "insufficient token scope");
+});
+
+Deno.test("evaluateHostname - warning when the covering app allows Everyone", () => {
+  const result = evaluateHostname(
+    { hostname: "status.example.com", kind: "custom_domain" },
+    [everyoneApp("app-1", "status.example.com")],
+  );
+  assertEquals(result.status, "warning");
+});
+
+Deno.test("evaluateHostname - warning when the covering app has zero policies", () => {
+  const result = evaluateHostname(
+    { hostname: "status.example.com", kind: "custom_domain" },
+    [policylessApp("app-1", "status.example.com")],
+  );
+  assertEquals(result.status, "warning");
+});
+
+Deno.test("evaluateHostname - safe when the covering app's policy is scoped (not Everyone)", () => {
+  const result = evaluateHostname(
+    { hostname: "billing.example.com", kind: "custom_domain" },
+    [scopedApp("app-1", "billing.example.com")],
+  );
+  assertEquals(result.status, "safe");
+});
+
+Deno.test("evaluateHostname - a deny-Everyone policy is not 'open' (decision matters, not just includesEveryone)", () => {
+  const denyEveryone: AccessApplicationSummary = {
+    id: "app-1",
+    domain: "billing.example.com",
+    policies: [{ decision: "deny", includesEveryone: true, hasScopedInclude: false }],
+  };
+  const result = evaluateHostname({ hostname: "billing.example.com", kind: "custom_domain" }, [
+    denyEveryone,
+  ]);
+  assertEquals(result.status, "safe");
+});
+
+Deno.test("evaluateHostname - bypass policies are treated as open regardless of includes", () => {
+  const bypassApp: AccessApplicationSummary = {
+    id: "app-1",
+    domain: "billing.example.com",
+    policies: [{ decision: "bypass", includesEveryone: false, hasScopedInclude: true }],
+  };
+  const result = evaluateHostname({ hostname: "billing.example.com", kind: "custom_domain" }, [
+    bypassApp,
+  ]);
+  assertEquals(result.status, "warning");
 });
 
 Deno.test("evaluateWorker - hostnames on the same Worker are evaluated independently", () => {

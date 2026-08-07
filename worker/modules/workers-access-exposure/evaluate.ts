@@ -3,6 +3,7 @@
 // scheduled entry points share this identically.
 import type {
   AccessApplicationSummary,
+  AccessPolicySummary,
   HostnameEvaluation,
   WorkerEvaluation,
   WorkerHostname,
@@ -28,6 +29,28 @@ function findCoveringApps(
   apps: AccessApplicationSummary[],
 ): AccessApplicationSummary[] {
   return apps.filter((app) => hostnameCoveredByAppDomain(hostname, app.domain));
+}
+
+// A policy that grants access ("allow" or "bypass") to Everyone/anyone is
+// effectively open regardless of any other, more restrictive policy on the
+// same application — Access stops evaluating once a request matches an
+// Allow or Block policy, so one open Allow policy is enough to let anyone
+// in (see Cloudflare Access policy order-of-execution docs). A "deny"
+// policy that happens to target Everyone is the opposite of open, so
+// `includesEveryone` alone is not sufficient — decision matters too.
+function isPolicyEffectivelyOpen(policy: AccessPolicySummary): boolean {
+  if (policy.decision === "bypass") return true; // skips identity entirely
+  return policy.decision === "allow" && policy.includesEveryone;
+}
+
+// An application with zero policies attached denies everyone by default in
+// Cloudflare Access — not open in the security sense. It is still flagged
+// as warning per spec User Story 3 (Acceptance Scenario 3): the absence of
+// any explicit policy is itself worth surfacing to the operator rather than
+// silently treated as safe, since it's most likely an incomplete setup.
+function isAppOpenOrUnconfigured(app: AccessApplicationSummary): boolean {
+  if (app.policies.length === 0) return true;
+  return app.policies.some(isPolicyEffectivelyOpen);
 }
 
 // `apps === null` means the Access applications list itself could not be
@@ -67,8 +90,23 @@ export function evaluateHostname(
     };
   }
 
-  // Policy-openness evaluation (warning vs. safe) lands in T025 (US3) —
-  // until then, any covered hostname is provisionally safe.
+  const openApps = covering.filter(isAppOpenOrUnconfigured);
+  if (openApps.length > 0) {
+    const reasons = openApps.map((a) =>
+      a.policies.length === 0
+        ? `${a.id} has no policies attached`
+        : `${a.id} has a policy that allows Everyone`
+    );
+    return {
+      hostname: hostname.hostname,
+      kind: hostname.kind,
+      status: "warning",
+      reason: `covering Access application(s) do not meaningfully restrict access: ${
+        reasons.join("; ")
+      }`,
+    };
+  }
+
   return {
     hostname: hostname.hostname,
     kind: hostname.kind,
