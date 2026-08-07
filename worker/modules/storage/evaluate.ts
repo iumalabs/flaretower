@@ -126,9 +126,14 @@ export function evaluateBucketExposure(
   };
 }
 
-// US3 replaces this stub with the real Worker-bindings usage check.
+// referencedIds: the set of ids found across every successfully-checked
+// Worker's bindings. allBindingsConfirmed: false means at least one
+// script's bindings couldn't be checked, so an id absent from
+// referencedIds can't be confidently called unused (research.md §3).
 export function evaluateKvNamespaceUsage(
   namespace: KvNamespaceInventoryItem,
+  referencedIds: Set<string>,
+  allBindingsConfirmed: boolean,
 ): KvNamespaceEvaluation {
   if (namespace.evaluationError) {
     return {
@@ -138,16 +143,38 @@ export function evaluateKvNamespaceUsage(
       reason: namespace.evaluationError,
     };
   }
+
+  if (referencedIds.has(namespace.namespaceId)) {
+    return {
+      namespaceId: namespace.namespaceId,
+      title: namespace.title,
+      status: "safe",
+      reason: "referenced by at least one deployed Worker's bindings",
+    };
+  }
+
+  if (!allBindingsConfirmed) {
+    return {
+      namespaceId: namespace.namespaceId,
+      title: namespace.title,
+      status: "not_evaluated",
+      reason: "could not confirm usage — some Worker bindings could not be checked",
+    };
+  }
+
   return {
     namespaceId: namespace.namespaceId,
     title: namespace.title,
-    status: "safe",
-    reason: "usage evaluation not yet implemented",
+    status: "warning",
+    reason: "not referenced by any deployed Worker's bindings",
   };
 }
 
-// US3 replaces this stub with the real Worker-bindings usage check.
-export function evaluateD1DatabaseUsage(database: D1DatabaseInventoryItem): D1DatabaseEvaluation {
+export function evaluateD1DatabaseUsage(
+  database: D1DatabaseInventoryItem,
+  referencedIds: Set<string>,
+  allBindingsConfirmed: boolean,
+): D1DatabaseEvaluation {
   if (database.evaluationError) {
     return {
       databaseUuid: database.databaseUuid,
@@ -156,11 +183,30 @@ export function evaluateD1DatabaseUsage(database: D1DatabaseInventoryItem): D1Da
       reason: database.evaluationError,
     };
   }
+
+  if (referencedIds.has(database.databaseUuid)) {
+    return {
+      databaseUuid: database.databaseUuid,
+      name: database.name,
+      status: "safe",
+      reason: "referenced by at least one deployed Worker's bindings",
+    };
+  }
+
+  if (!allBindingsConfirmed) {
+    return {
+      databaseUuid: database.databaseUuid,
+      name: database.name,
+      status: "not_evaluated",
+      reason: "could not confirm usage — some Worker bindings could not be checked",
+    };
+  }
+
   return {
     databaseUuid: database.databaseUuid,
     name: database.name,
-    status: "safe",
-    reason: "usage evaluation not yet implemented",
+    status: "warning",
+    reason: "not referenced by any deployed Worker's bindings",
   };
 }
 
@@ -173,10 +219,16 @@ export function evaluateBuckets(
 
 export function evaluateKvNamespaces(
   namespaces: KvNamespaceInventoryItem[],
+  referencedIds: Set<string>,
+  allBindingsConfirmed: boolean,
 ): KvNamespaceEvaluation[] {
-  return namespaces.map(evaluateKvNamespaceUsage);
+  return namespaces.map((n) => evaluateKvNamespaceUsage(n, referencedIds, allBindingsConfirmed));
 }
 
-export function evaluateD1Databases(databases: D1DatabaseInventoryItem[]): D1DatabaseEvaluation[] {
-  return databases.map(evaluateD1DatabaseUsage);
+export function evaluateD1Databases(
+  databases: D1DatabaseInventoryItem[],
+  referencedIds: Set<string>,
+  allBindingsConfirmed: boolean,
+): D1DatabaseEvaluation[] {
+  return databases.map((d) => evaluateD1DatabaseUsage(d, referencedIds, allBindingsConfirmed));
 }

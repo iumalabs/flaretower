@@ -17,10 +17,16 @@ const MOCK_STORAGE_INVENTORY = {
   ],
   kv_namespaces: [
     {
-      namespace_id: "kv-1",
-      title: "SESSIONS",
+      namespace_id: "kv-used",
+      title: "USED_SESSIONS",
       status: "safe",
-      reason: "usage evaluation not yet implemented",
+      reason: "referenced by at least one deployed Worker's bindings",
+    },
+    {
+      namespace_id: "kv-unused",
+      title: "UNUSED_SESSIONS",
+      status: "warning",
+      reason: "not referenced by any deployed Worker's bindings",
     },
   ],
   d1_databases: [
@@ -28,7 +34,7 @@ const MOCK_STORAGE_INVENTORY = {
       database_uuid: "db-1",
       name: "flaretower",
       status: "safe",
-      reason: "usage evaluation not yet implemented",
+      reason: "referenced by at least one deployed Worker's bindings",
     },
   ],
 };
@@ -75,7 +81,8 @@ test.beforeEach(async ({ page }) => {
 
 test("US1 — every bucket, namespace, and database appears, none omitted", async ({ page }) => {
   await expect(page.locator("tr", { hasText: "public-uploads" })).toBeVisible();
-  await expect(page.locator("tr", { hasText: "SESSIONS" })).toBeVisible();
+  await expect(page.locator("tr", { hasText: "kv-used" })).toBeVisible();
+  await expect(page.locator("tr", { hasText: "kv-unused" })).toBeVisible();
   await expect(page.locator("tr", { hasText: "flaretower" })).toBeVisible();
 });
 
@@ -85,4 +92,12 @@ test("US2 — an r2.dev-exposed bucket renders critical, a private bucket render
 
   const privateRow = page.locator("tr", { hasText: "private-backups" });
   await expect(privateRow.getByText("PROTECTED")).toBeVisible();
+});
+
+test("US3 — a namespace referenced by a Worker renders safe, an unreferenced one renders warning", async ({ page }) => {
+  const usedRow = page.locator("tr", { hasText: "kv-used" });
+  await expect(usedRow.getByText("PROTECTED")).toBeVisible();
+
+  const unusedRow = page.locator("tr", { hasText: "kv-unused" });
+  await expect(unusedRow.getByText("WARNING")).toBeVisible();
 });

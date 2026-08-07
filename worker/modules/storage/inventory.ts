@@ -90,6 +90,16 @@ interface RawAccessApp {
   policies?: RawAccessPolicy[];
 }
 
+interface RawWorkerScript {
+  id: string;
+}
+
+interface RawBinding {
+  type: string;
+  namespace_id?: string;
+  id?: string;
+}
+
 function errorMessage(reason: unknown): string {
   return reason instanceof Error ? reason.message : "unknown error";
 }
@@ -179,6 +189,82 @@ export async function listAccessApplications(
   }));
 }
 
+export async function listWorkerScripts(
+  creds: CloudflareStorageCredentials,
+  fetchImpl: typeof fetch = fetch,
+): Promise<string[]> {
+  const scripts = await cfFetch<RawWorkerScript[]>(
+    `/accounts/${creds.accountId}/workers/scripts`,
+    creds,
+    fetchImpl,
+  );
+  return scripts.map((s) => s.id);
+}
+
+export async function listScriptBindings(
+  creds: CloudflareStorageCredentials,
+  scriptName: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<RawBinding[]> {
+  return await cfFetch<RawBinding[]>(
+    `/accounts/${creds.accountId}/workers/scripts/${scriptName}/bindings`,
+    creds,
+    fetchImpl,
+  );
+}
+
+export interface BindingReferences {
+  kvNamespaceIds: Set<string>;
+  d1DatabaseIds: Set<string>;
+  // false if the script list itself failed, or if any individual
+  // script's bindings could not be fetched — a namespace/database not
+  // found in the sets above can only be confidently called "unused" when
+  // this is true (research.md §3's partial-failure rule).
+  allBindingsConfirmed: boolean;
+}
+
+// Scans every deployed Worker's bindings to build the set of KV
+// namespace ids and D1 database ids actually referenced by some Worker —
+// the only way to determine "unused" for a resource type with no direct
+// exposure signal, since Cloudflare exposes no reverse index (research.md
+// §3). Independent fetch of the same account-wide Worker scripts list
+// Module 1 already calls, per the "duplication beats coupling" precedent.
+async function buildBindingReferences(
+  creds: CloudflareStorageCredentials,
+  fetchImpl: typeof fetch,
+): Promise<BindingReferences> {
+  let scriptNames: string[];
+  try {
+    scriptNames = await listWorkerScripts(creds, fetchImpl);
+  } catch {
+    return { kvNamespaceIds: new Set(), d1DatabaseIds: new Set(), allBindingsConfirmed: false };
+  }
+
+  const kvNamespaceIds = new Set<string>();
+  const d1DatabaseIds = new Set<string>();
+  let allBindingsConfirmed = true;
+
+  const results = await Promise.allSettled(
+    scriptNames.map((name) => listScriptBindings(creds, name, fetchImpl)),
+  );
+  for (const result of results) {
+    if (result.status === "rejected") {
+      allBindingsConfirmed = false;
+      continue;
+    }
+    for (const binding of result.value) {
+      if (binding.type === "kv_namespace" && binding.namespace_id) {
+        kvNamespaceIds.add(binding.namespace_id);
+      }
+      if (binding.type === "d1" && binding.id) {
+        d1DatabaseIds.add(binding.id);
+      }
+    }
+  }
+
+  return { kvNamespaceIds, d1DatabaseIds, allBindingsConfirmed };
+}
+
 export interface StorageInventory {
   buckets: BucketInventoryItem[];
   kvNamespaces: KvNamespaceInventoryItem[];
@@ -188,6 +274,7 @@ export interface StorageInventory {
   // that case, never silently critical or safe (mirrors Module 1's
   // evaluateHostname convention for the same `apps === null` case).
   accessApplications: AccessApplication[] | null;
+  bindingReferences: BindingReferences;
 }
 
 // Fetches, per bucket, whether its r2.dev domain is enabled and its
@@ -239,9 +326,10 @@ export async function buildStorageInventory(
   creds: CloudflareStorageCredentials,
   fetchImpl: typeof fetch = fetch,
 ): Promise<StorageInventory> {
-  const [buckets, accessApplications, [kvResult, d1Result]] = await Promise.all([
+  const [buckets, accessApplications, bindingReferences, [kvResult, d1Result]] = await Promise.all([
     fetchBucketsWithDomains(creds, fetchImpl),
     listAccessApplications(creds, fetchImpl).catch(() => null),
+    buildBindingReferences(creds, fetchImpl),
     Promise.allSettled([
       listKvNamespaces(creds, fetchImpl),
       listD1Databases(creds, fetchImpl),
@@ -264,5 +352,5 @@ export async function buildStorageInventory(
       evaluationError: `could not list D1 databases: ${errorMessage(d1Result.reason)}`,
     }];
 
-  return { buckets, kvNamespaces, d1Databases, accessApplications };
+  return { buckets, kvNamespaces, d1Databases, accessApplications, bindingReferences };
 }

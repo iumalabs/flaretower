@@ -7,6 +7,8 @@ import {
   listD1Databases,
   listKvNamespaces,
   listR2Buckets,
+  listScriptBindings,
+  listWorkerScripts,
 } from "../../worker/modules/storage/inventory.ts";
 
 function jsonResponse(body: unknown, status = 200): Response {
@@ -146,6 +148,10 @@ const NO_CUSTOM_DOMAINS: [string, () => Response] = [
   "/domains/custom",
   () => jsonResponse({ success: true, result: { domains: [] }, errors: [] }),
 ];
+const NO_WORKER_SCRIPTS: [string, () => Response] = [
+  "/workers/scripts",
+  () => jsonResponse({ success: true, result: [], errors: [] }),
+];
 
 Deno.test("buildStorageInventory - every bucket, namespace, and database is enumerated, none omitted", async () => {
   const fetchImpl = mockFetch([
@@ -166,6 +172,7 @@ Deno.test("buildStorageInventory - every bucket, namespace, and database is enum
     R2_DEV_DISABLED,
     NO_CUSTOM_DOMAINS,
     EMPTY_ACCESS_APPS,
+    NO_WORKER_SCRIPTS,
   ]);
 
   const inventory = await buildStorageInventory(creds, fetchImpl);
@@ -200,6 +207,7 @@ Deno.test("buildStorageInventory - a per-bucket domain-fetch failure sets that b
     ["/storage/kv/namespaces", () => jsonResponse({ success: true, result: [], errors: [] })],
     ["/d1/database", () => jsonResponse({ success: true, result: [], errors: [] })],
     EMPTY_ACCESS_APPS,
+    NO_WORKER_SCRIPTS,
   ]);
 
   const inventory = await buildStorageInventory(creds, fetchImpl);
@@ -216,6 +224,7 @@ Deno.test("buildStorageInventory - a total failure to list buckets surfaces a se
     ["/r2/buckets", () => jsonResponse({ success: false, result: null, errors: [] }, 403)],
     ["/storage/kv/namespaces", () => jsonResponse({ success: true, result: [], errors: [] })],
     ["/d1/database", () => jsonResponse({ success: true, result: [], errors: [] })],
+    NO_WORKER_SCRIPTS,
   ]);
 
   const inventory = await buildStorageInventory(creds, fetchImpl);
@@ -244,6 +253,7 @@ Deno.test("buildStorageInventory - buckets, namespaces, and databases fail indep
     R2_DEV_DISABLED,
     NO_CUSTOM_DOMAINS,
     EMPTY_ACCESS_APPS,
+    NO_WORKER_SCRIPTS,
   ]);
 
   const inventory = await buildStorageInventory(creds, fetchImpl);
@@ -254,4 +264,114 @@ Deno.test("buildStorageInventory - buckets, namespaces, and databases fail indep
   assertEquals(typeof inventory.kvNamespaces[0].evaluationError, "string");
   assertEquals(inventory.d1Databases.length, 1);
   assertEquals(inventory.d1Databases[0].evaluationError, undefined);
+});
+
+Deno.test("listWorkerScripts - maps script names", async () => {
+  const fetchImpl = mockFetch([
+    [
+      "/workers/scripts",
+      () =>
+        jsonResponse({
+          success: true,
+          result: [{ id: "my-worker" }, { id: "other-worker" }],
+          errors: [],
+        }),
+    ],
+  ]);
+
+  const scripts = await listWorkerScripts(creds, fetchImpl);
+
+  assertEquals(scripts, ["my-worker", "other-worker"]);
+});
+
+Deno.test("listScriptBindings - maps binding type and target id", async () => {
+  const fetchImpl = mockFetch([
+    ["/bindings", () =>
+      jsonResponse({
+        success: true,
+        result: [
+          { type: "kv_namespace", namespace_id: "kv-1" },
+          { type: "d1", id: "db-1" },
+          { type: "plain_text" },
+        ],
+        errors: [],
+      })],
+  ]);
+
+  const bindings = await listScriptBindings(creds, "my-worker", fetchImpl);
+
+  assertEquals(bindings.length, 3);
+  assertEquals(bindings[0], { type: "kv_namespace", namespace_id: "kv-1" });
+  assertEquals(bindings[1], { type: "d1", id: "db-1" });
+});
+
+Deno.test("buildStorageInventory - a namespace/database referenced by a Worker's bindings is safe, an unreferenced one is warning", async () => {
+  const fetchImpl = mockFetch([
+    ["/r2/buckets", () => jsonResponse({ success: true, result: [], errors: [] })],
+    [
+      "/storage/kv/namespaces",
+      () =>
+        jsonResponse({
+          success: true,
+          result: [{ id: "kv-used", title: "USED" }, { id: "kv-unused", title: "UNUSED" }],
+          errors: [],
+        }),
+    ],
+    [
+      "/d1/database",
+      () =>
+        jsonResponse({ success: true, result: [{ uuid: "db-used", name: "used-db" }], errors: [] }),
+    ],
+    EMPTY_ACCESS_APPS,
+    [
+      "/workers/scripts",
+      () => jsonResponse({ success: true, result: [{ id: "my-worker" }], errors: [] }),
+    ],
+    ["/my-worker/bindings", () =>
+      jsonResponse({
+        success: true,
+        result: [{ type: "kv_namespace", namespace_id: "kv-used" }, { type: "d1", id: "db-used" }],
+        errors: [],
+      })],
+  ]);
+
+  const inventory = await buildStorageInventory(creds, fetchImpl);
+
+  assertEquals(inventory.bindingReferences.kvNamespaceIds.has("kv-used"), true);
+  assertEquals(inventory.bindingReferences.kvNamespaceIds.has("kv-unused"), false);
+  assertEquals(inventory.bindingReferences.d1DatabaseIds.has("db-used"), true);
+  assertEquals(inventory.bindingReferences.allBindingsConfirmed, true);
+});
+
+Deno.test("buildStorageInventory - a per-script bindings-fetch failure marks allBindingsConfirmed false, other scripts' bindings still counted", async () => {
+  const fetchImpl = mockFetch([
+    ["/r2/buckets", () => jsonResponse({ success: true, result: [], errors: [] })],
+    ["/storage/kv/namespaces", () => jsonResponse({ success: true, result: [], errors: [] })],
+    ["/d1/database", () => jsonResponse({ success: true, result: [], errors: [] })],
+    EMPTY_ACCESS_APPS,
+    ["/workers/scripts", () =>
+      jsonResponse({
+        success: true,
+        result: [{ id: "broken-worker" }, { id: "healthy-worker" }],
+        errors: [],
+      })],
+    [
+      "/broken-worker/bindings",
+      () => jsonResponse({ success: false, result: null, errors: [] }, 500),
+    ],
+    [
+      "/healthy-worker/bindings",
+      () =>
+        jsonResponse({
+          success: true,
+          result: [{ type: "kv_namespace", namespace_id: "kv-used" }],
+          errors: [],
+        }),
+    ],
+  ]);
+
+  const inventory = await buildStorageInventory(creds, fetchImpl);
+
+  assertEquals(inventory.bindingReferences.kvNamespaceIds.has("kv-used"), true);
+  assertEquals(inventory.bindingReferences.allBindingsConfirmed, false);
 });
