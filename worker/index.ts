@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { accessAuth, type AccessIdentity } from "./auth/access-jwt.ts";
-import { exposureRoutes } from "./modules/workers-access-exposure/routes.ts";
+import { exposureRoutes, runEvaluation } from "./modules/workers-access-exposure/routes.ts";
 
 interface Env {
   ASSETS: Fetcher;
@@ -27,9 +27,18 @@ export default {
     return env.ASSETS.fetch(request);
   },
 
-  scheduled(controller: ScheduledController, _env: Env, _ctx: ExecutionContext): void {
-    // Real drift-audit logic (shared with POST /api/exposure/evaluate,
-    // constitution Principle III) wired in T030.
-    console.log(`scheduled run: ${controller.cron}`);
+  scheduled(controller: ScheduledController, env: Env, ctx: ExecutionContext): void {
+    // Calls the exact same shared evaluation module POST /api/exposure/
+    // evaluate does (constitution Principle III) — no divergent logic
+    // between the interactive and scheduled entry points.
+    ctx.waitUntil(
+      runEvaluation(env, "scheduled").then(({ runId, newAlertCount }) => {
+        console.log(
+          `scheduled run ${runId} (cron ${controller.cron}): ${newAlertCount} new alert(s)`,
+        );
+      }).catch((err: unknown) => {
+        console.error(`scheduled run failed: ${err instanceof Error ? err.message : String(err)}`);
+      }),
+    );
   },
 } satisfies ExportedHandler<Env>;
