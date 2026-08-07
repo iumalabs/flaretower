@@ -1,7 +1,8 @@
 import { Hono } from "hono";
 import { buildZeroTrustInventory } from "./inventory.ts";
 import { evaluateApplications, evaluateServiceTokens } from "./evaluate.ts";
-import type { AppEvaluation, TokenEvaluation } from "./types.ts";
+import { diffForAppAlerts, diffForTokenAlerts } from "./alerts.ts";
+import type { AppEvaluation, AppStatus, TokenEvaluation, TokenStatus } from "./types.ts";
 
 interface Env {
   DB: D1Database;
@@ -10,6 +11,24 @@ interface Env {
 }
 
 export const zeroTrustRoutes = new Hono<{ Bindings: Env }>();
+
+// The most recent run's per-entity status, read BEFORE the current run is
+// inserted — same pattern as every prior module.
+async function getPreviousAppStatuses(env: Env): Promise<Map<string, AppStatus>> {
+  const { results: rows } = await env.DB.prepare(
+    `SELECT app_id, status FROM zt_app_findings
+     WHERE run_id = (SELECT run_id FROM zt_app_findings ORDER BY evaluated_at DESC LIMIT 1)`,
+  ).all<{ app_id: string; status: AppStatus }>();
+  return new Map(rows.map((r) => [r.app_id, r.status]));
+}
+
+async function getPreviousTokenStatuses(env: Env): Promise<Map<string, TokenStatus>> {
+  const { results: rows } = await env.DB.prepare(
+    `SELECT token_id, status FROM zt_token_findings
+     WHERE run_id = (SELECT run_id FROM zt_token_findings ORDER BY evaluated_at DESC LIMIT 1)`,
+  ).all<{ token_id: string; status: TokenStatus }>();
+  return new Map(rows.map((r) => [r.token_id, r.status]));
+}
 
 // Shared by POST /evaluate (interactive) and the scheduled handler —
 // constitution Principle III.
@@ -22,10 +41,16 @@ export async function runZeroTrustEvaluation(
     evaluatedAt: string;
     appResults: AppEvaluation[];
     tokenResults: TokenEvaluation[];
+    newAlertCount: number;
   }
 > {
   const creds = { accountId: env.CF_ACCOUNT_ID, apiToken: env.CF_API_TOKEN };
-  const { applications, serviceTokens } = await buildZeroTrustInventory(creds);
+  const [{ applications, serviceTokens }, previousAppStatuses, previousTokenStatuses] =
+    await Promise.all([
+      buildZeroTrustInventory(creds),
+      getPreviousAppStatuses(env),
+      getPreviousTokenStatuses(env),
+    ]);
   const appResults = evaluateApplications(applications);
   const tokenResults = evaluateServiceTokens(serviceTokens);
 
@@ -70,7 +95,51 @@ export async function runZeroTrustEvaluation(
     await env.DB.batch(statements);
   }
 
-  return { runId, evaluatedAt, appResults, tokenResults };
+  const newAppAlerts = diffForAppAlerts(appResults, previousAppStatuses);
+  const newTokenAlerts = diffForTokenAlerts(tokenResults, previousTokenStatuses);
+
+  const appAlertStatements = newAppAlerts.map((a) =>
+    env.DB.prepare(
+      `INSERT INTO zt_app_alerts (id, app_id, app_domain, previous_status, new_status, run_id, detected_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    ).bind(
+      crypto.randomUUID(),
+      a.appId,
+      a.appDomain,
+      a.previousStatus,
+      a.newStatus,
+      runId,
+      evaluatedAt,
+    )
+  );
+
+  const tokenAlertStatements = newTokenAlerts.map((t) =>
+    env.DB.prepare(
+      `INSERT INTO zt_token_alerts (id, token_id, token_name, previous_status, new_status, run_id, detected_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    ).bind(
+      crypto.randomUUID(),
+      t.tokenId,
+      t.tokenName,
+      t.previousStatus,
+      t.newStatus,
+      runId,
+      evaluatedAt,
+    )
+  );
+
+  const alertStatements = [...appAlertStatements, ...tokenAlertStatements];
+  if (alertStatements.length > 0) {
+    await env.DB.batch(alertStatements);
+  }
+
+  return {
+    runId,
+    evaluatedAt,
+    appResults,
+    tokenResults,
+    newAlertCount: newAppAlerts.length + newTokenAlerts.length,
+  };
 }
 
 zeroTrustRoutes.post("/evaluate", async (c) => {
@@ -130,6 +199,99 @@ zeroTrustRoutes.get("/inventory", async (c) => {
   });
 });
 
-// GET /alerts and POST /alerts/:kind/:id/acknowledge land in US4.
-zeroTrustRoutes.all("/alerts", (c) => c.text("not implemented", 501));
-zeroTrustRoutes.all("/alerts/*", (c) => c.text("not implemented", 501));
+interface AppAlertRow {
+  id: string;
+  app_id: string;
+  app_domain: string;
+  previous_status: string | null;
+  new_status: string;
+  detected_at: string;
+  acknowledged_at: string | null;
+}
+
+interface TokenAlertRow {
+  id: string;
+  token_id: string;
+  token_name: string;
+  previous_status: string | null;
+  new_status: string;
+  detected_at: string;
+  acknowledged_at: string | null;
+}
+
+// Merges both alert tables at the API layer with a `kind` discriminator
+// (contracts/api.md) — the two tables stay separate in D1 (data-model.md
+// §5's rationale), combined only for this response.
+zeroTrustRoutes.get("/alerts", async (c) => {
+  const [{ results: appRows }, { results: tokenRows }] = await Promise.all([
+    c.env.DB.prepare(
+      `SELECT id, app_id, app_domain, previous_status, new_status, detected_at, acknowledged_at
+       FROM zt_app_alerts WHERE acknowledged_at IS NULL ORDER BY detected_at DESC`,
+    ).all<AppAlertRow>(),
+    c.env.DB.prepare(
+      `SELECT id, token_id, token_name, previous_status, new_status, detected_at, acknowledged_at
+       FROM zt_token_alerts WHERE acknowledged_at IS NULL ORDER BY detected_at DESC`,
+    ).all<TokenAlertRow>(),
+  ]);
+
+  return c.json({
+    alerts: [
+      ...appRows.map((r) => ({
+        id: r.id,
+        kind: "application" as const,
+        app_id: r.app_id,
+        app_domain: r.app_domain,
+        previous_status: r.previous_status,
+        new_status: r.new_status,
+        detected_at: r.detected_at,
+        acknowledged_at: r.acknowledged_at,
+      })),
+      ...tokenRows.map((r) => ({
+        id: r.id,
+        kind: "service_token" as const,
+        token_id: r.token_id,
+        token_name: r.token_name,
+        previous_status: r.previous_status,
+        new_status: r.new_status,
+        detected_at: r.detected_at,
+        acknowledged_at: r.acknowledged_at,
+      })),
+    ],
+  });
+});
+
+const ALERT_TABLE_BY_KIND: Record<string, string> = {
+  application: "zt_app_alerts",
+  service_token: "zt_token_alerts",
+};
+
+// Not a Cloudflare account mutation (FR-014 scope boundary) — not written
+// to audit_log, same as every prior module's equivalent endpoint.
+zeroTrustRoutes.post("/alerts/:kind/:id/acknowledge", async (c) => {
+  const kind = c.req.param("kind");
+  const id = c.req.param("id");
+  const table = ALERT_TABLE_BY_KIND[kind];
+
+  if (!table) {
+    return c.json({ error: `unknown alert kind: ${kind}` }, 404);
+  }
+
+  const existing = await c.env.DB.prepare(
+    `SELECT acknowledged_at FROM ${table} WHERE id = ?`,
+  ).bind(id).first<{ acknowledged_at: string | null }>();
+
+  if (!existing) {
+    return c.json({ error: "alert not found" }, 404);
+  }
+
+  if (existing.acknowledged_at) {
+    return c.json({ id, acknowledged_at: existing.acknowledged_at });
+  }
+
+  const acknowledgedAt = new Date().toISOString();
+  await c.env.DB.prepare(
+    `UPDATE ${table} SET acknowledged_at = ? WHERE id = ?`,
+  ).bind(acknowledgedAt, id).run();
+
+  return c.json({ id, acknowledged_at: acknowledgedAt });
+});
