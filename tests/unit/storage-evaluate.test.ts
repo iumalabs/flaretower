@@ -1,5 +1,9 @@
 import { assertEquals } from "@std/assert";
-import { evaluateBucketExposure } from "../../worker/modules/storage/evaluate.ts";
+import {
+  evaluateBucketExposure,
+  evaluateD1DatabaseUsage,
+  evaluateKvNamespaceUsage,
+} from "../../worker/modules/storage/evaluate.ts";
 import type { AccessApplication, BucketInventoryItem } from "../../worker/modules/storage/types.ts";
 
 function bucket(overrides: Partial<BucketInventoryItem> = {}): BucketInventoryItem {
@@ -92,6 +96,78 @@ Deno.test("evaluateBucketExposure - not_evaluated when the bucket itself has an 
       evaluationError: "could not determine public access configuration",
     }),
     [everyoneApp("app-1", "uploads.example.com")],
+  );
+  assertEquals(result.status, "not_evaluated");
+});
+
+Deno.test("evaluateKvNamespaceUsage - safe when the namespace id is referenced by a Worker's bindings", () => {
+  const result = evaluateKvNamespaceUsage(
+    { namespaceId: "kv-1", title: "SESSIONS" },
+    new Set(["kv-1"]),
+    true,
+  );
+  assertEquals(result.status, "safe");
+});
+
+Deno.test("evaluateKvNamespaceUsage - warning when not referenced and bindings were fully confirmed", () => {
+  const result = evaluateKvNamespaceUsage(
+    { namespaceId: "kv-1", title: "SESSIONS" },
+    new Set(),
+    true,
+  );
+  assertEquals(result.status, "warning");
+});
+
+Deno.test("evaluateKvNamespaceUsage - not_evaluated when not referenced but some Worker's bindings couldn't be checked", () => {
+  const result = evaluateKvNamespaceUsage(
+    { namespaceId: "kv-1", title: "SESSIONS" },
+    new Set(),
+    false,
+  );
+  assertEquals(result.status, "not_evaluated");
+});
+
+Deno.test("evaluateKvNamespaceUsage - referenced takes priority over an unconfirmed binding check elsewhere", () => {
+  const result = evaluateKvNamespaceUsage(
+    { namespaceId: "kv-1", title: "SESSIONS" },
+    new Set(["kv-1"]),
+    false,
+  );
+  assertEquals(result.status, "safe");
+});
+
+Deno.test("evaluateKvNamespaceUsage - not_evaluated when the namespace itself has an evaluationError", () => {
+  const result = evaluateKvNamespaceUsage(
+    { namespaceId: "kv-1", title: "SESSIONS", evaluationError: "could not list KV namespaces" },
+    new Set(["kv-1"]),
+    true,
+  );
+  assertEquals(result.status, "not_evaluated");
+});
+
+Deno.test("evaluateD1DatabaseUsage - safe when the database uuid is referenced by a Worker's bindings", () => {
+  const result = evaluateD1DatabaseUsage(
+    { databaseUuid: "db-1", name: "flaretower" },
+    new Set(["db-1"]),
+    true,
+  );
+  assertEquals(result.status, "safe");
+});
+
+Deno.test("evaluateD1DatabaseUsage - warning when not referenced and bindings were fully confirmed", () => {
+  const result = evaluateD1DatabaseUsage(
+    { databaseUuid: "db-1", name: "flaretower" },
+    new Set(),
+    true,
+  );
+  assertEquals(result.status, "warning");
+});
+
+Deno.test("evaluateD1DatabaseUsage - not_evaluated when not referenced but some Worker's bindings couldn't be checked", () => {
+  const result = evaluateD1DatabaseUsage(
+    { databaseUuid: "db-1", name: "flaretower" },
+    new Set(),
+    false,
   );
   assertEquals(result.status, "not_evaluated");
 });
