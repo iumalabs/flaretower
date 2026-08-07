@@ -87,6 +87,18 @@ export function evaluateSubdomainExposure(
   project: PagesProjectInventoryItem,
   apps: AccessApplication[] | null,
 ): SubdomainEvaluation {
+  // A project-level evaluationError means the project itself is a
+  // sentinel entry (e.g. the whole projects list failed to fetch) — its
+  // subdomain is a placeholder, not a real hostname to evaluate.
+  if (project.evaluationError) {
+    return {
+      projectName: project.projectName,
+      subdomain: project.subdomain,
+      status: "not_evaluated",
+      reason: project.evaluationError,
+    };
+  }
+
   if (apps === null) {
     return {
       projectName: project.projectName,
@@ -189,7 +201,18 @@ export function evaluateSubdomainExposures(
 export function evaluateDeployments(
   inventory: PagesProjectInventoryItem[],
 ): DeploymentEvaluation[] {
-  return inventory.map((project) =>
-    evaluateDeployment(project.projectName, project.latestProductionDeployment)
-  );
+  return inventory.map((project) => {
+    // Same sentinel-entry guard as evaluateSubdomainExposure: a
+    // project-level evaluationError means there's no real project here to
+    // check deployment health for.
+    if (project.evaluationError) {
+      return {
+        projectName: project.projectName,
+        deploymentId: null,
+        status: "not_evaluated",
+        reason: project.evaluationError,
+      };
+    }
+    return evaluateDeployment(project.projectName, project.latestProductionDeployment);
+  });
 }

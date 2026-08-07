@@ -2,6 +2,7 @@ import { assertEquals } from "@std/assert";
 import {
   evaluateCustomDomain,
   evaluateDeployment,
+  evaluateDeployments,
   evaluateSubdomainExposure,
 } from "../../worker/modules/pages/evaluate.ts";
 import type {
@@ -115,6 +116,21 @@ Deno.test("evaluateSubdomainExposure - a deny-Everyone policy is not 'open' (dec
     }],
   );
   assertEquals(result.status, "safe");
+});
+
+Deno.test("evaluateSubdomainExposure - not_evaluated when the project itself is a sentinel entry (projects list failed entirely), takes priority over apps", () => {
+  const result = evaluateSubdomainExposure(
+    project({ evaluationError: "could not list Pages projects: network error" }),
+    [scopedApp("app-1", "marketing-site.pages.dev")],
+  );
+  assertEquals(result.status, "not_evaluated");
+});
+
+Deno.test("evaluateDeployments - not_evaluated for a sentinel project, not a false 'no production deployment' warning", () => {
+  const results = evaluateDeployments([
+    project({ evaluationError: "could not list Pages projects: network error" }),
+  ]);
+  assertEquals(results[0].status, "not_evaluated");
 });
 
 Deno.test("evaluateDeployment - warning when no production deployment exists yet", () => {
