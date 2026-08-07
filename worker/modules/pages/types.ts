@@ -29,6 +29,7 @@ export interface ProductionDeployment {
   // Raw Cloudflare latest_stage.status: "success" | "idle" | "active" |
   // "failure" | "canceled".
   status: string;
+  evaluationError?: string;
 }
 
 export interface PagesProjectInventoryItem {

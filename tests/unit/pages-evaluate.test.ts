@@ -117,7 +117,35 @@ Deno.test("evaluateSubdomainExposure - a deny-Everyone policy is not 'open' (dec
   assertEquals(result.status, "safe");
 });
 
-Deno.test("evaluateDeployment - US1 stub always returns not_evaluated (US3 implements the real check)", () => {
+Deno.test("evaluateDeployment - warning when no production deployment exists yet", () => {
   const result = evaluateDeployment("marketing-site", null);
+  assertEquals(result.status, "warning");
+  assertEquals(result.reason, "no production deployment exists yet");
+});
+
+Deno.test("evaluateDeployment - safe when the latest production deployment succeeded", () => {
+  const result = evaluateDeployment("marketing-site", { deploymentId: "dep-1", status: "success" });
+  assertEquals(result.status, "safe");
+});
+
+Deno.test("evaluateDeployment - warning when the latest production deployment failed", () => {
+  const result = evaluateDeployment("marketing-site", { deploymentId: "dep-1", status: "failure" });
+  assertEquals(result.status, "warning");
+});
+
+Deno.test("evaluateDeployment - warning for any other non-success terminal status, e.g. canceled", () => {
+  const result = evaluateDeployment("marketing-site", {
+    deploymentId: "dep-1",
+    status: "canceled",
+  });
+  assertEquals(result.status, "warning");
+});
+
+Deno.test("evaluateDeployment - not_evaluated when the deployment has an evaluationError", () => {
+  const result = evaluateDeployment("marketing-site", {
+    deploymentId: "(unavailable)",
+    status: "(unavailable)",
+    evaluationError: "could not list deployments",
+  });
   assertEquals(result.status, "not_evaluated");
 });

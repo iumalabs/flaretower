@@ -4,6 +4,7 @@ import {
   listAccessApplications,
   listPagesProjects,
   listProjectDomains,
+  listProjectProductionDeployment,
 } from "../../worker/modules/pages/inventory.ts";
 
 function jsonResponse(body: unknown, status = 200): Response {
@@ -92,8 +93,38 @@ Deno.test("listAccessApplications - maps apps and policies, including a zero-pol
   assertEquals(apps[1].policies, []);
 });
 
+Deno.test("listProjectProductionDeployment - returns the newest (index 0) production deployment", async () => {
+  const fetchImpl = mockFetch([
+    ["/deployments", () =>
+      jsonResponse({
+        success: true,
+        result: [{ id: "dep-2", latest_stage: { status: "success" } }],
+        errors: [],
+      })],
+  ]);
+
+  const deployment = await listProjectProductionDeployment(creds, "marketing-site", fetchImpl);
+
+  assertEquals(deployment, { deploymentId: "dep-2", status: "success" });
+});
+
+Deno.test("listProjectProductionDeployment - null when no production deployment exists yet", async () => {
+  const fetchImpl = mockFetch([
+    ["/deployments", () => jsonResponse({ success: true, result: [], errors: [] })],
+  ]);
+
+  const deployment = await listProjectProductionDeployment(creds, "marketing-site", fetchImpl);
+
+  assertEquals(deployment, null);
+});
+
 const EMPTY_ACCESS_APPS: [string, () => Response] = [
   "/access/apps",
+  () => jsonResponse({ success: true, result: [], errors: [] }),
+];
+
+const NO_DEPLOYMENTS: [string, () => Response] = [
+  "/deployments",
   () => jsonResponse({ success: true, result: [], errors: [] }),
 ];
 
@@ -116,6 +147,7 @@ Deno.test("buildPagesInventory - every project and every one of its custom domai
       })],
     ["/empty-project/domains", () => jsonResponse({ success: true, result: [], errors: [] })],
     EMPTY_ACCESS_APPS,
+    NO_DEPLOYMENTS,
   ]);
 
   const inventory = await buildPagesInventory(creds, fetchImpl);
@@ -163,6 +195,7 @@ Deno.test("buildPagesInventory - a per-project domains-list failure is scoped to
         }),
     ],
     EMPTY_ACCESS_APPS,
+    NO_DEPLOYMENTS,
   ]);
 
   const inventory = await buildPagesInventory(creds, fetchImpl);
@@ -170,6 +203,27 @@ Deno.test("buildPagesInventory - a per-project domains-list failure is scoped to
   assertEquals(inventory.projects.length, 2);
   assertEquals(typeof inventory.projects[0].customDomains[0].evaluationError, "string");
   assertEquals(inventory.projects[1].customDomains[0].evaluationError, undefined);
+});
+
+Deno.test("buildPagesInventory - a per-project deployments-list failure is scoped to that project's latestProductionDeployment", async () => {
+  const fetchImpl = mockFetch([
+    ["/pages/projects", () =>
+      jsonResponse({
+        success: true,
+        result: [{ name: "broken-project", subdomain: "broken-project.pages.dev" }],
+        errors: [],
+      })],
+    ["/domains", () => jsonResponse({ success: true, result: [], errors: [] })],
+    ["/deployments", () => jsonResponse({ success: false, result: null, errors: [] }, 500)],
+    EMPTY_ACCESS_APPS,
+  ]);
+
+  const inventory = await buildPagesInventory(creds, fetchImpl);
+
+  assertEquals(
+    typeof inventory.projects[0].latestProductionDeployment?.evaluationError,
+    "string",
+  );
 });
 
 Deno.test("buildPagesInventory - projects and Access applications fail independently", async () => {
@@ -182,6 +236,7 @@ Deno.test("buildPagesInventory - projects and Access applications fail independe
       })],
     ["/marketing-site/domains", () => jsonResponse({ success: true, result: [], errors: [] })],
     ["/access/apps", () => jsonResponse({ success: false, result: null, errors: [] }, 500)],
+    NO_DEPLOYMENTS,
   ]);
 
   const inventory = await buildPagesInventory(creds, fetchImpl);

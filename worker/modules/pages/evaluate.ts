@@ -132,16 +132,42 @@ export function evaluateSubdomainExposure(
   };
 }
 
-// US3 replaces this stub with the real deployment-health check.
 export function evaluateDeployment(
   projectName: string,
-  _deployment: ProductionDeployment | null,
+  deployment: ProductionDeployment | null,
 ): DeploymentEvaluation {
+  if (deployment === null) {
+    return {
+      projectName,
+      deploymentId: null,
+      status: "warning",
+      reason: "no production deployment exists yet",
+    };
+  }
+
+  if (deployment.evaluationError) {
+    return {
+      projectName,
+      deploymentId: deployment.deploymentId,
+      status: "not_evaluated",
+      reason: deployment.evaluationError,
+    };
+  }
+
+  if (deployment.status === "success") {
+    return {
+      projectName,
+      deploymentId: deployment.deploymentId,
+      status: "safe",
+      reason: "latest production deployment succeeded",
+    };
+  }
+
   return {
     projectName,
-    deploymentId: null,
-    status: "not_evaluated",
-    reason: "deployment health evaluation not yet implemented",
+    deploymentId: deployment.deploymentId,
+    status: "warning",
+    reason: `latest production deployment did not succeed (status: ${deployment.status})`,
   };
 }
 
