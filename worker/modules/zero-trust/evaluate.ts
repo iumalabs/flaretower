@@ -49,29 +49,54 @@ export function evaluateApplication(app: AccessApplication): AppEvaluation {
   };
 }
 
-export function evaluateServiceToken(token: ServiceToken): TokenEvaluation {
+// Spec FR-007's "expiring soon" threshold — a fixed product decision, not
+// user-configurable in this iteration (spec Assumptions).
+const EXPIRING_SOON_MS = 14 * 24 * 60 * 60 * 1000;
+
+// `now` is injectable for deterministic testing (defaults to the real
+// clock at call time) — the same pattern any time-dependent pure function
+// needs to stay testable without mocking global Date.
+export function evaluateServiceToken(token: ServiceToken, now: Date = new Date()): TokenEvaluation {
+  const base = { tokenId: token.tokenId, tokenName: token.tokenName, expiresAt: token.expiresAt };
+
   if (token.evaluationError) {
+    return { ...base, status: "not_evaluated", reason: token.evaluationError };
+  }
+
+  if (token.expiresAt === null) {
+    // Cloudflare's documented service-token creation flow always requires
+    // a duration (research.md §3) — this branch may be unreachable in
+    // practice, but a token record without expires_at must not be
+    // silently treated as safe if the API ever returns one.
+    return { ...base, status: "warning", reason: "no expiration date set" };
+  }
+
+  const expiresAtMs = Date.parse(token.expiresAt);
+  if (Number.isNaN(expiresAtMs)) {
     return {
-      tokenId: token.tokenId,
-      tokenName: token.tokenName,
-      expiresAt: token.expiresAt,
+      ...base,
       status: "not_evaluated",
-      reason: token.evaluationError,
+      reason: `unparseable expiration date: ${token.expiresAt}`,
     };
   }
-  return {
-    tokenId: token.tokenId,
-    tokenName: token.tokenName,
-    expiresAt: token.expiresAt,
-    status: "safe",
-    reason: "expiration healthy",
-  };
+
+  const msUntilExpiry = expiresAtMs - now.getTime();
+  if (msUntilExpiry <= 0) {
+    return { ...base, status: "critical", reason: "expired" };
+  }
+  if (msUntilExpiry <= EXPIRING_SOON_MS) {
+    return { ...base, status: "warning", reason: "expires within 14 days" };
+  }
+  return { ...base, status: "safe", reason: "expiration healthy" };
 }
 
 export function evaluateApplications(apps: AccessApplication[]): AppEvaluation[] {
   return apps.map(evaluateApplication);
 }
 
-export function evaluateServiceTokens(tokens: ServiceToken[]): TokenEvaluation[] {
-  return tokens.map(evaluateServiceToken);
+export function evaluateServiceTokens(
+  tokens: ServiceToken[],
+  now: Date = new Date(),
+): TokenEvaluation[] {
+  return tokens.map((t) => evaluateServiceToken(t, now));
 }

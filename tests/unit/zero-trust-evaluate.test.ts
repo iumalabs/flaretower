@@ -66,3 +66,56 @@ Deno.test("evaluateServiceToken - not_evaluated when the token has an evaluation
   });
   assertEquals(result.status, "not_evaluated");
 });
+
+const NOW = new Date("2026-08-07T12:00:00Z");
+
+Deno.test("evaluateServiceToken - critical when expires_at is in the past", () => {
+  const result = evaluateServiceToken(
+    { tokenId: "tok-1", tokenName: "old", expiresAt: "2020-01-01T00:00:00Z" },
+    NOW,
+  );
+  assertEquals(result.status, "critical");
+});
+
+Deno.test("evaluateServiceToken - critical when expires_at is exactly now (boundary)", () => {
+  const result = evaluateServiceToken(
+    { tokenId: "tok-1", tokenName: "boundary", expiresAt: NOW.toISOString() },
+    NOW,
+  );
+  assertEquals(result.status, "critical");
+});
+
+Deno.test("evaluateServiceToken - warning when expires_at is within 14 days", () => {
+  const in10Days = new Date(NOW.getTime() + 10 * 24 * 60 * 60 * 1000).toISOString();
+  const result = evaluateServiceToken(
+    { tokenId: "tok-1", tokenName: "soon", expiresAt: in10Days },
+    NOW,
+  );
+  assertEquals(result.status, "warning");
+});
+
+Deno.test("evaluateServiceToken - safe when expires_at is more than 14 days away", () => {
+  const in30Days = new Date(NOW.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString();
+  const result = evaluateServiceToken(
+    { tokenId: "tok-1", tokenName: "healthy", expiresAt: in30Days },
+    NOW,
+  );
+  assertEquals(result.status, "safe");
+});
+
+Deno.test("evaluateServiceToken - warning when there is no expiration date at all", () => {
+  const result = evaluateServiceToken(
+    { tokenId: "tok-1", tokenName: "never", expiresAt: null },
+    NOW,
+  );
+  assertEquals(result.status, "warning");
+  assertEquals(result.reason, "no expiration date set");
+});
+
+Deno.test("evaluateServiceToken - not_evaluated (not a crash, not silently safe) on an unparseable expiration date", () => {
+  const result = evaluateServiceToken(
+    { tokenId: "tok-1", tokenName: "malformed", expiresAt: "not-a-date" },
+    NOW,
+  );
+  assertEquals(result.status, "not_evaluated");
+});
