@@ -5,7 +5,20 @@ import {
   evaluateDeployments,
   evaluateSubdomainExposures,
 } from "./evaluate.ts";
-import type { DeploymentEvaluation, DomainEvaluation, SubdomainEvaluation } from "./types.ts";
+import {
+  diffForDeploymentAlerts,
+  diffForDomainAlerts,
+  diffForSubdomainAlerts,
+  domainKey,
+} from "./alerts.ts";
+import type {
+  DeploymentEvaluation,
+  DeploymentStatus,
+  DomainEvaluation,
+  DomainStatus,
+  SubdomainEvaluation,
+  SubdomainStatus,
+} from "./types.ts";
 
 interface Env {
   DB: D1Database;
@@ -14,6 +27,32 @@ interface Env {
 }
 
 export const pagesRoutes = new Hono<{ Bindings: Env }>();
+
+// The most recent run's per-entity status, read BEFORE the current run is
+// inserted — same pattern as every prior module.
+async function getPreviousDomainStatuses(env: Env): Promise<Map<string, DomainStatus>> {
+  const { results: rows } = await env.DB.prepare(
+    `SELECT project_name, domain_name, status FROM pages_domain_findings
+     WHERE run_id = (SELECT run_id FROM pages_domain_findings ORDER BY evaluated_at DESC LIMIT 1)`,
+  ).all<{ project_name: string; domain_name: string; status: DomainStatus }>();
+  return new Map(rows.map((r) => [domainKey(r.project_name, r.domain_name), r.status]));
+}
+
+async function getPreviousSubdomainStatuses(env: Env): Promise<Map<string, SubdomainStatus>> {
+  const { results: rows } = await env.DB.prepare(
+    `SELECT project_name, status FROM pages_subdomain_findings
+     WHERE run_id = (SELECT run_id FROM pages_subdomain_findings ORDER BY evaluated_at DESC LIMIT 1)`,
+  ).all<{ project_name: string; status: SubdomainStatus }>();
+  return new Map(rows.map((r) => [r.project_name, r.status]));
+}
+
+async function getPreviousDeploymentStatuses(env: Env): Promise<Map<string, DeploymentStatus>> {
+  const { results: rows } = await env.DB.prepare(
+    `SELECT project_name, status FROM pages_deployment_findings
+     WHERE run_id = (SELECT run_id FROM pages_deployment_findings ORDER BY evaluated_at DESC LIMIT 1)`,
+  ).all<{ project_name: string; status: DeploymentStatus }>();
+  return new Map(rows.map((r) => [r.project_name, r.status]));
+}
 
 // Shared by POST /evaluate (interactive) and the scheduled handler —
 // constitution Principle III.
@@ -27,10 +66,21 @@ export async function runPagesEvaluation(
     domainResults: DomainEvaluation[];
     subdomainResults: SubdomainEvaluation[];
     deploymentResults: DeploymentEvaluation[];
+    newAlertCount: number;
   }
 > {
   const creds = { accountId: env.CF_ACCOUNT_ID, apiToken: env.CF_API_TOKEN };
-  const { projects, accessApplications } = await buildPagesInventory(creds);
+  const [
+    { projects, accessApplications },
+    previousDomainStatuses,
+    previousSubdomainStatuses,
+    previousDeploymentStatuses,
+  ] = await Promise.all([
+    buildPagesInventory(creds),
+    getPreviousDomainStatuses(env),
+    getPreviousSubdomainStatuses(env),
+    getPreviousDeploymentStatuses(env),
+  ]);
 
   const domainResults = evaluateCustomDomains(projects);
   const subdomainResults = evaluateSubdomainExposures(projects, accessApplications);
@@ -92,7 +142,75 @@ export async function runPagesEvaluation(
     await env.DB.batch(statements);
   }
 
-  return { runId, evaluatedAt, domainResults, subdomainResults, deploymentResults };
+  const newDomainAlerts = diffForDomainAlerts(domainResults, previousDomainStatuses);
+  const newSubdomainAlerts = diffForSubdomainAlerts(subdomainResults, previousSubdomainStatuses);
+  const newDeploymentAlerts = diffForDeploymentAlerts(
+    deploymentResults,
+    previousDeploymentStatuses,
+  );
+
+  const domainAlertStatements = newDomainAlerts.map((a) =>
+    env.DB.prepare(
+      `INSERT INTO pages_domain_alerts (id, project_name, domain_name, previous_status, new_status, run_id, detected_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    ).bind(
+      crypto.randomUUID(),
+      a.projectName,
+      a.domainName,
+      a.previousStatus,
+      a.newStatus,
+      runId,
+      evaluatedAt,
+    )
+  );
+
+  const subdomainAlertStatements = newSubdomainAlerts.map((a) =>
+    env.DB.prepare(
+      `INSERT INTO pages_subdomain_alerts (id, project_name, subdomain, previous_status, new_status, run_id, detected_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    ).bind(
+      crypto.randomUUID(),
+      a.projectName,
+      a.subdomain,
+      a.previousStatus,
+      a.newStatus,
+      runId,
+      evaluatedAt,
+    )
+  );
+
+  const deploymentAlertStatements = newDeploymentAlerts.map((a) =>
+    env.DB.prepare(
+      `INSERT INTO pages_deployment_alerts (id, project_name, deployment_id, previous_status, new_status, run_id, detected_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    ).bind(
+      crypto.randomUUID(),
+      a.projectName,
+      a.deploymentId,
+      a.previousStatus,
+      a.newStatus,
+      runId,
+      evaluatedAt,
+    )
+  );
+
+  const alertStatements = [
+    ...domainAlertStatements,
+    ...subdomainAlertStatements,
+    ...deploymentAlertStatements,
+  ];
+  if (alertStatements.length > 0) {
+    await env.DB.batch(alertStatements);
+  }
+
+  return {
+    runId,
+    evaluatedAt,
+    domainResults,
+    subdomainResults,
+    deploymentResults,
+    newAlertCount: newDomainAlerts.length + newSubdomainAlerts.length + newDeploymentAlerts.length,
+  };
 }
 
 pagesRoutes.post("/evaluate", async (c) => {
@@ -179,4 +297,127 @@ pagesRoutes.get("/inventory", async (c) => {
       };
     }),
   });
+});
+
+interface DomainAlertRow {
+  id: string;
+  project_name: string;
+  domain_name: string;
+  previous_status: string | null;
+  new_status: string;
+  detected_at: string;
+  acknowledged_at: string | null;
+}
+
+interface SubdomainAlertRow {
+  id: string;
+  project_name: string;
+  subdomain: string;
+  previous_status: string | null;
+  new_status: string;
+  detected_at: string;
+  acknowledged_at: string | null;
+}
+
+interface DeploymentAlertRow {
+  id: string;
+  project_name: string;
+  deployment_id: string | null;
+  previous_status: string | null;
+  new_status: string;
+  detected_at: string;
+  acknowledged_at: string | null;
+}
+
+// Merges all three alert tables at the API layer with a `kind`
+// discriminator (contracts/api.md) — the tables stay separate in D1
+// (data-model.md §3's rationale), combined only for this response.
+pagesRoutes.get("/alerts", async (c) => {
+  const [{ results: domainRows }, { results: subdomainRows }, { results: deploymentRows }] =
+    await Promise.all([
+      c.env.DB.prepare(
+        `SELECT id, project_name, domain_name, previous_status, new_status, detected_at, acknowledged_at
+         FROM pages_domain_alerts WHERE acknowledged_at IS NULL ORDER BY detected_at DESC`,
+      ).all<DomainAlertRow>(),
+      c.env.DB.prepare(
+        `SELECT id, project_name, subdomain, previous_status, new_status, detected_at, acknowledged_at
+         FROM pages_subdomain_alerts WHERE acknowledged_at IS NULL ORDER BY detected_at DESC`,
+      ).all<SubdomainAlertRow>(),
+      c.env.DB.prepare(
+        `SELECT id, project_name, deployment_id, previous_status, new_status, detected_at, acknowledged_at
+         FROM pages_deployment_alerts WHERE acknowledged_at IS NULL ORDER BY detected_at DESC`,
+      ).all<DeploymentAlertRow>(),
+    ]);
+
+  return c.json({
+    alerts: [
+      ...domainRows.map((r) => ({
+        id: r.id,
+        kind: "domain" as const,
+        project_name: r.project_name,
+        domain_name: r.domain_name,
+        previous_status: r.previous_status,
+        new_status: r.new_status,
+        detected_at: r.detected_at,
+        acknowledged_at: r.acknowledged_at,
+      })),
+      ...subdomainRows.map((r) => ({
+        id: r.id,
+        kind: "subdomain" as const,
+        project_name: r.project_name,
+        subdomain: r.subdomain,
+        previous_status: r.previous_status,
+        new_status: r.new_status,
+        detected_at: r.detected_at,
+        acknowledged_at: r.acknowledged_at,
+      })),
+      ...deploymentRows.map((r) => ({
+        id: r.id,
+        kind: "deployment" as const,
+        project_name: r.project_name,
+        deployment_id: r.deployment_id,
+        previous_status: r.previous_status,
+        new_status: r.new_status,
+        detected_at: r.detected_at,
+        acknowledged_at: r.acknowledged_at,
+      })),
+    ],
+  });
+});
+
+const ALERT_TABLE_BY_KIND: Record<string, string> = {
+  domain: "pages_domain_alerts",
+  subdomain: "pages_subdomain_alerts",
+  deployment: "pages_deployment_alerts",
+};
+
+// Not a Cloudflare account mutation (FR-014 scope boundary) — not written
+// to audit_log, same as every prior module's equivalent endpoint.
+pagesRoutes.post("/alerts/:kind/:id/acknowledge", async (c) => {
+  const kind = c.req.param("kind");
+  const id = c.req.param("id");
+  const table = ALERT_TABLE_BY_KIND[kind];
+
+  if (!table) {
+    return c.json({ error: `unknown alert kind: ${kind}` }, 404);
+  }
+
+  const existing = await c.env.DB.prepare(
+    `SELECT acknowledged_at FROM ${table} WHERE id = ?`,
+  ).bind(id).first<{ acknowledged_at: string | null }>();
+
+  if (!existing) {
+    return c.json({ error: "alert not found" }, 404);
+  }
+
+  if (existing.acknowledged_at) {
+    return c.json({ id, acknowledged_at: existing.acknowledged_at });
+  }
+
+  const acknowledgedAt = new Date().toISOString();
+  await c.env.DB.prepare(
+    `UPDATE ${table} SET acknowledged_at = ? WHERE id = ?`,
+  ).bind(acknowledgedAt, id).run();
+
+  return c.json({ id, acknowledged_at: acknowledgedAt });
 });
