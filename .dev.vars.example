@@ -1,0 +1,3 @@
+# Copy to .dev.vars (gitignored) for local `deno task dev`.
+TEAM_DOMAIN=https://<your-team>.cloudflareaccess.com
+POLICY_AUD=<Access application AUD tag for FlareTower itself>

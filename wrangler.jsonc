@@ -24,7 +24,8 @@
       "database_name": "flaretower",
       // TODO(deploy): replace once `wrangler d1 create flaretower` has been
       // run against the real Cloudflare account — not fabricated here.
-      "database_id": "REPLACE_WITH_REAL_D1_DATABASE_ID"
+      "database_id": "REPLACE_WITH_REAL_D1_DATABASE_ID",
+      "migrations_dir": "worker/db/migrations"
     }
   ],
 
