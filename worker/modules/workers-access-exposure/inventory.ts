@@ -103,21 +103,39 @@ export async function listWorkerCustomDomains(
   return byWorker;
 }
 
-// null means the account has no workers.dev subdomain configured at all —
-// distinct from a script individually disabling it.
+export interface AccountSubdomainResult {
+  // Confirmed absent (e.g. the account has never enabled workers.dev) —
+  // distinct from `error`, which means we don't actually know.
+  subdomain: string | null;
+  // Set when the check itself failed (network error, 5xx, rate limit) —
+  // callers must not treat this the same as a confirmed-absent subdomain
+  // (FR-011: a failed check must surface as not_evaluated, never as a
+  // silent "workers.dev is off" that omits every Worker's hostname).
+  error: string | null;
+}
+
 export async function getAccountWorkersDevSubdomain(
   creds: CloudflareCredentials,
   fetchImpl: typeof fetch = fetch,
-): Promise<string | null> {
+): Promise<AccountSubdomainResult> {
   try {
     const result = await cfFetch<{ subdomain: string }>(
       `/accounts/${creds.accountId}/workers/subdomain`,
       creds,
       fetchImpl,
     );
-    return result.subdomain || null;
-  } catch {
-    return null;
+    return { subdomain: result.subdomain || null, error: null };
+  } catch (err) {
+    if (err instanceof CloudflareAPIError && err.status === 404) {
+      // Never configured — a legitimate, confirmed answer, not a failure.
+      return { subdomain: null, error: null };
+    }
+    return {
+      subdomain: null,
+      error: err instanceof Error
+        ? err.message
+        : "unknown error checking account workers.dev subdomain",
+    };
   }
 }
 
@@ -171,11 +189,12 @@ export async function buildWorkerInventory(
   creds: CloudflareCredentials,
   fetchImpl: typeof fetch = fetch,
 ): Promise<WorkerInventoryItem[]> {
-  const [scriptNames, domainsByWorker, accountSubdomain] = await Promise.all([
+  const [scriptNames, domainsByWorker, accountSubdomainResult] = await Promise.all([
     listWorkerScripts(creds, fetchImpl),
     listWorkerCustomDomains(creds, fetchImpl),
     getAccountWorkersDevSubdomain(creds, fetchImpl),
   ]);
+  const { subdomain: accountSubdomain, error: accountSubdomainError } = accountSubdomainResult;
 
   const subdomainStatuses = await Promise.all(
     scriptNames.map(async (name) => {
@@ -203,7 +222,16 @@ export async function buildWorkerInventory(
       hostnames.push({ hostname, kind: "custom_domain" });
     }
 
-    if (accountSubdomain) {
+    if (accountSubdomainError) {
+      // Could not even determine whether the account has workers.dev
+      // enabled — must not be silently treated as "disabled" (that would
+      // omit every Worker's workers.dev/preview hostname entirely).
+      hostnames.push({
+        hostname: `${name}.<unknown>.workers.dev`,
+        kind: "workers_dev",
+        evaluationError: accountSubdomainError,
+      });
+    } else if (accountSubdomain) {
       const entry = statusByWorker.get(name);
       if (entry?.error) {
         hostnames.push({
@@ -226,7 +254,12 @@ export async function buildWorkerInventory(
           });
         }
       }
+      // else: workers.dev confirmed disabled for this script — correctly
+      // "not reachable," no entry, not "reachable and unprotected" (spec
+      // Edge Cases).
     }
+    // else: account has no workers.dev subdomain at all (confirmed) — same
+    // "not reachable" outcome, no entry, for every Worker.
 
     return { workerName: name, hostnames };
   });
