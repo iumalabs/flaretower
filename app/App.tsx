@@ -3,11 +3,13 @@ import type { JSX } from "react";
 import { ExposureInventory } from "./pages/ExposureInventory.tsx";
 import { DnsInventory } from "./pages/DnsInventory.tsx";
 import { ZeroTrustInventory } from "./pages/ZeroTrustInventory.tsx";
+import { PagesInventory } from "./pages/PagesInventory.tsx";
 
 const PAGES = [
   { key: "exposure", label: "Workers & Access", render: () => <ExposureInventory /> },
   { key: "dns", label: "DNS", render: () => <DnsInventory /> },
   { key: "zero-trust", label: "Zero Trust", render: () => <ZeroTrustInventory /> },
+  { key: "pages", label: "Pages", render: () => <PagesInventory /> },
 ] as const;
 
 type PageKey = typeof PAGES[number]["key"];
