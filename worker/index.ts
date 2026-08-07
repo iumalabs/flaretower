@@ -4,6 +4,7 @@ import { exposureRoutes, runEvaluation } from "./modules/workers-access-exposure
 import { dnsRoutes, runDnsEvaluation } from "./modules/dns/routes.ts";
 import { runZeroTrustEvaluation, zeroTrustRoutes } from "./modules/zero-trust/routes.ts";
 import { pagesRoutes, runPagesEvaluation } from "./modules/pages/routes.ts";
+import { storageRoutes } from "./modules/storage/routes.ts";
 
 interface Env {
   ASSETS: Fetcher;
@@ -23,6 +24,7 @@ app.route("/api/exposure", exposureRoutes);
 app.route("/api/dns", dnsRoutes);
 app.route("/api/zero-trust", zeroTrustRoutes);
 app.route("/api/pages", pagesRoutes);
+app.route("/api/storage", storageRoutes);
 
 export default {
   fetch(request: Request, env: Env, ctx: ExecutionContext): Response | Promise<Response> {
