@@ -51,18 +51,21 @@
       "worker/",
       "app/",
       "tests/"
-    ]
+    ],
+    "exclude": ["app/.vite/"]
   },
   "lint": {
     "include": [
       "worker/",
       "app/",
       "tests/"
-    ]
+    ],
+    "exclude": ["app/.vite/"]
   },
   "exclude": [
     ".wrangler/",
     "dist/",
-    "node_modules/"
+    "node_modules/",
+    "app/.vite/"
   ]
 }

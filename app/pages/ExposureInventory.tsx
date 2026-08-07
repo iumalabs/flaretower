@@ -96,36 +96,51 @@ export function ExposureInventory(): JSX.Element {
           </h2>
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <tbody>
-              {worker.hostnames.map((h) => (
-                <tr
-                  key={`${h.kind}:${h.hostname}`}
-                  style={{ borderTop: "1px solid var(--rule-hairline)" }}
-                >
-                  <td style={{ padding: "8px 0", width: 120 }}>
-                    <ExposureStatusBadge status={h.status} />
-                  </td>
-                  <td
+              {worker.hostnames.map((h) => {
+                // Critical rows are marked redundantly — tint, edge bar,
+                // and the badge's own shape+color — so a critical hostname
+                // reads as critical even at a glance, never relying on any
+                // single visual cue (constitution's Design System section;
+                // design.zip's own "marked four ways at once" critical
+                // treatment).
+                const critical = h.status === "critical";
+                return (
+                  <tr
+                    key={`${h.kind}:${h.hostname}`}
                     style={{
-                      padding: "8px 0",
-                      fontFamily: "var(--font-mono)",
-                      fontSize: "var(--text-code-size)",
-                      color: "var(--fg-secondary)",
+                      borderTop: "1px solid var(--rule-hairline)",
+                      borderLeft: critical
+                        ? "3px solid var(--status-critical)"
+                        : "3px solid transparent",
+                      background: critical ? "var(--status-critical-row)" : "transparent",
                     }}
                   >
-                    {h.hostname}
-                    <span style={{ color: "var(--fg-faint)" }}>· {h.kind}</span>
-                  </td>
-                  <td
-                    style={{
-                      padding: "8px 0",
-                      fontSize: "var(--text-body-size)",
-                      color: "var(--fg-muted)",
-                    }}
-                  >
-                    {h.reason}
-                  </td>
-                </tr>
-              ))}
+                    <td style={{ padding: "8px 0 8px 8px", width: 120 }}>
+                      <ExposureStatusBadge status={h.status} />
+                    </td>
+                    <td
+                      style={{
+                        padding: "8px 0",
+                        fontFamily: "var(--font-mono)",
+                        fontSize: "var(--text-code-size)",
+                        color: "var(--fg-secondary)",
+                      }}
+                    >
+                      {h.hostname}
+                      <span style={{ color: "var(--fg-faint)" }}>· {h.kind}</span>
+                    </td>
+                    <td
+                      style={{
+                        padding: "8px 0",
+                        fontSize: "var(--text-body-size)",
+                        color: "var(--fg-muted)",
+                      }}
+                    >
+                      {h.reason}
+                    </td>
+                  </tr>
+                );
+              })}
               {worker.hostnames.length === 0 && (
                 <tr>
                   <td colSpan={3} style={{ padding: "8px 0", color: "var(--fg-faint)" }}>

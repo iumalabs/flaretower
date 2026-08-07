@@ -86,7 +86,7 @@ Deno.test("buildWorkerInventory - a failed per-script subdomain check produces e
   assertEquals(typeof inventory[0].hostnames[0].evaluationError, "string");
 });
 
-Deno.test("buildWorkerInventory - a Worker with no reachable hostnames still appears with an empty list", async () => {
+Deno.test("buildWorkerInventory - account workers.dev confirmed never configured (404) means no entry, not an error", async () => {
   const fetchImpl = mockFetch([
     [
       "/workers/scripts",
@@ -94,6 +94,54 @@ Deno.test("buildWorkerInventory - a Worker with no reachable hostnames still app
     ],
     ["/workers/domains", () => jsonResponse({ success: true, result: [], errors: [] })],
     ["/workers/subdomain", () => jsonResponse({ success: false, result: null, errors: [] }, 404)],
+  ]);
+
+  const inventory = await buildWorkerInventory(creds, fetchImpl);
+
+  assertEquals(inventory.length, 1);
+  assertEquals(inventory[0].hostnames, []);
+});
+
+Deno.test("buildWorkerInventory - account-level workers.dev check failing with a real error (not 404) forces not_evaluated for every Worker, never silent omission", async () => {
+  const fetchImpl = mockFetch([
+    [
+      "/workers/scripts",
+      () =>
+        jsonResponse({
+          success: true,
+          result: [{ id: "worker-a" }, { id: "worker-b" }],
+          errors: [],
+        }),
+    ],
+    ["/workers/domains", () => jsonResponse({ success: true, result: [], errors: [] })],
+    ["/workers/subdomain", () => jsonResponse({ success: false, result: null, errors: [] }, 500)],
+  ]);
+
+  const inventory = await buildWorkerInventory(creds, fetchImpl);
+
+  assertEquals(inventory.length, 2);
+  for (const worker of inventory) {
+    assertEquals(worker.hostnames.length, 1);
+    assertEquals(worker.hostnames[0].kind, "workers_dev");
+    assertEquals(typeof worker.hostnames[0].evaluationError, "string");
+  }
+});
+
+Deno.test("buildWorkerInventory - workers.dev disabled for one specific script (no error) means no entry, not critical", async () => {
+  const fetchImpl = mockFetch([
+    [
+      "/scripts/quiet-worker/subdomain",
+      () => jsonResponse({ success: true, result: { enabled: false }, errors: [] }),
+    ],
+    [
+      "/workers/scripts",
+      () => jsonResponse({ success: true, result: [{ id: "quiet-worker" }], errors: [] }),
+    ],
+    ["/workers/domains", () => jsonResponse({ success: true, result: [], errors: [] })],
+    [
+      "/workers/subdomain",
+      () => jsonResponse({ success: true, result: { subdomain: "acct" }, errors: [] }),
+    ],
   ]);
 
   const inventory = await buildWorkerInventory(creds, fetchImpl);
