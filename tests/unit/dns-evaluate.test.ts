@@ -77,3 +77,35 @@ Deno.test("evaluateRecord - insight matching requires zone+name+type to all agre
   );
   assertEquals(result.status, "safe");
 });
+
+Deno.test("evaluateRecord - DNS-only on an origin-facing record (A) is warning, not safe", () => {
+  const result = evaluateRecord(record({ recordType: "A", proxied: false }), []);
+  assertEquals(result.status, "warning");
+});
+
+Deno.test("evaluateRecord - DNS-only on CNAME is warning too", () => {
+  const result = evaluateRecord(record({ recordType: "CNAME", proxied: false }), []);
+  assertEquals(result.status, "warning");
+});
+
+Deno.test("evaluateRecord - a proxied record (proxied:true) is safe, not warning", () => {
+  const result = evaluateRecord(record({ proxied: true }), []);
+  assertEquals(result.status, "safe");
+});
+
+Deno.test("evaluateRecord - a non-proxy-capable record (TXT) is never flagged DNS-only, even though it's conceptually 'DNS-only by nature'", () => {
+  const result = evaluateRecord(
+    record({ recordType: "TXT", proxyCapable: false, proxied: null }),
+    [],
+  );
+  assertEquals(result.status, "safe");
+  assertEquals(result.reason, "not proxy-capable");
+});
+
+Deno.test("evaluateRecord - dangling (critical) takes priority over DNS-only (warning) when both would otherwise apply", () => {
+  const result = evaluateRecord(
+    record({ recordName: "old-blog.example.com", recordType: "CNAME", proxied: false }),
+    [insight()],
+  );
+  assertEquals(result.status, "critical");
+});
