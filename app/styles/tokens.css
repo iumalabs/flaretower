@@ -1,0 +1,103 @@
+/*
+ * Design tokens extracted from docs/design.zip (FlareTower visual identity
+ * & interface system v1.0). Single source of truth — components reference
+ * these custom properties, never hardcoded hex values (constitution's
+ * Design System section).
+ */
+
+:root {
+  /* Surfaces */
+  --bg-base: #0a0806;
+  --bg-canvas: #0d0a08;
+  --surface-1: #100c09;
+  --surface-2: #18130f;
+  --surface-3: #221b16;
+  --border: #2c2520;
+  --rule-hairline: #1b1613;
+
+  /* Text */
+  --fg-primary: #f2ebe3;
+  --fg-secondary: #c9bdb2;
+  --fg-muted: #9a8e84;
+  --fg-faint: #6b6058;
+  --fg-disabled: #5f564f;
+
+  /* Brand */
+  --brand-primary: #f6821f;
+  --brand-warm: #fbad41;
+  --brand-press: #d96c12;
+  --brand-wash: #1c1108;
+  --brand-edge: #4a2e12;
+  --focus-ring: #fbad41;
+
+  /* Status semantics — product language, not decoration (constitution's
+     Design System section: an exposed-without-Access Worker MUST read as
+     critical everywhere it appears). Distinguished by shape as well as
+     color, per the design system's own "shape carries the state" test. */
+  --status-critical: #f5484f;
+  --status-critical-fg: #ff8e92;
+  --status-critical-bg: #2a1211;
+  --status-critical-border: #5e1f1e;
+  --status-critical-row: #1a0c0b;
+
+  --status-warning: #e3b341;
+  --status-warning-bg: #221b0c;
+  --status-warning-border: #4e3d12;
+
+  --status-safe: #3fb27f;
+  --status-safe-bg: #0e1f18;
+  --status-safe-border: #1e4a38;
+
+  --status-neutral: #7a6e64;
+  --status-neutral-bg: #171310;
+  --status-neutral-border: #2c2520;
+
+  /* Typography */
+  --font-sans: "IBM Plex Sans", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+
+  --text-display-size: 34px;
+  --text-display-weight: 600;
+  --text-display-ls: -0.02em;
+
+  --text-title-size: 20px;
+  --text-title-weight: 600;
+  --text-title-ls: -0.01em;
+
+  --text-section-size: 17px;
+  --text-section-weight: 600;
+
+  --text-body-size: 13.5px;
+  --text-body-weight: 400;
+
+  --text-code-size: 12.5px;
+
+  --text-meta-size: 12px;
+
+  --text-label-size: 10.5px;
+  --text-label-weight: 500;
+  --text-label-ls: 0.14em;
+}
+
+body {
+  margin: 0;
+  background: var(--bg-base);
+  color: var(--fg-primary);
+  font-family: var(--font-sans);
+  font-size: var(--text-body-size);
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: var(--brand-primary);
+  text-decoration: none;
+}
+
+a:hover {
+  color: var(--brand-warm);
+}
+
+::selection {
+  background: var(--brand-primary);
+  color: var(--bg-base);
+}

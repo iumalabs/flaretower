@@ -7,6 +7,8 @@ interface Env {
   DB: D1Database;
   TEAM_DOMAIN: string;
   POLICY_AUD: string;
+  CF_ACCOUNT_ID: string;
+  CF_API_TOKEN: string;
 }
 
 const app = new Hono<{ Bindings: Env; Variables: { identity: AccessIdentity } }>();

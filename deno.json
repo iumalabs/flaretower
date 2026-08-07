@@ -1,9 +1,12 @@
 {
   "nodeModulesDir": "auto",
   "imports": {
+    "@std/assert": "jsr:@std/assert@^1",
     "hono": "npm:hono@^4.13.0",
     "jose": "npm:jose@^6.2.8",
     "react": "npm:react@^19.2.8",
+    "react/jsx-runtime": "npm:react@^19.2.8/jsx-runtime",
+    "react/jsx-dev-runtime": "npm:react@^19.2.8/jsx-dev-runtime",
     "react-dom": "npm:react-dom@^19.2.8",
     "react-dom/client": "npm:react-dom@^19.2.8/client",
     "vite": "npm:vite@^8.2.0",
@@ -11,7 +14,9 @@
     "@vitejs/plugin-react": "npm:@vitejs/plugin-react@^5",
     "wrangler": "npm:wrangler@^4.118.0",
     "@playwright/test": "npm:@playwright/test@^1.62.1",
-    "@cloudflare/workers-types": "npm:@cloudflare/workers-types@^5.20260804.1"
+    "@cloudflare/workers-types": "npm:@cloudflare/workers-types@^5.20260804.1",
+    "@types/react": "npm:@types/react@^19.2.18",
+    "@types/react-dom": "npm:@types/react-dom@^19.2.4"
   },
   "tasks": {
     "dev": "deno run -A npm:vite",
@@ -27,20 +32,37 @@
   },
   "compilerOptions": {
     "strict": true,
-    "lib": ["ES2022", "DOM", "DOM.Iterable", "deno.ns"],
+    "lib": [
+      "ES2022",
+      "DOM",
+      "DOM.Iterable",
+      "deno.ns"
+    ],
     "jsx": "react-jsx",
     "jsxImportSource": "react",
-    "types": ["@cloudflare/workers-types"]
+    "types": ["@cloudflare/workers-types", "@types/react", "@types/react-dom"]
   },
   "fmt": {
     "lineWidth": 100,
     "indentWidth": 2,
     "semiColons": true,
     "singleQuote": false,
-    "include": ["worker/", "app/", "tests/"]
+    "include": [
+      "worker/",
+      "app/",
+      "tests/"
+    ]
   },
   "lint": {
-    "include": ["worker/", "app/", "tests/"]
+    "include": [
+      "worker/",
+      "app/",
+      "tests/"
+    ]
   },
-  "exclude": [".wrangler/", "dist/", "node_modules/"]
+  "exclude": [
+    ".wrangler/",
+    "dist/",
+    "node_modules/"
+  ]
 }
