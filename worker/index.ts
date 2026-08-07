@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { accessAuth, type AccessIdentity } from "./auth/access-jwt.ts";
 import { exposureRoutes, runEvaluation } from "./modules/workers-access-exposure/routes.ts";
-import { dnsRoutes } from "./modules/dns/routes.ts";
+import { dnsRoutes, runDnsEvaluation } from "./modules/dns/routes.ts";
 
 interface Env {
   ASSETS: Fetcher;
@@ -30,16 +30,33 @@ export default {
   },
 
   scheduled(controller: ScheduledController, env: Env, ctx: ExecutionContext): void {
-    // Calls the exact same shared evaluation module POST /api/exposure/
-    // evaluate does (constitution Principle III) — no divergent logic
-    // between the interactive and scheduled entry points.
+    // One shared Cron Trigger entry point drives every module's scheduled
+    // audit (constitution Principle III) — each module calls the exact
+    // same evaluation function its own interactive POST /evaluate route
+    // does. Each module's evaluation is awaited independently (separate
+    // waitUntil + catch) so a failure in one module's Cloudflare API calls
+    // doesn't prevent another module's scheduled audit from running.
     ctx.waitUntil(
       runEvaluation(env, "scheduled").then(({ runId, newAlertCount }) => {
         console.log(
-          `scheduled run ${runId} (cron ${controller.cron}): ${newAlertCount} new alert(s)`,
+          `exposure scheduled run ${runId} (cron ${controller.cron}): ${newAlertCount} new alert(s)`,
         );
       }).catch((err: unknown) => {
-        console.error(`scheduled run failed: ${err instanceof Error ? err.message : String(err)}`);
+        console.error(
+          `exposure scheduled run failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }),
+    );
+
+    ctx.waitUntil(
+      runDnsEvaluation(env, "scheduled").then(({ runId, newAlertCount }) => {
+        console.log(
+          `dns scheduled run ${runId} (cron ${controller.cron}): ${newAlertCount} new alert(s)`,
+        );
+      }).catch((err: unknown) => {
+        console.error(
+          `dns scheduled run failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
       }),
     );
   },
