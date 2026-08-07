@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { accessAuth, type AccessIdentity } from "./auth/access-jwt.ts";
 import { exposureRoutes, runEvaluation } from "./modules/workers-access-exposure/routes.ts";
 import { dnsRoutes, runDnsEvaluation } from "./modules/dns/routes.ts";
-import { zeroTrustRoutes } from "./modules/zero-trust/routes.ts";
+import { runZeroTrustEvaluation, zeroTrustRoutes } from "./modules/zero-trust/routes.ts";
 
 interface Env {
   ASSETS: Fetcher;
@@ -58,6 +58,18 @@ export default {
       }).catch((err: unknown) => {
         console.error(
           `dns scheduled run failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }),
+    );
+
+    ctx.waitUntil(
+      runZeroTrustEvaluation(env, "scheduled").then(({ runId, newAlertCount }) => {
+        console.log(
+          `zero-trust scheduled run ${runId} (cron ${controller.cron}): ${newAlertCount} new alert(s)`,
+        );
+      }).catch((err: unknown) => {
+        console.error(
+          `zero-trust scheduled run failed: ${err instanceof Error ? err.message : String(err)}`,
         );
       }),
     );

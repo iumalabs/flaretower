@@ -11,6 +11,7 @@
     "npm:@vitejs/plugin-react@5": "5.2.0_vite@8.2.1",
     "npm:hono@^4.13.0": "4.13.0",
     "npm:jose@^6.2.8": "6.2.8",
+    "npm:playwright@*": "1.62.1",
     "npm:playwright@^1.62.1": "1.62.1",
     "npm:react-dom@^19.2.8": "19.2.8_react@19.2.8",
     "npm:react@^19.2.8": "19.2.8",
