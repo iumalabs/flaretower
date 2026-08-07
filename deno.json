@@ -1,0 +1,45 @@
+{
+  "imports": {
+    "hono": "npm:hono@^4.13.1",
+    "jose": "npm:jose@^6.2.8",
+    "react": "npm:react@^19.2.8",
+    "react-dom": "npm:react-dom@^19.2.8",
+    "react-dom/client": "npm:react-dom@^19.2.8/client",
+    "vite": "npm:vite@^8.2.0",
+    "@cloudflare/vite-plugin": "npm:@cloudflare/vite-plugin@^1.51.1",
+    "@vitejs/plugin-react": "npm:@vitejs/plugin-react@^5",
+    "wrangler": "npm:wrangler@^4.118.0",
+    "@playwright/test": "npm:@playwright/test@^1.62.1",
+    "@cloudflare/workers-types": "npm:@cloudflare/workers-types@^5.20260804.1"
+  },
+  "tasks": {
+    "dev": "deno run -A npm:vite",
+    "build": "deno run -A npm:vite build",
+    "deploy": "deno run -A npm:wrangler deploy",
+    "test": "deno test -A tests/unit/",
+    "test:e2e": "deno run -A npm:playwright test",
+    "test:e2e:install": "deno run -A npm:playwright install --with-deps chromium",
+    "db:migrations:apply:local": "deno run -A npm:wrangler d1 migrations apply flaretower --local",
+    "db:migrations:apply:remote": "deno run -A npm:wrangler d1 migrations apply flaretower --remote",
+    "fmt": "deno fmt",
+    "lint": "deno lint"
+  },
+  "compilerOptions": {
+    "strict": true,
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "jsx": "react-jsx",
+    "jsxImportSource": "react",
+    "types": ["@cloudflare/workers-types"]
+  },
+  "fmt": {
+    "lineWidth": 100,
+    "indentWidth": 2,
+    "semiColons": true,
+    "singleQuote": false,
+    "include": ["worker/", "app/", "tests/"]
+  },
+  "lint": {
+    "include": ["worker/", "app/", "tests/"]
+  },
+  "exclude": [".wrangler/", "dist/", "node_modules/"]
+}
