@@ -21,5 +21,9 @@ coverage/
 playwright-report/
 test-results/
 
+# Design package — local asset, not tracked in git (see constitution's
+# Design System section); each contributor obtains it out-of-band.
+docs/design.zip
+
 # OS
 .DS_Store
