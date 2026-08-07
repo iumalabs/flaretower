@@ -3,7 +3,10 @@
 // against Cloudflare's documented API shapes (research.md §1-§2); final
 // verification against a live account happens in T024 (quickstart.md).
 import type {
+  AccessApplication,
+  AccessPolicy,
   BucketInventoryItem,
+  CustomBucketDomain,
   D1DatabaseInventoryItem,
   KvNamespaceInventoryItem,
 } from "./types.ts";
@@ -63,8 +66,41 @@ interface RawD1Database {
   name: string;
 }
 
+interface RawManagedDomain {
+  enabled: boolean;
+}
+
+interface RawCustomDomain {
+  domain: string;
+  enabled: boolean;
+}
+
+interface RawCustomDomainsResponse {
+  domains: RawCustomDomain[];
+}
+
+interface RawAccessPolicy {
+  decision: string;
+  include?: Array<Record<string, unknown>>;
+}
+
+interface RawAccessApp {
+  id: string;
+  domain: string;
+  policies?: RawAccessPolicy[];
+}
+
 function errorMessage(reason: unknown): string {
   return reason instanceof Error ? reason.message : "unknown error";
+}
+
+function summarizePolicy(policy: RawAccessPolicy): AccessPolicy {
+  const include = policy.include ?? [];
+  return {
+    decision: policy.decision,
+    includesEveryone: include.some((rule) => "everyone" in rule),
+    hasScopedInclude: include.some((rule) => !("everyone" in rule)),
+  };
 }
 
 export async function listR2Buckets(
@@ -96,10 +132,101 @@ export async function listD1Databases(
   );
 }
 
+export async function getBucketManagedDomain(
+  creds: CloudflareStorageCredentials,
+  bucketName: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<boolean> {
+  const managed = await cfFetch<RawManagedDomain>(
+    `/accounts/${creds.accountId}/r2/buckets/${bucketName}/domains/managed`,
+    creds,
+    fetchImpl,
+  );
+  return managed.enabled;
+}
+
+export async function listBucketCustomDomains(
+  creds: CloudflareStorageCredentials,
+  bucketName: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<CustomBucketDomain[]> {
+  const custom = await cfFetch<RawCustomDomainsResponse>(
+    `/accounts/${creds.accountId}/r2/buckets/${bucketName}/domains/custom`,
+    creds,
+    fetchImpl,
+  );
+  return custom.domains.map((d) => ({ domain: d.domain, enabled: d.enabled }));
+}
+
+// Independent fetch of the same account-wide Access applications endpoint
+// Modules 1, 3, and 4 already call (research.md §4) — this module
+// fetches its own copy rather than sharing another module's fetch,
+// keeping every module's scheduled evaluation independently failable
+// (Principle III).
+export async function listAccessApplications(
+  creds: CloudflareStorageCredentials,
+  fetchImpl: typeof fetch = fetch,
+): Promise<AccessApplication[]> {
+  const apps = await cfFetch<RawAccessApp[]>(
+    `/accounts/${creds.accountId}/access/apps`,
+    creds,
+    fetchImpl,
+  );
+  return apps.map((app) => ({
+    appId: app.id,
+    appDomain: app.domain,
+    policies: (app.policies ?? []).map(summarizePolicy),
+  }));
+}
+
 export interface StorageInventory {
   buckets: BucketInventoryItem[];
   kvNamespaces: KvNamespaceInventoryItem[];
   d1Databases: D1DatabaseInventoryItem[];
+  // null = the Access applications list itself could not be fetched at
+  // all — every bucket's exposure check must come back not_evaluated in
+  // that case, never silently critical or safe (mirrors Module 1's
+  // evaluateHostname convention for the same `apps === null` case).
+  accessApplications: AccessApplication[] | null;
+}
+
+// Fetches, per bucket, whether its r2.dev domain is enabled and its
+// custom domains — a bucket-level evaluationError means either call
+// failed, so the bucket's exposure can't be confidently evaluated at all
+// (unlike Module 4's per-project domains/deployments, R2 exposure is one
+// evaluation over both signals together, not two independent findings).
+async function fetchBucketsWithDomains(
+  creds: CloudflareStorageCredentials,
+  fetchImpl: typeof fetch,
+): Promise<BucketInventoryItem[]> {
+  let rawBuckets: RawBucket[];
+  try {
+    rawBuckets = await listR2Buckets(creds, fetchImpl);
+  } catch (err) {
+    return [{
+      bucketName: "(unavailable)",
+      r2DevEnabled: false,
+      customDomains: [],
+      evaluationError: `could not list R2 buckets: ${errorMessage(err)}`,
+    }];
+  }
+
+  return await Promise.all(rawBuckets.map(async (bucket) => {
+    try {
+      const [r2DevEnabled, customDomains] = await Promise.all([
+        getBucketManagedDomain(creds, bucket.name, fetchImpl),
+        listBucketCustomDomains(creds, bucket.name, fetchImpl),
+      ]);
+      return { bucketName: bucket.name, r2DevEnabled, customDomains };
+    } catch (err) {
+      return {
+        bucketName: bucket.name,
+        r2DevEnabled: false,
+        customDomains: [],
+        evaluationError: `could not determine public access configuration: ${errorMessage(err)}`,
+      };
+    }
+  }));
 }
 
 // Unlike Modules 1-4, R2/KV/D1 are three fully independent resource
@@ -112,24 +239,14 @@ export async function buildStorageInventory(
   creds: CloudflareStorageCredentials,
   fetchImpl: typeof fetch = fetch,
 ): Promise<StorageInventory> {
-  const [bucketsResult, kvResult, d1Result] = await Promise.allSettled([
-    listR2Buckets(creds, fetchImpl),
-    listKvNamespaces(creds, fetchImpl),
-    listD1Databases(creds, fetchImpl),
+  const [buckets, accessApplications, [kvResult, d1Result]] = await Promise.all([
+    fetchBucketsWithDomains(creds, fetchImpl),
+    listAccessApplications(creds, fetchImpl).catch(() => null),
+    Promise.allSettled([
+      listKvNamespaces(creds, fetchImpl),
+      listD1Databases(creds, fetchImpl),
+    ]),
   ]);
-
-  const buckets: BucketInventoryItem[] = bucketsResult.status === "fulfilled"
-    ? bucketsResult.value.map((b) => ({
-      bucketName: b.name,
-      r2DevEnabled: false,
-      customDomains: [],
-    }))
-    : [{
-      bucketName: "(unavailable)",
-      r2DevEnabled: false,
-      customDomains: [],
-      evaluationError: `could not list R2 buckets: ${errorMessage(bucketsResult.reason)}`,
-    }];
 
   const kvNamespaces: KvNamespaceInventoryItem[] = kvResult.status === "fulfilled"
     ? kvResult.value.map((k) => ({ namespaceId: k.id, title: k.title }))
@@ -147,5 +264,5 @@ export async function buildStorageInventory(
       evaluationError: `could not list D1 databases: ${errorMessage(d1Result.reason)}`,
     }];
 
-  return { buckets, kvNamespaces, d1Databases };
+  return { buckets, kvNamespaces, d1Databases, accessApplications };
 }

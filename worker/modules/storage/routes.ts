@@ -26,9 +26,11 @@ export async function runStorageEvaluation(
   }
 > {
   const creds = { accountId: env.CF_ACCOUNT_ID, apiToken: env.CF_API_TOKEN };
-  const { buckets, kvNamespaces, d1Databases } = await buildStorageInventory(creds);
+  const { buckets, kvNamespaces, d1Databases, accessApplications } = await buildStorageInventory(
+    creds,
+  );
 
-  const bucketResults = evaluateBuckets(buckets);
+  const bucketResults = evaluateBuckets(buckets, accessApplications);
   const kvResults = evaluateKvNamespaces(kvNamespaces);
   const d1Results = evaluateD1Databases(d1Databases);
 
