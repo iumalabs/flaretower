@@ -1,6 +1,7 @@
 import { assertEquals } from "@std/assert";
 import {
   buildPagesInventory,
+  listAccessApplications,
   listPagesProjects,
   listProjectDomains,
 } from "../../worker/modules/pages/inventory.ts";
@@ -64,6 +65,38 @@ Deno.test("listProjectDomains - maps domain name and status", async () => {
   assertEquals(domains[1], { domainName: "staging.example.com", status: "pending" });
 });
 
+Deno.test("listAccessApplications - maps apps and policies, including a zero-policy app", async () => {
+  const fetchImpl = mockFetch([
+    ["/access/apps", () =>
+      jsonResponse({
+        success: true,
+        result: [
+          {
+            id: "app-1",
+            domain: "marketing-site.pages.dev",
+            policies: [{
+              decision: "allow",
+              include: [{ everyone: {} }],
+            }],
+          },
+          { id: "app-2", domain: "no-policy.example.com", policies: [] },
+        ],
+        errors: [],
+      })],
+  ]);
+
+  const apps = await listAccessApplications(creds, fetchImpl);
+
+  assertEquals(apps.length, 2);
+  assertEquals(apps[0].policies[0].includesEveryone, true);
+  assertEquals(apps[1].policies, []);
+});
+
+const EMPTY_ACCESS_APPS: [string, () => Response] = [
+  "/access/apps",
+  () => jsonResponse({ success: true, result: [], errors: [] }),
+];
+
 Deno.test("buildPagesInventory - every project and every one of its custom domains is enumerated, none omitted", async () => {
   const fetchImpl = mockFetch([
     ["/pages/projects", () =>
@@ -82,24 +115,27 @@ Deno.test("buildPagesInventory - every project and every one of its custom domai
         errors: [],
       })],
     ["/empty-project/domains", () => jsonResponse({ success: true, result: [], errors: [] })],
+    EMPTY_ACCESS_APPS,
   ]);
 
   const inventory = await buildPagesInventory(creds, fetchImpl);
 
-  assertEquals(inventory.length, 2);
-  assertEquals(inventory[0].customDomains.length, 1);
-  assertEquals(inventory[1].customDomains, []);
+  assertEquals(inventory.projects.length, 2);
+  assertEquals(inventory.projects[0].customDomains.length, 1);
+  assertEquals(inventory.projects[1].customDomains, []);
+  assertEquals(inventory.accessApplications, []);
 });
 
 Deno.test("buildPagesInventory - a total failure to list projects surfaces a sentinel entry, not an empty (confirmed-zero) list", async () => {
   const fetchImpl = mockFetch([
     ["/pages/projects", () => jsonResponse({ success: false, result: null, errors: [] }, 403)],
+    EMPTY_ACCESS_APPS,
   ]);
 
   const inventory = await buildPagesInventory(creds, fetchImpl);
 
-  assertEquals(inventory.length, 1);
-  assertEquals(typeof inventory[0].evaluationError, "string");
+  assertEquals(inventory.projects.length, 1);
+  assertEquals(typeof inventory.projects[0].evaluationError, "string");
 });
 
 Deno.test("buildPagesInventory - a per-project domains-list failure is scoped to that project, other projects unaffected", async () => {
@@ -126,11 +162,31 @@ Deno.test("buildPagesInventory - a per-project domains-list failure is scoped to
           errors: [],
         }),
     ],
+    EMPTY_ACCESS_APPS,
   ]);
 
   const inventory = await buildPagesInventory(creds, fetchImpl);
 
-  assertEquals(inventory.length, 2);
-  assertEquals(typeof inventory[0].customDomains[0].evaluationError, "string");
-  assertEquals(inventory[1].customDomains[0].evaluationError, undefined);
+  assertEquals(inventory.projects.length, 2);
+  assertEquals(typeof inventory.projects[0].customDomains[0].evaluationError, "string");
+  assertEquals(inventory.projects[1].customDomains[0].evaluationError, undefined);
+});
+
+Deno.test("buildPagesInventory - projects and Access applications fail independently", async () => {
+  const fetchImpl = mockFetch([
+    ["/pages/projects", () =>
+      jsonResponse({
+        success: true,
+        result: [{ name: "marketing-site", subdomain: "marketing-site.pages.dev" }],
+        errors: [],
+      })],
+    ["/marketing-site/domains", () => jsonResponse({ success: true, result: [], errors: [] })],
+    ["/access/apps", () => jsonResponse({ success: false, result: null, errors: [] }, 500)],
+  ]);
+
+  const inventory = await buildPagesInventory(creds, fetchImpl);
+
+  assertEquals(inventory.projects.length, 1);
+  assertEquals(inventory.projects[0].evaluationError, undefined);
+  assertEquals(inventory.accessApplications, null);
 });
