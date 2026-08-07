@@ -4,7 +4,7 @@ import { exposureRoutes, runEvaluation } from "./modules/workers-access-exposure
 import { dnsRoutes, runDnsEvaluation } from "./modules/dns/routes.ts";
 import { runZeroTrustEvaluation, zeroTrustRoutes } from "./modules/zero-trust/routes.ts";
 import { pagesRoutes, runPagesEvaluation } from "./modules/pages/routes.ts";
-import { storageRoutes } from "./modules/storage/routes.ts";
+import { runStorageEvaluation, storageRoutes } from "./modules/storage/routes.ts";
 
 interface Env {
   ASSETS: Fetcher;
@@ -86,6 +86,18 @@ export default {
       }).catch((err: unknown) => {
         console.error(
           `pages scheduled run failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }),
+    );
+
+    ctx.waitUntil(
+      runStorageEvaluation(env, "scheduled").then(({ runId, newAlertCount }) => {
+        console.log(
+          `storage scheduled run ${runId} (cron ${controller.cron}): ${newAlertCount} new alert(s)`,
+        );
+      }).catch((err: unknown) => {
+        console.error(
+          `storage scheduled run failed: ${err instanceof Error ? err.message : String(err)}`,
         );
       }),
     );
