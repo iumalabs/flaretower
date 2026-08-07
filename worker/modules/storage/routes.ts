@@ -1,7 +1,18 @@
 import { Hono } from "hono";
 import { buildStorageInventory } from "./inventory.ts";
 import { evaluateBuckets, evaluateD1Databases, evaluateKvNamespaces } from "./evaluate.ts";
-import type { BucketEvaluation, D1DatabaseEvaluation, KvNamespaceEvaluation } from "./types.ts";
+import {
+  diffForBucketAlerts,
+  diffForD1DatabaseAlerts,
+  diffForKvNamespaceAlerts,
+} from "./alerts.ts";
+import type {
+  BucketEvaluation,
+  BucketStatus,
+  D1DatabaseEvaluation,
+  KvNamespaceEvaluation,
+  UsageStatus,
+} from "./types.ts";
 
 interface Env {
   DB: D1Database;
@@ -10,6 +21,32 @@ interface Env {
 }
 
 export const storageRoutes = new Hono<{ Bindings: Env }>();
+
+// The most recent run's per-entity status, read BEFORE the current run is
+// inserted — same pattern as every prior module.
+async function getPreviousBucketStatuses(env: Env): Promise<Map<string, BucketStatus>> {
+  const { results: rows } = await env.DB.prepare(
+    `SELECT bucket_name, status FROM r2_bucket_findings
+     WHERE run_id = (SELECT run_id FROM r2_bucket_findings ORDER BY evaluated_at DESC LIMIT 1)`,
+  ).all<{ bucket_name: string; status: BucketStatus }>();
+  return new Map(rows.map((r) => [r.bucket_name, r.status]));
+}
+
+async function getPreviousKvNamespaceStatuses(env: Env): Promise<Map<string, UsageStatus>> {
+  const { results: rows } = await env.DB.prepare(
+    `SELECT namespace_id, status FROM kv_namespace_findings
+     WHERE run_id = (SELECT run_id FROM kv_namespace_findings ORDER BY evaluated_at DESC LIMIT 1)`,
+  ).all<{ namespace_id: string; status: UsageStatus }>();
+  return new Map(rows.map((r) => [r.namespace_id, r.status]));
+}
+
+async function getPreviousD1DatabaseStatuses(env: Env): Promise<Map<string, UsageStatus>> {
+  const { results: rows } = await env.DB.prepare(
+    `SELECT database_uuid, status FROM d1_database_findings
+     WHERE run_id = (SELECT run_id FROM d1_database_findings ORDER BY evaluated_at DESC LIMIT 1)`,
+  ).all<{ database_uuid: string; status: UsageStatus }>();
+  return new Map(rows.map((r) => [r.database_uuid, r.status]));
+}
 
 // Shared by POST /evaluate (interactive) and the scheduled handler —
 // constitution Principle III.
@@ -23,11 +60,21 @@ export async function runStorageEvaluation(
     bucketResults: BucketEvaluation[];
     kvResults: KvNamespaceEvaluation[];
     d1Results: D1DatabaseEvaluation[];
+    newAlertCount: number;
   }
 > {
   const creds = { accountId: env.CF_ACCOUNT_ID, apiToken: env.CF_API_TOKEN };
-  const { buckets, kvNamespaces, d1Databases, accessApplications, bindingReferences } =
-    await buildStorageInventory(creds);
+  const [
+    { buckets, kvNamespaces, d1Databases, accessApplications, bindingReferences },
+    previousBucketStatuses,
+    previousKvNamespaceStatuses,
+    previousD1DatabaseStatuses,
+  ] = await Promise.all([
+    buildStorageInventory(creds),
+    getPreviousBucketStatuses(env),
+    getPreviousKvNamespaceStatuses(env),
+    getPreviousD1DatabaseStatuses(env),
+  ]);
 
   const bucketResults = evaluateBuckets(buckets, accessApplications);
   const kvResults = evaluateKvNamespaces(
@@ -88,7 +135,60 @@ export async function runStorageEvaluation(
     await env.DB.batch(statements);
   }
 
-  return { runId, evaluatedAt, bucketResults, kvResults, d1Results };
+  const newBucketAlerts = diffForBucketAlerts(bucketResults, previousBucketStatuses);
+  const newKvAlerts = diffForKvNamespaceAlerts(kvResults, previousKvNamespaceStatuses);
+  const newD1Alerts = diffForD1DatabaseAlerts(d1Results, previousD1DatabaseStatuses);
+
+  const bucketAlertStatements = newBucketAlerts.map((a) =>
+    env.DB.prepare(
+      `INSERT INTO r2_bucket_alerts (id, bucket_name, previous_status, new_status, run_id, detected_at)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+    ).bind(crypto.randomUUID(), a.bucketName, a.previousStatus, a.newStatus, runId, evaluatedAt)
+  );
+
+  const kvAlertStatements = newKvAlerts.map((a) =>
+    env.DB.prepare(
+      `INSERT INTO kv_namespace_alerts (id, namespace_id, title, previous_status, new_status, run_id, detected_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    ).bind(
+      crypto.randomUUID(),
+      a.namespaceId,
+      a.title,
+      a.previousStatus,
+      a.newStatus,
+      runId,
+      evaluatedAt,
+    )
+  );
+
+  const d1AlertStatements = newD1Alerts.map((a) =>
+    env.DB.prepare(
+      `INSERT INTO d1_database_alerts (id, database_uuid, name, previous_status, new_status, run_id, detected_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    ).bind(
+      crypto.randomUUID(),
+      a.databaseUuid,
+      a.name,
+      a.previousStatus,
+      a.newStatus,
+      runId,
+      evaluatedAt,
+    )
+  );
+
+  const alertStatements = [...bucketAlertStatements, ...kvAlertStatements, ...d1AlertStatements];
+  if (alertStatements.length > 0) {
+    await env.DB.batch(alertStatements);
+  }
+
+  return {
+    runId,
+    evaluatedAt,
+    bucketResults,
+    kvResults,
+    d1Results,
+    newAlertCount: newBucketAlerts.length + newKvAlerts.length + newD1Alerts.length,
+  };
 }
 
 storageRoutes.post("/evaluate", async (c) => {
@@ -190,4 +290,124 @@ storageRoutes.get("/inventory", async (c) => {
       reason: d.reason,
     })),
   });
+});
+
+interface BucketAlertRow {
+  id: string;
+  bucket_name: string;
+  previous_status: string | null;
+  new_status: string;
+  detected_at: string;
+  acknowledged_at: string | null;
+}
+
+interface KvAlertRow {
+  id: string;
+  namespace_id: string;
+  title: string;
+  previous_status: string | null;
+  new_status: string;
+  detected_at: string;
+  acknowledged_at: string | null;
+}
+
+interface D1AlertRow {
+  id: string;
+  database_uuid: string;
+  name: string;
+  previous_status: string | null;
+  new_status: string;
+  detected_at: string;
+  acknowledged_at: string | null;
+}
+
+// Merges all three alert tables at the API layer with a `kind`
+// discriminator (contracts/api.md) — the tables stay separate in D1
+// (data-model.md §5's rationale), combined only for this response.
+storageRoutes.get("/alerts", async (c) => {
+  const [{ results: bucketRows }, { results: kvRows }, { results: d1Rows }] = await Promise.all([
+    c.env.DB.prepare(
+      `SELECT id, bucket_name, previous_status, new_status, detected_at, acknowledged_at
+       FROM r2_bucket_alerts WHERE acknowledged_at IS NULL ORDER BY detected_at DESC`,
+    ).all<BucketAlertRow>(),
+    c.env.DB.prepare(
+      `SELECT id, namespace_id, title, previous_status, new_status, detected_at, acknowledged_at
+       FROM kv_namespace_alerts WHERE acknowledged_at IS NULL ORDER BY detected_at DESC`,
+    ).all<KvAlertRow>(),
+    c.env.DB.prepare(
+      `SELECT id, database_uuid, name, previous_status, new_status, detected_at, acknowledged_at
+       FROM d1_database_alerts WHERE acknowledged_at IS NULL ORDER BY detected_at DESC`,
+    ).all<D1AlertRow>(),
+  ]);
+
+  return c.json({
+    alerts: [
+      ...bucketRows.map((r) => ({
+        id: r.id,
+        kind: "bucket" as const,
+        bucket_name: r.bucket_name,
+        previous_status: r.previous_status,
+        new_status: r.new_status,
+        detected_at: r.detected_at,
+        acknowledged_at: r.acknowledged_at,
+      })),
+      ...kvRows.map((r) => ({
+        id: r.id,
+        kind: "kv_namespace" as const,
+        namespace_id: r.namespace_id,
+        title: r.title,
+        previous_status: r.previous_status,
+        new_status: r.new_status,
+        detected_at: r.detected_at,
+        acknowledged_at: r.acknowledged_at,
+      })),
+      ...d1Rows.map((r) => ({
+        id: r.id,
+        kind: "d1_database" as const,
+        database_uuid: r.database_uuid,
+        name: r.name,
+        previous_status: r.previous_status,
+        new_status: r.new_status,
+        detected_at: r.detected_at,
+        acknowledged_at: r.acknowledged_at,
+      })),
+    ],
+  });
+});
+
+const ALERT_TABLE_BY_KIND: Record<string, string> = {
+  bucket: "r2_bucket_alerts",
+  kv_namespace: "kv_namespace_alerts",
+  d1_database: "d1_database_alerts",
+};
+
+// Not a Cloudflare account mutation (FR-015 scope boundary) — not written
+// to audit_log, same as every prior module's equivalent endpoint.
+storageRoutes.post("/alerts/:kind/:id/acknowledge", async (c) => {
+  const kind = c.req.param("kind");
+  const id = c.req.param("id");
+  const table = ALERT_TABLE_BY_KIND[kind];
+
+  if (!table) {
+    return c.json({ error: `unknown alert kind: ${kind}` }, 404);
+  }
+
+  const existing = await c.env.DB.prepare(
+    `SELECT acknowledged_at FROM ${table} WHERE id = ?`,
+  ).bind(id).first<{ acknowledged_at: string | null }>();
+
+  if (!existing) {
+    return c.json({ error: "alert not found" }, 404);
+  }
+
+  if (existing.acknowledged_at) {
+    return c.json({ id, acknowledged_at: existing.acknowledged_at });
+  }
+
+  const acknowledgedAt = new Date().toISOString();
+  await c.env.DB.prepare(
+    `UPDATE ${table} SET acknowledged_at = ? WHERE id = ?`,
+  ).bind(acknowledgedAt, id).run();
+
+  return c.json({ id, acknowledged_at: acknowledgedAt });
 });
