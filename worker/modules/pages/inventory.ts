@@ -7,6 +7,7 @@ import type {
   AccessPolicy,
   CustomDomain,
   PagesProjectInventoryItem,
+  ProductionDeployment,
 } from "./types.ts";
 
 export interface CloudflarePagesCredentials {
@@ -71,6 +72,11 @@ interface RawAccessApp {
   policies?: RawAccessPolicy[];
 }
 
+interface RawDeployment {
+  id: string;
+  latest_stage: { status: string };
+}
+
 function errorMessage(reason: unknown): string {
   return reason instanceof Error ? reason.message : "unknown error";
 }
@@ -128,6 +134,25 @@ export async function listProjectDomains(
   return domains.map((d) => ({ domainName: d.name, status: d.status }));
 }
 
+// The deployments list is server-side filtered to env=production and
+// ordered newest-first (research.md §1); index 0, if present, is "the
+// most recent production deployment". An empty list means no production
+// deployment exists yet — a legitimate state, not an error.
+export async function listProjectProductionDeployment(
+  creds: CloudflarePagesCredentials,
+  projectName: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<ProductionDeployment | null> {
+  const deployments = await cfFetch<RawDeployment[]>(
+    `/accounts/${creds.accountId}/pages/projects/${projectName}/deployments?env=production`,
+    creds,
+    fetchImpl,
+  );
+  if (deployments.length === 0) return null;
+  const latest = deployments[0];
+  return { deploymentId: latest.id, status: latest.latest_stage.status };
+}
+
 // A total failure to list projects at all surfaces as one sentinel entry
 // with evaluationError set (the same resilient design Module 3's
 // buildZeroTrustInventory established), so the UI shows "could not
@@ -153,22 +178,31 @@ async function fetchProjectsWithDomains(
   }
 
   return await Promise.all(rawProjects.map(async (project) => {
-    let customDomains: CustomDomain[];
-    try {
-      customDomains = await listProjectDomains(creds, project.name, fetchImpl);
-    } catch (err) {
-      customDomains = [{
+    const [domainsResult, deploymentResult] = await Promise.allSettled([
+      listProjectDomains(creds, project.name, fetchImpl),
+      listProjectProductionDeployment(creds, project.name, fetchImpl),
+    ]);
+
+    const customDomains: CustomDomain[] = domainsResult.status === "fulfilled"
+      ? domainsResult.value
+      : [{
         domainName: "(unavailable)",
         status: "(unavailable)",
-        evaluationError: `could not list custom domains: ${errorMessage(err)}`,
+        evaluationError: `could not list custom domains: ${errorMessage(domainsResult.reason)}`,
       }];
-    }
+
+    const latestProductionDeployment: ProductionDeployment | null =
+      deploymentResult.status === "fulfilled" ? deploymentResult.value : {
+        deploymentId: "(unavailable)",
+        status: "(unavailable)",
+        evaluationError: `could not list deployments: ${errorMessage(deploymentResult.reason)}`,
+      };
 
     return {
       projectName: project.name,
       subdomain: project.subdomain,
       customDomains,
-      latestProductionDeployment: null,
+      latestProductionDeployment,
     };
   }));
 }

@@ -12,9 +12,9 @@ const MOCK_PAGES_INVENTORY = {
         reason: "covered by Access application(s): app-1",
       },
       deployment: {
-        deployment_id: null,
-        status: "not_evaluated",
-        reason: "deployment health evaluation not yet implemented",
+        deployment_id: "dep-1",
+        status: "safe",
+        reason: "latest production deployment succeeded",
       },
       domains: [
         { domain_name: "example.com", status: "safe", reason: "domain is active" },
@@ -34,8 +34,8 @@ const MOCK_PAGES_INVENTORY = {
       },
       deployment: {
         deployment_id: null,
-        status: "not_evaluated",
-        reason: "deployment health evaluation not yet implemented",
+        status: "warning",
+        reason: "no production deployment exists yet",
       },
       domains: [],
     },
@@ -99,4 +99,12 @@ test("US2 — a covered pages.dev subdomain renders safe, an uncovered one rende
 
   const uncoveredRow = page.locator("tr", { hasText: "empty-project.pages.dev" });
   await expect(uncoveredRow.getByText("CRITICAL")).toBeVisible();
+});
+
+test("US3 — a successful production deployment renders safe, a missing one renders warning", async ({ page }) => {
+  const successRow = page.locator("tr", { hasText: "dep-1" });
+  await expect(successRow.getByText("PROTECTED")).toBeVisible();
+
+  const missingRow = page.locator("tr", { hasText: "no production deployment" });
+  await expect(missingRow.getByText("WARNING")).toBeVisible();
 });
