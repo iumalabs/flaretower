@@ -31,6 +31,24 @@ interface ChangesResponse {
   changes: ChangeEntry[];
 }
 
+interface PostureCounts {
+  safe: number;
+  warning: number;
+  critical: number;
+  not_evaluated: number;
+}
+
+interface PostureSummaryEntry {
+  module: string;
+  kind: string;
+  has_data: boolean;
+  counts: PostureCounts;
+}
+
+interface SummaryResponse {
+  modules: PostureSummaryEntry[];
+}
+
 async function fetchAlerts(): Promise<AlertsResponse> {
   const res = await fetch("/api/audit/alerts");
   if (!res.ok) {
@@ -43,6 +61,14 @@ async function fetchChanges(): Promise<ChangesResponse> {
   const res = await fetch("/api/audit/changes");
   if (!res.ok) {
     throw new Error(`GET /api/audit/changes failed: ${res.status}`);
+  }
+  return await res.json();
+}
+
+async function fetchSummary(): Promise<SummaryResponse> {
+  const res = await fetch("/api/audit/summary");
+  if (!res.ok) {
+    throw new Error(`GET /api/audit/summary failed: ${res.status}`);
   }
   return await res.json();
 }
@@ -99,11 +125,37 @@ function ChangeRow({ change }: { change: ChangeEntry }): JSX.Element {
   );
 }
 
+function SummaryRow({ entry }: { entry: PostureSummaryEntry }): JSX.Element {
+  return (
+    <tr style={{ borderTop: "1px solid var(--rule-hairline)" }}>
+      <td
+        style={{
+          padding: "8px 0",
+          fontFamily: "var(--font-mono)",
+          fontSize: "var(--text-code-size)",
+          color: "var(--fg-secondary)",
+        }}
+      >
+        {entry.module}/{entry.kind}
+      </td>
+      <td style={{ padding: "8px 0", fontSize: "var(--text-body-size)", color: "var(--fg-muted)" }}>
+        {entry.has_data
+          ? (
+            `${entry.counts.safe} safe · ${entry.counts.warning} warning · ${entry.counts.critical} critical · ${entry.counts.not_evaluated} not evaluated`
+          )
+          : <span style={{ color: "var(--fg-faint)" }}>no data yet</span>}
+      </td>
+    </tr>
+  );
+}
+
 export function AuditInventory(): JSX.Element {
   const [data, setData] = useState<AlertsResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [changesData, setChangesData] = useState<ChangesResponse | null>(null);
   const [changesError, setChangesError] = useState<string | null>(null);
+  const [summaryData, setSummaryData] = useState<SummaryResponse | null>(null);
+  const [summaryError, setSummaryError] = useState<string | null>(null);
 
   useEffect(() => {
     fetchAlerts()
@@ -115,6 +167,11 @@ export function AuditInventory(): JSX.Element {
       .then(setChangesData)
       .catch((err: unknown) =>
         setChangesError(err instanceof Error ? err.message : "failed to load audit changes")
+      );
+    fetchSummary()
+      .then(setSummaryData)
+      .catch((err: unknown) =>
+        setSummaryError(err instanceof Error ? err.message : "failed to load audit summary")
       );
   }, []);
 
@@ -204,6 +261,40 @@ export function AuditInventory(): JSX.Element {
               <tbody>
                 {changesData.changes.map((c) => (
                   <ChangeRow key={`${c.module}/${c.kind}/${c.entity_label}`} change={c} />
+                ))}
+              </tbody>
+            </table>
+          )}
+      </section>
+
+      <section
+        style={{
+          border: "1px solid var(--border)",
+          borderRadius: 6,
+          padding: 16,
+          marginBottom: 12,
+          background: "var(--surface-1)",
+        }}
+      >
+        <h2
+          style={{
+            fontFamily: "var(--font-sans)",
+            fontSize: "var(--text-title-size)",
+            fontWeight: "var(--text-title-weight)" as unknown as number,
+            margin: "0 0 12px",
+          }}
+        >
+          Account-wide posture summary
+        </h2>
+        {summaryError
+          ? <p style={{ color: "var(--status-critical-fg)" }}>{summaryError}</p>
+          : !summaryData
+          ? <p style={{ color: "var(--fg-muted)" }}>Loading summary…</p>
+          : (
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <tbody>
+                {summaryData.modules.map((entry) => (
+                  <SummaryRow key={`${entry.module}/${entry.kind}`} entry={entry} />
                 ))}
               </tbody>
             </table>

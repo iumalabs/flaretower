@@ -39,6 +39,23 @@ const MOCK_AUDIT_CHANGES = {
   ],
 };
 
+const MOCK_AUDIT_SUMMARY = {
+  modules: [
+    {
+      module: "exposure",
+      kind: "hostname",
+      has_data: true,
+      counts: { safe: 4, warning: 1, critical: 0, not_evaluated: 0 },
+    },
+    {
+      module: "dns",
+      kind: "record",
+      has_data: false,
+      counts: { safe: 0, warning: 0, critical: 0, not_evaluated: 0 },
+    },
+  ],
+};
+
 test.beforeEach(async ({ page }) => {
   await page.route("**/api/exposure/inventory", (route) =>
     route.fulfill({
@@ -99,6 +116,12 @@ test.beforeEach(async ({ page }) => {
       contentType: "application/json",
       body: JSON.stringify(MOCK_AUDIT_CHANGES),
     }));
+  await page.route("**/api/audit/summary", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(MOCK_AUDIT_SUMMARY),
+    }));
   await page.goto("/");
   await page.getByRole("button", { name: "Audit & Drift" }).click();
 });
@@ -120,4 +143,16 @@ test("US2 — the what changed section shows an entity whose status changed sinc
   await expect(changeRow).toBeVisible();
   await expect(changeRow.getByText("security/dnssec", { exact: false })).toBeVisible();
   await expect(changeRow.getByText("safe → critical", { exact: false })).toBeVisible();
+});
+
+test("US3 — the posture summary renders per-module counts, and a no-data module renders distinctly from a confirmed-clean one", async ({ page }) => {
+  await expect(page.getByRole("heading", { name: "Account-wide posture summary" })).toBeVisible();
+
+  const exposureRow = page.locator("tr", { hasText: "exposure/hostname" });
+  await expect(exposureRow).toBeVisible();
+  await expect(exposureRow.getByText("4 safe", { exact: false })).toBeVisible();
+
+  const dnsRow = page.locator("tr", { hasText: "dns/record" });
+  await expect(dnsRow).toBeVisible();
+  await expect(dnsRow.getByText("no data yet", { exact: false })).toBeVisible();
 });
