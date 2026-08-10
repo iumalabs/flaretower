@@ -73,8 +73,11 @@ export function evaluateSslTlsMode(zone: ZoneInventoryItem): SslTlsEvaluation {
   };
 }
 
-// US3 replaces this stub with the real DNSSEC decision logic
-// (research.md §3).
+// research.md §3. "pending"/"pending-disabled" are both "not yet
+// providing protection, whichever direction the zone is transitioning"
+// per spec User Story 3, Acceptance Scenario 2 — both warning, same as
+// "disabled". "error" means the API itself couldn't determine the real
+// state, so this can't claim either safe or warning (spec Edge Cases).
 export function evaluateDnssec(zone: ZoneInventoryItem): DnssecEvaluation {
   if (zone.evaluationError) {
     return {
@@ -92,16 +95,41 @@ export function evaluateDnssec(zone: ZoneInventoryItem): DnssecEvaluation {
       reason: zone.dnssec.evaluationError,
     };
   }
+
+  const status = zone.dnssec.status;
+
+  if (status === "active") {
+    return {
+      zoneId: zone.zoneId,
+      zoneName: zone.zoneName,
+      status: "safe",
+      reason: "DNSSEC is active",
+    };
+  }
+
+  if (status === "error") {
+    return {
+      zoneId: zone.zoneId,
+      zoneName: zone.zoneName,
+      status: "not_evaluated",
+      reason: "DNSSEC status could not be determined (Cloudflare reported an error state)",
+    };
+  }
+
   return {
     zoneId: zone.zoneId,
     zoneName: zone.zoneName,
-    status: "safe",
-    reason: "DNSSEC evaluation not yet implemented",
+    status: "warning",
+    reason: `DNSSEC is not yet providing protection (status: ${status})`,
   };
 }
 
-// US3 replaces this stub with the real WAF decision logic
-// (research.md §4).
+// research.md §4. The reduction from "ruleset entrypoint + rules[]" to a
+// single hasEnabledRule boolean already happened in inventory.ts's
+// hasEnabledManagedRule() (shared by both this check and the
+// rate-limiting check below, since they read the same shape from two
+// different ruleset phases) — this function only maps that boolean to a
+// status.
 export function evaluateWaf(zone: ZoneInventoryItem): WafEvaluation {
   if (zone.evaluationError) {
     return {
@@ -119,16 +147,24 @@ export function evaluateWaf(zone: ZoneInventoryItem): WafEvaluation {
       reason: zone.waf.evaluationError,
     };
   }
+  if (zone.waf.hasEnabledRule) {
+    return {
+      zoneId: zone.zoneId,
+      zoneName: zone.zoneName,
+      status: "safe",
+      reason: "a WAF managed ruleset is deployed with at least one enabled rule",
+    };
+  }
   return {
     zoneId: zone.zoneId,
     zoneName: zone.zoneName,
-    status: "safe",
-    reason: "WAF evaluation not yet implemented",
+    status: "warning",
+    reason: "no WAF managed ruleset deployed, or every rule in it is disabled",
   };
 }
 
-// US3 replaces this stub with the real rate-limiting decision logic
-// (research.md §5).
+// research.md §5 — structurally identical to evaluateWaf(), just reading
+// the rate-limiting phase's reduced boolean instead.
 export function evaluateRateLimiting(zone: ZoneInventoryItem): RateLimitingEvaluation {
   if (zone.evaluationError) {
     return {
@@ -146,11 +182,19 @@ export function evaluateRateLimiting(zone: ZoneInventoryItem): RateLimitingEvalu
       reason: zone.rateLimiting.evaluationError,
     };
   }
+  if (zone.rateLimiting.hasEnabledRule) {
+    return {
+      zoneId: zone.zoneId,
+      zoneName: zone.zoneName,
+      status: "safe",
+      reason: "a rate-limiting ruleset is deployed with at least one enabled rule",
+    };
+  }
   return {
     zoneId: zone.zoneId,
     zoneName: zone.zoneName,
-    status: "safe",
-    reason: "rate-limiting evaluation not yet implemented",
+    status: "warning",
+    reason: "no rate-limiting ruleset deployed, or every rule in it is disabled",
   };
 }
 

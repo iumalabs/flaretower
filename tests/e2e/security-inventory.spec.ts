@@ -8,9 +8,15 @@ const MOCK_SECURITY_INVENTORY = {
       zone_id: "zone-1",
       zone_name: "safe-strict-zone.test",
       ssl_tls: { status: "safe", reason: "SSL/TLS mode is Full (strict)" },
-      dnssec: { status: "safe", reason: "DNSSEC evaluation not yet implemented" },
-      waf: { status: "safe", reason: "WAF evaluation not yet implemented" },
-      rate_limiting: { status: "safe", reason: "rate-limiting evaluation not yet implemented" },
+      dnssec: { status: "safe", reason: "DNSSEC is active" },
+      waf: {
+        status: "safe",
+        reason: "a WAF managed ruleset is deployed with at least one enabled rule",
+      },
+      rate_limiting: {
+        status: "safe",
+        reason: "a rate-limiting ruleset is deployed with at least one enabled rule",
+      },
     },
     {
       zone_id: "zone-2",
@@ -20,9 +26,18 @@ const MOCK_SECURITY_INVENTORY = {
         reason:
           "SSL/TLS mode is Flexible — the connection between Cloudflare and the origin is unencrypted",
       },
-      dnssec: { status: "safe", reason: "DNSSEC evaluation not yet implemented" },
-      waf: { status: "safe", reason: "WAF evaluation not yet implemented" },
-      rate_limiting: { status: "safe", reason: "rate-limiting evaluation not yet implemented" },
+      dnssec: {
+        status: "warning",
+        reason: "DNSSEC is not yet providing protection (status: disabled)",
+      },
+      waf: {
+        status: "warning",
+        reason: "no WAF managed ruleset deployed, or every rule in it is disabled",
+      },
+      rate_limiting: {
+        status: "warning",
+        reason: "no rate-limiting ruleset deployed, or every rule in it is disabled",
+      },
     },
   ],
   turnstile_widgets: [
@@ -103,5 +118,25 @@ test("US2 — a fully strict zone's SSL/TLS mode renders safe, a flexible one re
     has: page.locator("h2", { hasText: "insecure.example.com" }),
   });
   await expect(flexibleSection.locator("tr", { hasText: "SSL/TLS mode" }).getByText("CRITICAL"))
+    .toBeVisible();
+});
+
+test("US3 — DNSSEC/WAF/rate-limiting gaps render warning, protected zone renders safe", async ({ page }) => {
+  const strictSection = page.locator("section", {
+    has: page.locator("h2", { hasText: "safe-strict-zone.test" }),
+  });
+  await expect(strictSection.locator("tr", { hasText: "DNSSEC" }).getByText("PROTECTED"))
+    .toBeVisible();
+  await expect(strictSection.locator("tr", { hasText: "WAF" }).getByText("PROTECTED"))
+    .toBeVisible();
+  await expect(strictSection.locator("tr", { hasText: "Rate limiting" }).getByText("PROTECTED"))
+    .toBeVisible();
+
+  const gapSection = page.locator("section", {
+    has: page.locator("h2", { hasText: "insecure.example.com" }),
+  });
+  await expect(gapSection.locator("tr", { hasText: "DNSSEC" }).getByText("WARNING")).toBeVisible();
+  await expect(gapSection.locator("tr", { hasText: "WAF" }).getByText("WARNING")).toBeVisible();
+  await expect(gapSection.locator("tr", { hasText: "Rate limiting" }).getByText("WARNING"))
     .toBeVisible();
 });
