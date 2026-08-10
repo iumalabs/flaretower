@@ -1,0 +1,94 @@
+// "What changed since a point in time" digest: for each of the fourteen
+// sources, compares each entity's latest finding against its most
+// recent finding at or before a requested cutoff (research.md §5).
+import { AUDIT_SOURCES, type AuditSource } from "./sources.ts";
+
+export interface ChangeEntry {
+  module: string;
+  kind: string;
+  entityLabel: string;
+  previousStatus: string | null;
+  currentStatus: string;
+}
+
+interface FindingRow {
+  status: string;
+  [column: string]: unknown;
+}
+
+function selectColumns(source: AuditSource): string[] {
+  return Array.from(new Set([...source.findingIdentityColumns, ...source.alertLabelColumns]));
+}
+
+function entityKey(row: FindingRow, source: AuditSource): string {
+  return source.findingIdentityColumns.map((c) => String(row[c])).join("::");
+}
+
+function entityLabel(row: FindingRow, source: AuditSource): string {
+  return source.alertLabelColumns.map((c) => String(row[c])).join(" · ");
+}
+
+// Latest finding per entity — a window-function query so we get every
+// selected column from the actual latest row per entity, not just the
+// MAX(evaluated_at) value.
+function buildLatestPerEntityQuery(source: AuditSource, beforeCutoff: boolean): string {
+  const cols = selectColumns(source);
+  const colList = cols.map((c) => `t.${c}`).join(", ");
+  const partitionBy = source.findingIdentityColumns.join(", ");
+  const cutoffFilter = beforeCutoff ? "WHERE evaluated_at <= ?" : "";
+  return `
+    SELECT ${colList}, t.status
+    FROM (
+      SELECT *, ROW_NUMBER() OVER (
+        PARTITION BY ${partitionBy} ORDER BY evaluated_at DESC
+      ) AS rn
+      FROM ${source.findingsTable}
+      ${cutoffFilter}
+    ) t
+    WHERE t.rn = 1
+  `;
+}
+
+async function computeChangesForSource(
+  db: D1Database,
+  source: AuditSource,
+  since: string,
+): Promise<ChangeEntry[]> {
+  const [latestResult, atCutoffResult] = await Promise.all([
+    db.prepare(buildLatestPerEntityQuery(source, false)).all<FindingRow>(),
+    db.prepare(buildLatestPerEntityQuery(source, true)).bind(since).all<FindingRow>(),
+  ]);
+
+  const atCutoffByEntity = new Map<string, FindingRow>();
+  for (const row of atCutoffResult.results) {
+    atCutoffByEntity.set(entityKey(row, source), row);
+  }
+
+  const changes: ChangeEntry[] = [];
+  for (const row of latestResult.results) {
+    const key = entityKey(row, source);
+    const previous = atCutoffByEntity.get(key);
+    const previousStatus = previous ? previous.status : null;
+    if (previousStatus === row.status) continue;
+    changes.push({
+      module: source.module,
+      kind: source.kind,
+      entityLabel: entityLabel(row, source),
+      previousStatus,
+      currentStatus: row.status,
+    });
+  }
+  return changes;
+}
+
+// A per-source read failure doesn't blank out the other thirteen
+// (spec FR-010) — Promise.allSettled, not Promise.all.
+export async function computeChanges(db: D1Database, since: string): Promise<ChangeEntry[]> {
+  const results = await Promise.allSettled(
+    AUDIT_SOURCES.map((source) => computeChangesForSource(db, source, since)),
+  );
+
+  return results
+    .filter((r): r is PromiseFulfilledResult<ChangeEntry[]> => r.status === "fulfilled")
+    .flatMap((r) => r.value);
+}

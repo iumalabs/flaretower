@@ -25,6 +25,20 @@ const MOCK_AUDIT_ALERTS = {
   ],
 };
 
+const MOCK_AUDIT_CHANGES = {
+  since: "2026-08-09T14:00:00Z",
+  until: "2026-08-10T14:00:00Z",
+  changes: [
+    {
+      module: "security",
+      kind: "dnssec",
+      entity_label: "flaretower-changed.test",
+      previous_status: "safe",
+      current_status: "critical",
+    },
+  ],
+};
+
 test.beforeEach(async ({ page }) => {
   await page.route("**/api/exposure/inventory", (route) =>
     route.fulfill({
@@ -79,6 +93,12 @@ test.beforeEach(async ({ page }) => {
       contentType: "application/json",
       body: JSON.stringify(MOCK_AUDIT_ALERTS),
     }));
+  await page.route("**/api/audit/changes", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(MOCK_AUDIT_CHANGES),
+    }));
   await page.goto("/");
   await page.getByRole("button", { name: "Audit & Drift" }).click();
 });
@@ -91,4 +111,13 @@ test("US1 — alerts from multiple modules appear in the unified inbox, each lab
   const bucketRow = page.locator("tr", { hasText: "uploads" });
   await expect(bucketRow).toBeVisible();
   await expect(bucketRow.getByText("storage/r2_bucket", { exact: false })).toBeVisible();
+});
+
+test("US2 — the what changed section shows an entity whose status changed since the cutoff", async ({ page }) => {
+  await expect(page.getByRole("heading", { name: "What changed" })).toBeVisible();
+
+  const changeRow = page.locator("tr", { hasText: "flaretower-changed.test" });
+  await expect(changeRow).toBeVisible();
+  await expect(changeRow.getByText("security/dnssec", { exact: false })).toBeVisible();
+  await expect(changeRow.getByText("safe → critical", { exact: false })).toBeVisible();
 });
