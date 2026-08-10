@@ -17,10 +17,32 @@ interface AlertsResponse {
   alerts: UnifiedAlert[];
 }
 
+interface ChangeEntry {
+  module: string;
+  kind: string;
+  entity_label: string;
+  previous_status: ExposureStatus | null;
+  current_status: ExposureStatus;
+}
+
+interface ChangesResponse {
+  since: string;
+  until: string;
+  changes: ChangeEntry[];
+}
+
 async function fetchAlerts(): Promise<AlertsResponse> {
   const res = await fetch("/api/audit/alerts");
   if (!res.ok) {
     throw new Error(`GET /api/audit/alerts failed: ${res.status}`);
+  }
+  return await res.json();
+}
+
+async function fetchChanges(): Promise<ChangesResponse> {
+  const res = await fetch("/api/audit/changes");
+  if (!res.ok) {
+    throw new Error(`GET /api/audit/changes failed: ${res.status}`);
   }
   return await res.json();
 }
@@ -56,15 +78,43 @@ function AlertRow({ alert }: { alert: UnifiedAlert }): JSX.Element {
   );
 }
 
+function ChangeRow({ change }: { change: ChangeEntry }): JSX.Element {
+  return (
+    <tr style={{ borderTop: "1px solid var(--rule-hairline)" }}>
+      <td
+        style={{
+          padding: "8px 0",
+          fontFamily: "var(--font-mono)",
+          fontSize: "var(--text-code-size)",
+          color: "var(--fg-secondary)",
+        }}
+      >
+        {change.entity_label}
+        <span style={{ color: "var(--fg-faint)" }}>· {change.module}/{change.kind}</span>
+      </td>
+      <td style={{ padding: "8px 0", fontSize: "var(--text-body-size)", color: "var(--fg-muted)" }}>
+        {change.previous_status ?? "(new)"} → {change.current_status}
+      </td>
+    </tr>
+  );
+}
+
 export function AuditInventory(): JSX.Element {
   const [data, setData] = useState<AlertsResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [changesData, setChangesData] = useState<ChangesResponse | null>(null);
+  const [changesError, setChangesError] = useState<string | null>(null);
 
   useEffect(() => {
     fetchAlerts()
       .then(setData)
       .catch((err: unknown) =>
         setError(err instanceof Error ? err.message : "failed to load audit alerts")
+      );
+    fetchChanges()
+      .then(setChangesData)
+      .catch((err: unknown) =>
+        setChangesError(err instanceof Error ? err.message : "failed to load audit changes")
       );
   }, []);
 
@@ -115,6 +165,46 @@ export function AuditInventory(): JSX.Element {
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <tbody>
                 {data.alerts.map((a) => <AlertRow key={a.id} alert={a} />)}
+              </tbody>
+            </table>
+          )}
+      </section>
+
+      <section
+        style={{
+          border: "1px solid var(--border)",
+          borderRadius: 6,
+          padding: 16,
+          marginBottom: 12,
+          background: "var(--surface-1)",
+        }}
+      >
+        <h2
+          style={{
+            fontFamily: "var(--font-sans)",
+            fontSize: "var(--text-title-size)",
+            fontWeight: "var(--text-title-weight)" as unknown as number,
+            margin: "0 0 12px",
+          }}
+        >
+          What changed
+        </h2>
+        {changesError
+          ? <p style={{ color: "var(--status-critical-fg)" }}>{changesError}</p>
+          : !changesData
+          ? <p style={{ color: "var(--fg-muted)" }}>Loading changes…</p>
+          : changesData.changes.length === 0
+          ? (
+            <p style={{ color: "var(--fg-muted)" }}>
+              No status changes since {changesData.since}.
+            </p>
+          )
+          : (
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <tbody>
+                {changesData.changes.map((c) => (
+                  <ChangeRow key={`${c.module}/${c.kind}/${c.entity_label}`} change={c} />
+                ))}
               </tbody>
             </table>
           )}
