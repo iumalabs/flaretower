@@ -9,8 +9,9 @@ import type {
   ZoneInventoryItem,
 } from "./types.ts";
 
-// US2 replaces this stub with the real SSL/TLS mode decision logic
-// (research.md §2).
+// research.md §2 — direct enum-to-status mapping, no Access-coverage
+// logic needed (SSL/TLS mode is a single zone-wide setting, not a
+// per-hostname question).
 export function evaluateSslTlsMode(zone: ZoneInventoryItem): SslTlsEvaluation {
   if (zone.evaluationError) {
     return {
@@ -28,11 +29,47 @@ export function evaluateSslTlsMode(zone: ZoneInventoryItem): SslTlsEvaluation {
       reason: zone.sslTls.evaluationError,
     };
   }
+
+  const mode = zone.sslTls.mode;
+
+  if (mode === "off") {
+    return {
+      zoneId: zone.zoneId,
+      zoneName: zone.zoneName,
+      status: "critical",
+      reason: "SSL/TLS mode is Off — visitor traffic is not encrypted at all",
+    };
+  }
+
+  if (mode === "flexible") {
+    return {
+      zoneId: zone.zoneId,
+      zoneName: zone.zoneName,
+      status: "critical",
+      reason:
+        "SSL/TLS mode is Flexible — the connection between Cloudflare and the origin is unencrypted",
+    };
+  }
+
+  if (mode === "full") {
+    return {
+      zoneId: zone.zoneId,
+      zoneName: zone.zoneName,
+      status: "warning",
+      reason:
+        "SSL/TLS mode is Full — both hops are encrypted, but Cloudflare does not validate the origin's certificate",
+    };
+  }
+
+  // "strict" and the Enterprise-only "origin_pull" variant are both
+  // fully encrypted with origin certificate validation.
   return {
     zoneId: zone.zoneId,
     zoneName: zone.zoneName,
     status: "safe",
-    reason: "SSL/TLS mode evaluation not yet implemented",
+    reason: `SSL/TLS mode is ${
+      mode === "origin_pull" ? "Strict (SSL-Only Origin Pull)" : "Full (strict)"
+    }`,
   };
 }
 
