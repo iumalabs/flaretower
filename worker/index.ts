@@ -6,7 +6,7 @@ import { runZeroTrustEvaluation, zeroTrustRoutes } from "./modules/zero-trust/ro
 import { pagesRoutes, runPagesEvaluation } from "./modules/pages/routes.ts";
 import { runStorageEvaluation, storageRoutes } from "./modules/storage/routes.ts";
 import { runSecurityEvaluation, securityRoutes } from "./modules/security/routes.ts";
-import { auditRoutes } from "./modules/audit/routes.ts";
+import { auditRoutes, runAuditDigest } from "./modules/audit/routes.ts";
 
 interface Env {
   ASSETS: Fetcher;
@@ -114,6 +114,18 @@ export default {
       }).catch((err: unknown) => {
         console.error(
           `security scheduled run failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }),
+    );
+
+    ctx.waitUntil(
+      runAuditDigest(env, "scheduled").then(({ changeCount }) => {
+        console.log(
+          `audit digest (cron ${controller.cron}): ${changeCount} change(s) in the last 24h`,
+        );
+      }).catch((err: unknown) => {
+        console.error(
+          `audit digest failed: ${err instanceof Error ? err.message : String(err)}`,
         );
       }),
     );

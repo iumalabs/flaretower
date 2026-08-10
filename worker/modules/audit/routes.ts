@@ -74,3 +74,17 @@ auditRoutes.get("/summary", async (c) => {
     })),
   });
 });
+
+// Joins the shared scheduled handler as a seventh independent evaluation
+// (constitution Principle III) — computes the same default 24-hour digest
+// GET /api/audit/changes would, and logs the count. No new alert table is
+// written (research.md §4); _trigger is kept only for signature symmetry
+// with every other module's run*Evaluation(env, trigger) entry point.
+export async function runAuditDigest(
+  env: Env,
+  _trigger: "interactive" | "scheduled",
+): Promise<{ changeCount: number }> {
+  const since = new Date(Date.now() - TWENTY_FOUR_HOURS_MS).toISOString();
+  const changes = await computeChanges(env.DB, since);
+  return { changeCount: changes.length };
+}
