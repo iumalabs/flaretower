@@ -5,7 +5,7 @@ import { dnsRoutes, runDnsEvaluation } from "./modules/dns/routes.ts";
 import { runZeroTrustEvaluation, zeroTrustRoutes } from "./modules/zero-trust/routes.ts";
 import { pagesRoutes, runPagesEvaluation } from "./modules/pages/routes.ts";
 import { runStorageEvaluation, storageRoutes } from "./modules/storage/routes.ts";
-import { securityRoutes } from "./modules/security/routes.ts";
+import { runSecurityEvaluation, securityRoutes } from "./modules/security/routes.ts";
 
 interface Env {
   ASSETS: Fetcher;
@@ -100,6 +100,18 @@ export default {
       }).catch((err: unknown) => {
         console.error(
           `storage scheduled run failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }),
+    );
+
+    ctx.waitUntil(
+      runSecurityEvaluation(env, "scheduled").then(({ runId, newAlertCount }) => {
+        console.log(
+          `security scheduled run ${runId} (cron ${controller.cron}): ${newAlertCount} new alert(s)`,
+        );
+      }).catch((err: unknown) => {
+        console.error(
+          `security scheduled run failed: ${err instanceof Error ? err.message : String(err)}`,
         );
       }),
     );
