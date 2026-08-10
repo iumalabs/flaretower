@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { acknowledgeAlert, queryUnifiedAlerts } from "./inbox.ts";
 import { computeChanges } from "./changes.ts";
+import { computePostureSummary } from "./summary.ts";
 
 interface Env {
   DB: D1Database;
@@ -58,6 +59,18 @@ auditRoutes.get("/changes", async (c) => {
       entity_label: ch.entityLabel,
       previous_status: ch.previousStatus,
       current_status: ch.currentStatus,
+    })),
+  });
+});
+
+auditRoutes.get("/summary", async (c) => {
+  const summary = await computePostureSummary(c.env.DB);
+  return c.json({
+    modules: summary.map((entry) => ({
+      module: entry.module,
+      kind: entry.kind,
+      has_data: entry.hasData,
+      counts: entry.counts,
     })),
   });
 });
