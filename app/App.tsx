@@ -6,6 +6,7 @@ import { ZeroTrustInventory } from "./pages/ZeroTrustInventory.tsx";
 import { PagesInventory } from "./pages/PagesInventory.tsx";
 import { StorageInventory } from "./pages/StorageInventory.tsx";
 import { SecurityPostureInventory } from "./pages/SecurityPostureInventory.tsx";
+import { AuditInventory } from "./pages/AuditInventory.tsx";
 
 const PAGES = [
   { key: "exposure", label: "Workers & Access", render: () => <ExposureInventory /> },
@@ -14,6 +15,7 @@ const PAGES = [
   { key: "pages", label: "Pages", render: () => <PagesInventory /> },
   { key: "storage", label: "R2 / KV / D1", render: () => <StorageInventory /> },
   { key: "security", label: "Security Posture", render: () => <SecurityPostureInventory /> },
+  { key: "audit", label: "Audit & Drift", render: () => <AuditInventory /> },
 ] as const;
 
 type PageKey = typeof PAGES[number]["key"];
