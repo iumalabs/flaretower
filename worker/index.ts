@@ -6,6 +6,7 @@ import { runZeroTrustEvaluation, zeroTrustRoutes } from "./modules/zero-trust/ro
 import { pagesRoutes, runPagesEvaluation } from "./modules/pages/routes.ts";
 import { runStorageEvaluation, storageRoutes } from "./modules/storage/routes.ts";
 import { runSecurityEvaluation, securityRoutes } from "./modules/security/routes.ts";
+import { auditRoutes } from "./modules/audit/routes.ts";
 
 interface Env {
   ASSETS: Fetcher;
@@ -27,6 +28,7 @@ app.route("/api/zero-trust", zeroTrustRoutes);
 app.route("/api/pages", pagesRoutes);
 app.route("/api/storage", storageRoutes);
 app.route("/api/security", securityRoutes);
+app.route("/api/audit", auditRoutes);
 
 export default {
   fetch(request: Request, env: Env, ctx: ExecutionContext): Response | Promise<Response> {
