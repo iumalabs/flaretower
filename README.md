@@ -13,13 +13,17 @@ README covers day-to-day setup and operation only.
 ## Status
 
 Module 1 (**Workers & Access exposure**), Module 2 (**DNS**), Module 3 (**Zero Trust / Access**),
-Module 4 (**Pages**), Module 5 (**R2 / KV / D1**), and Module 6 (**Security Posture**) are
-implemented — see [`specs/001-workers-access-exposure/`](specs/001-workers-access-exposure/),
+Module 4 (**Pages**), Module 5 (**R2 / KV / D1**), Module 6 (**Security Posture**), and Module 7
+(**Audit & Drift**) are implemented — see
+[`specs/001-workers-access-exposure/`](specs/001-workers-access-exposure/),
 [`specs/002-dns/`](specs/002-dns/), [`specs/003-zero-trust/`](specs/003-zero-trust/),
-[`specs/004-pages/`](specs/004-pages/), [`specs/005-r2-kv-d1/`](specs/005-r2-kv-d1/), and
-[`specs/006-security-posture/`](specs/006-security-posture/) for their specs, plans, and tasks.
-Everything else in the constitution's product scope (§2) is documented as future work, not yet
-built.
+[`specs/004-pages/`](specs/004-pages/), [`specs/005-r2-kv-d1/`](specs/005-r2-kv-d1/),
+[`specs/006-security-posture/`](specs/006-security-posture/), and
+[`specs/007-audit-drift/`](specs/007-audit-drift/) for their specs, plans, and tasks. This is every
+module in the constitution's product scope (§2) — Module 7 requests no new Cloudflare API token
+scopes: it's a pure read-only aggregation over the finding/alert tables Modules 1-6 already
+populate, with no new Cloudflare API calls of its own (see
+[`specs/007-audit-drift/research.md`](specs/007-audit-drift/research.md#4-no-new-d1-tables) §4).
 
 ## Prerequisites
 
