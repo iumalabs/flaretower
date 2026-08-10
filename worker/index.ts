@@ -5,6 +5,7 @@ import { dnsRoutes, runDnsEvaluation } from "./modules/dns/routes.ts";
 import { runZeroTrustEvaluation, zeroTrustRoutes } from "./modules/zero-trust/routes.ts";
 import { pagesRoutes, runPagesEvaluation } from "./modules/pages/routes.ts";
 import { runStorageEvaluation, storageRoutes } from "./modules/storage/routes.ts";
+import { securityRoutes } from "./modules/security/routes.ts";
 
 interface Env {
   ASSETS: Fetcher;
@@ -25,6 +26,7 @@ app.route("/api/dns", dnsRoutes);
 app.route("/api/zero-trust", zeroTrustRoutes);
 app.route("/api/pages", pagesRoutes);
 app.route("/api/storage", storageRoutes);
+app.route("/api/security", securityRoutes);
 
 export default {
   fetch(request: Request, env: Env, ctx: ExecutionContext): Response | Promise<Response> {
