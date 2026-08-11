@@ -54,6 +54,16 @@
   // version serves a request.)
   "env": {
     "production": {
+      // Only the production version serves this — preview versions stay
+      // reachable solely via their own per-version preview URL (README's
+      // "Required manual post-deploy step" already gates those behind
+      // Access), never this custom domain.
+      "routes": [
+        {
+          "pattern": "flaretower.iuma.dev",
+          "custom_domain": true
+        }
+      ],
       "vars": {
         // Non-secret configuration (identifies which team/account, not a
         // credential) — constitution Principle VIII reserves Worker secrets
