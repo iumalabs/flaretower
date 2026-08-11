@@ -13,6 +13,16 @@ interface Env {
 
 export const dnsRoutes = new Hono<{ Bindings: Env }>();
 
+// Sentinel `record_type` for a zone that was successfully enumerated but has
+// zero DNS records (a legitimate, valid state — buildDnsInventory correctly
+// produces this). dns_findings only has per-record rows, so without this
+// marker a zero-record zone contributes no rows to a run and GET /inventory
+// (which groups strictly from dns_findings) would silently drop it —
+// contradicting FR-003/US1-AC3/SC-002. One marker row per empty zone keeps
+// the zone represented; the read path below strips markers back out of the
+// `records` array it returns, so callers just see `records: []`.
+const EMPTY_ZONE_RECORD_TYPE = "(empty)";
+
 // The most recent run's per-record status, read BEFORE the current run is
 // inserted — same pattern as Module 1's getPreviousStatuses, keyed by
 // dnsRecordKey (zone+name+type+content) per data-model.md's note.
@@ -54,8 +64,34 @@ export async function runDnsEvaluation(
   const runId = crypto.randomUUID();
   const evaluatedAt = new Date().toISOString();
 
-  const findingStatements = results.flatMap((zone) =>
-    zone.records.map((r) =>
+  const findingStatements = results.flatMap((zone) => {
+    // Zero records is a legitimate, successfully-enumerated state — write
+    // one marker row so the zone still shows up in GET /inventory, rather
+    // than contributing nothing to this run at all.
+    if (zone.records.length === 0) {
+      return [
+        env.DB.prepare(
+          `INSERT INTO dns_findings
+             (id, zone_name, record_name, record_type, content, proxy_capable, proxied, status, reason, evaluated_at, run_id, run_trigger)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        ).bind(
+          crypto.randomUUID(),
+          zone.zoneName,
+          "",
+          EMPTY_ZONE_RECORD_TYPE,
+          "",
+          0,
+          null,
+          "safe",
+          "zone has no DNS records",
+          evaluatedAt,
+          runId,
+          trigger,
+        ),
+      ];
+    }
+
+    return zone.records.map((r) =>
       env.DB.prepare(
         `INSERT INTO dns_findings
            (id, zone_name, record_name, record_type, content, proxy_capable, proxied, status, reason, evaluated_at, run_id, run_trigger)
@@ -74,8 +110,8 @@ export async function runDnsEvaluation(
         runId,
         trigger,
       )
-    )
-  );
+    );
+  });
 
   if (findingStatements.length > 0) {
     await env.DB.batch(findingStatements);
@@ -139,9 +175,12 @@ dnsRoutes.get("/inventory", async (c) => {
 
   const byZone = new Map<string, FindingRow[]>();
   for (const row of rows) {
+    // Ensures the zone key exists even when its only row is the empty-zone
+    // marker — the marker itself is never surfaced as a "record".
     const list = byZone.get(row.zone_name) ?? [];
-    list.push(row);
     byZone.set(row.zone_name, list);
+    if (row.record_type === EMPTY_ZONE_RECORD_TYPE) continue;
+    list.push(row);
   }
 
   return c.json({
