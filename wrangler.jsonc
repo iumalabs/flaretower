@@ -18,58 +18,65 @@
     "not_found_handling": "single-page-application",
   },
 
-  // Bindings (vars, d1_databases, secrets) do not inherit into `env.*`
-  // blocks below — Wrangler requires each environment to redeclare them in
-  // full. This top-level block is the **production** environment: deployed
-  // via `wrangler deploy` (no --env flag), matching Workers Builds' default
-  // production-branch deploy command.
-  "vars": {
-    // Non-secret configuration (identifies which team/account, not a
-    // credential) — constitution Principle VIII reserves Worker secrets for
-    // the API token itself.
-    "TEAM_DOMAIN": "https://yugai.cloudflareaccess.com",
-    "POLICY_AUD": "9f35b7e90bd62403706d6f14ca10868bcf065a18c10433acd8c4c24aea997d1d",
-    "CF_ACCOUNT_ID": "8b655d0dde6d223b9ce11116a014973a",
-  },
-  "secrets": {
-    // Declared here for validation/type-generation only (constitution
-    // Principle VIII) — the actual value is set via
-    // `wrangler secret put CF_API_TOKEN` (and `... --env preview` for the
-    // preview environment below), never in this file.
-    "required": ["CF_API_TOKEN"],
-  },
-
-  "d1_databases": [
-    {
-      "binding": "DB",
-      "database_name": "flaretower-production",
-      "database_id": "9480e87c-3df8-4e97-b08a-5b9e5cefe2f0",
-      "migrations_dir": "worker/db/migrations",
-    },
-  ],
-
-  "triggers": {
-    // Placeholder cadence for the Module 1 drift audit — exact frequency is
-    // a deployment-time decision (research.md §5), not fixed by the spec.
-    "crons": ["0 * * * *"],
-  },
-
   "limits": {
     // I/O-bound workload (research.md §5) — explicit headroom, not the
     // full 5-minute ceiling.
     "cpu_ms": 50000,
   },
 
+  // Bindings (vars, secrets, d1_databases, triggers) are NOT inheritable —
+  // Wrangler requires each named environment to redeclare them in full, so
+  // both environments below are fully explicit and symmetric. There is
+  // deliberately no top-level `vars`/`d1_databases`/etc: an earlier version
+  // of this file treated the top level as an implicit "production" (no
+  // `--env` flag needed), which is exactly the ambiguity Wrangler itself
+  // warns about ("Consider adding an environment configuration section")
+  // and caused a real `wrangler secret put --env production` failure during
+  // setup. Local dev (`deno task dev`) picks an environment via the
+  // `CLOUDFLARE_ENV` var — see `.env.development` (defaults to `preview`).
   "env": {
+    "production": {
+      "vars": {
+        // Non-secret configuration (identifies which team/account, not a
+        // credential) — constitution Principle VIII reserves Worker secrets
+        // for the API token itself.
+        "TEAM_DOMAIN": "https://yugai.cloudflareaccess.com",
+        "POLICY_AUD": "9f35b7e90bd62403706d6f14ca10868bcf065a18c10433acd8c4c24aea997d1d",
+        "CF_ACCOUNT_ID": "8b655d0dde6d223b9ce11116a014973a",
+      },
+      "secrets": {
+        // Declared here for validation/type-generation only (constitution
+        // Principle VIII) — the actual value is set via
+        // `wrangler secret put CF_API_TOKEN --env production`, never here.
+        "required": ["CF_API_TOKEN"],
+      },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "flaretower-production",
+          "database_id": "9480e87c-3df8-4e97-b08a-5b9e5cefe2f0",
+          "migrations_dir": "worker/db/migrations",
+        },
+      ],
+      "triggers": {
+        // Placeholder cadence for the Module 1 drift audit — exact frequency
+        // is a deployment-time decision (research.md §5), not fixed by the
+        // spec.
+        "crons": ["0 * * * *"],
+      },
+    },
+
     // Preview builds (PRs / non-production branches, via Workers Builds'
     // `wrangler versions upload --env preview`) get their own D1 database —
     // never the production one — so a preview build's evaluate/acknowledge
-    // traffic can't touch real production findings/alerts.
+    // traffic can't touch real production findings/alerts. No scheduled
+    // trigger, so preview builds don't run duplicate hourly scans against
+    // the same real Cloudflare account.
     "preview": {
       "vars": {
-        "TEAM_DOMAIN": "https://REPLACE_WITH_REAL_TEAM.cloudflareaccess.com",
-        "POLICY_AUD": "REPLACE_WITH_REAL_ACCESS_APP_AUD_TAG",
-        "CF_ACCOUNT_ID": "REPLACE_WITH_REAL_ACCOUNT_ID",
+        "TEAM_DOMAIN": "https://yugai.cloudflareaccess.com",
+        "POLICY_AUD": "9f35b7e90bd62403706d6f14ca10868bcf065a18c10433acd8c4c24aea997d1d",
+        "CF_ACCOUNT_ID": "8b655d0dde6d223b9ce11116a014973a",
       },
       "secrets": {
         "required": ["CF_API_TOKEN"],
