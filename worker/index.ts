@@ -7,6 +7,7 @@ import { pagesRoutes, runPagesEvaluation } from "./modules/pages/routes.ts";
 import { runStorageEvaluation, storageRoutes } from "./modules/storage/routes.ts";
 import { runSecurityEvaluation, securityRoutes } from "./modules/security/routes.ts";
 import { auditRoutes, runAuditDigest } from "./modules/audit/routes.ts";
+import { identityRoutes } from "./modules/identity/routes.ts";
 
 interface Env {
   ASSETS: Fetcher;
@@ -29,6 +30,7 @@ app.route("/api/pages", pagesRoutes);
 app.route("/api/storage", storageRoutes);
 app.route("/api/security", securityRoutes);
 app.route("/api/audit", auditRoutes);
+app.route("/api/identity", identityRoutes);
 
 export default {
   fetch(request: Request, env: Env, ctx: ExecutionContext): Response | Promise<Response> {
