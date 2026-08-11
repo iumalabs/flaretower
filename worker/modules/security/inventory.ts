@@ -2,6 +2,7 @@
 // prior module's inventory.ts shape. Exact response field names verified
 // against Cloudflare's documented API shapes (research.md §1-§6); final
 // verification against a live account happens in T022 (quickstart.md).
+import { mapWithConcurrency } from "../../concurrency.ts";
 import type { TurnstileWidget, ZoneInventoryItem } from "./types.ts";
 
 export interface CloudflareSecurityCredentials {
@@ -264,8 +265,14 @@ export async function buildSecurityInventory(
     };
   }
 
-  const zones = await Promise.all(
-    zonesResult.map((zone) => fetchZoneSecuritySettings(creds, zone, fetchImpl)),
+  // Each zone already fires 4 concurrent fetches internally
+  // (fetchZoneSecuritySettings) — capping this outer loop at 1 keeps this
+  // module's own peak at 4 in-flight requests, under the 6-connection
+  // Workers limit (worker/concurrency.ts).
+  const zones = await mapWithConcurrency(
+    zonesResult,
+    1,
+    (zone) => fetchZoneSecuritySettings(creds, zone, fetchImpl),
   );
 
   return { zones, turnstileWidgets };

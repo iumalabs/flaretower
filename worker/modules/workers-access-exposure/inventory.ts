@@ -5,6 +5,7 @@
 // Exact response field names below are pinned against Cloudflare's
 // documented API shapes; final verification against a live account happens
 // in T033 (quickstart.md end-to-end run), per research.md §3's own caveat.
+import { mapWithConcurrency } from "../../concurrency.ts";
 import type { AccessApplicationSummary, WorkerHostname, WorkerInventoryItem } from "./types.ts";
 
 export interface CloudflareCredentials {
@@ -207,8 +208,13 @@ export async function buildWorkerInventory(
   ]);
   const { subdomain: accountSubdomain, error: accountSubdomainError } = accountSubdomainResult;
 
-  const subdomainStatuses = await Promise.all(
-    scriptNames.map(async (name) => {
+  // One fetch per script — capped at 5 concurrent (worker/concurrency.ts),
+  // since an account's worker count trivially exceeds the Workers runtime's
+  // 6-concurrent-connection limit otherwise (confirmed live, issue #292).
+  const subdomainStatuses = await mapWithConcurrency(
+    scriptNames,
+    5,
+    async (name) => {
       if (!accountSubdomain) return { name, status: null, error: null as string | null };
       try {
         const status = await getScriptSubdomainStatus(name, creds, fetchImpl);
@@ -222,7 +228,7 @@ export async function buildWorkerInventory(
             : "unknown error checking workers.dev/preview status",
         };
       }
-    }),
+    },
   );
   const statusByWorker = new Map(subdomainStatuses.map((s) => [s.name, s]));
 
