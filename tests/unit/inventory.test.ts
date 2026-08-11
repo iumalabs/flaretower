@@ -127,6 +127,48 @@ Deno.test("buildWorkerInventory - account-level workers.dev check failing with a
   }
 });
 
+Deno.test("buildWorkerInventory - a failed Worker scripts list degrades to a single not_evaluated sentinel instead of throwing", async () => {
+  const fetchImpl = mockFetch([
+    ["/workers/scripts", () => jsonResponse({ success: false, result: null, errors: [] }, 500)],
+    ["/workers/domains", () => jsonResponse({ success: true, result: [], errors: [] })],
+    [
+      "/workers/subdomain",
+      () => jsonResponse({ success: true, result: { subdomain: "acct" }, errors: [] }),
+    ],
+  ]);
+
+  const inventory = await buildWorkerInventory(creds, fetchImpl);
+
+  assertEquals(inventory.length, 1);
+  assertEquals(inventory[0].hostnames.length, 1);
+  assertEquals(typeof inventory[0].hostnames[0].evaluationError, "string");
+});
+
+Deno.test("buildWorkerInventory - a failed custom domains list marks every Worker's custom_domain slot not_evaluated, never a silent zero", async () => {
+  const fetchImpl = mockFetch([
+    [
+      "/workers/scripts",
+      () =>
+        jsonResponse({
+          success: true,
+          result: [{ id: "worker-a" }, { id: "worker-b" }],
+          errors: [],
+        }),
+    ],
+    ["/workers/domains", () => jsonResponse({ success: false, result: null, errors: [] }, 500)],
+    ["/workers/subdomain", () => jsonResponse({ success: false, result: null, errors: [] }, 404)],
+  ]);
+
+  const inventory = await buildWorkerInventory(creds, fetchImpl);
+
+  assertEquals(inventory.length, 2);
+  for (const worker of inventory) {
+    assertEquals(worker.hostnames.length, 1);
+    assertEquals(worker.hostnames[0].kind, "custom_domain");
+    assertEquals(typeof worker.hostnames[0].evaluationError, "string");
+  }
+});
+
 Deno.test("buildWorkerInventory - workers.dev disabled for one specific script (no error) means no entry, not critical", async () => {
   const fetchImpl = mockFetch([
     [

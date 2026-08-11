@@ -163,6 +163,10 @@ export async function getScriptSubdomainStatus(
   );
 }
 
+function errorMessage(reason: unknown): string {
+  return reason instanceof Error ? reason.message : "unknown error";
+}
+
 function summarizePolicy(policy: RawAccessPolicy) {
   const include = policy.include ?? [];
   return {
@@ -201,11 +205,45 @@ export async function buildWorkerInventory(
   creds: CloudflareCredentials,
   fetchImpl: typeof fetch = fetch,
 ): Promise<WorkerInventoryItem[]> {
-  const [scriptNames, domainsByWorker, accountSubdomainResult] = await Promise.all([
-    listWorkerScripts(creds, fetchImpl),
-    listWorkerCustomDomains(creds, fetchImpl),
+  // Each top-level list call is caught independently (mirroring
+  // pages/inventory.ts's buildPagesInventory and security/inventory.ts's
+  // buildSecurityInventory) rather than left to Promise.all's
+  // reject-on-first-failure behavior — a failure here must degrade to a
+  // not_evaluated sentinel, not propagate uncaught through runEvaluation()
+  // and abort the whole run with zero exposure_findings rows written
+  // (FR-011).
+  const [scriptsResult, domainsResult, accountSubdomainResult] = await Promise.all([
+    listWorkerScripts(creds, fetchImpl).catch((err: unknown) => err as Error),
+    listWorkerCustomDomains(creds, fetchImpl).catch((err: unknown) => err as Error),
     getAccountWorkersDevSubdomain(creds, fetchImpl),
   ]);
+
+  if (scriptsResult instanceof Error) {
+    // No script names at all means nothing to enumerate — same sentinel
+    // shape Module 2/3 use for a total projects/zones-list failure: one
+    // placeholder item whose sole hostname carries evaluationError, so
+    // evaluateHostname() (evaluate.ts) resolves it to not_evaluated
+    // instead of the run throwing and writing no findings at all.
+    return [{
+      workerName: "(unavailable)",
+      hostnames: [{
+        hostname: "(unavailable)",
+        kind: "custom_domain",
+        evaluationError: `could not list Worker scripts: ${errorMessage(scriptsResult)}`,
+      }],
+    }];
+  }
+  const scriptNames = scriptsResult;
+
+  // A failed custom-domains list must not read as "no worker has a custom
+  // domain" (a silent false-safe) — every script gets a not_evaluated
+  // custom_domain placeholder instead, same principle as the existing
+  // accountSubdomainError handling below for workers.dev hostnames.
+  const domainsError = domainsResult instanceof Error ? errorMessage(domainsResult) : null;
+  const domainsByWorker = domainsResult instanceof Error
+    ? new Map<string, string[]>()
+    : domainsResult;
+
   const { subdomain: accountSubdomain, error: accountSubdomainError } = accountSubdomainResult;
 
   // One fetch per script — capped at 5 concurrent (worker/concurrency.ts),
@@ -235,8 +273,16 @@ export async function buildWorkerInventory(
   return scriptNames.map((name): WorkerInventoryItem => {
     const hostnames: WorkerHostname[] = [];
 
-    for (const hostname of domainsByWorker.get(name) ?? []) {
-      hostnames.push({ hostname, kind: "custom_domain" });
+    if (domainsError) {
+      hostnames.push({
+        hostname: `(unknown custom domain for ${name})`,
+        kind: "custom_domain",
+        evaluationError: domainsError,
+      });
+    } else {
+      for (const hostname of domainsByWorker.get(name) ?? []) {
+        hostnames.push({ hostname, kind: "custom_domain" });
+      }
     }
 
     if (accountSubdomainError) {
