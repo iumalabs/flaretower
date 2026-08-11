@@ -25,6 +25,13 @@ scopes: it's a pure read-only aggregation over the finding/alert tables Modules 
 populate, with no new Cloudflare API calls of its own (see
 [`specs/007-audit-drift/research.md`](specs/007-audit-drift/research.md#4-no-new-d1-tables) §4).
 
+Cross-cutting, alongside the 7 modules:
+[**Identity, Authorization & Audit Data Model**](specs/008-identity-authorization/) — wires the
+constitution-mandated `users`/`audit_log` baseline tables into behavior for the first time (operator
+recognition, FlareTower-native `member`/`admin` roles gating the in-app acknowledge action, and a
+write-capable `audit_log` mechanism ready for the first future Cloudflare-mutating module). See
+[Identity & Roles](#identity--roles) below. No new Cloudflare API token scopes.
+
 ## Prerequisites
 
 - [Deno](https://deno.com) 2.9+. This project's only local toolchain — no `package.json`, no
@@ -83,6 +90,30 @@ degraded-but-permitted mode.
 - `TEAM_DOMAIN` — `https://<your-team>.cloudflareaccess.com`
 - `POLICY_AUD` — the AUD tag of the Access application protecting FlareTower itself (Zero Trust
   dashboard → Access → Applications → your app → Application Audience (AUD) Tag)
+
+## Identity & Roles
+
+Cloudflare Access decides who can reach FlareTower at all; FlareTower has its own, independent
+`member`/`admin` permission level that decides what a recognized operator can do once they're in
+(constitution's Identity, Authorization & Audit Data Model section — see
+[`specs/008-identity-authorization/`](specs/008-identity-authorization/)).
+
+- **The first person to ever authenticate against a fresh deployment is automatically made `admin`**
+  — no manual setup step. Every operator after that defaults to `member`.
+- `member` can view every module's inventory, alerts, and the audit digest, but cannot acknowledge
+  an alert.
+- There is no admin UI for managing roles yet. An `admin` operator promotes or demotes another known
+  operator via:
+
+  ```sh
+  curl -X POST https://<your-flaretower-domain>/api/identity/users/<their-sub>/role \
+    -H "Content-Type: application/json" \
+    -d '{"role": "admin"}'
+  ```
+
+  (through the browser, or any client carrying a valid Access session — the same
+  `Cf-Access-Jwt-Assertion` gate as every other endpoint). `GET /api/identity/users` lists known
+  operators and their `sub`s.
 
 ## Required API token scopes
 
