@@ -33,6 +33,14 @@ Mirrors every prior module's contract shape. All endpoints under
 }
 ```
 
+`run_id`/`evaluated_at` are sourced from `zt_evaluation_runs`
+(data-model.md), not from either findings table — this is what lets a run
+that legitimately found zero applications (`applications: []`) still
+report its real `run_id`/`evaluated_at` instead of being conflated with
+"never evaluated" (`run_id: null`), and what keeps `service_tokens` from
+being dropped just because `applications` was empty for that run
+(T025/T026).
+
 **Errors**: `403` (missing/invalid Access JWT); partial results with
 `status: "not_evaluated"` on affected items rather than a blanket failure.
 

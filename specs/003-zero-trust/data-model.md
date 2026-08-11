@@ -64,6 +64,28 @@ Same shape as every prior module's alert table, keyed by `app_id`.
 | `detected_at` | `TEXT NOT NULL` | |
 | `acknowledged_at` | `TEXT` | |
 
+## `zt_evaluation_runs`
+
+Added by convergence tasks T025/T026 (`worker/db/migrations/0008_zero_trust_run_log.sql`).
+A run-level marker, independent of `zt_app_findings`/`zt_token_findings` row
+counts — written unconditionally on every run, even one that legitimately
+finds zero applications and zero service tokens. `GET /inventory` uses this
+table (not either findings table) to find the latest run: it's the only
+reliable way to tell "never evaluated" (`run_id: null`, no row here) apart
+from "evaluated, found nothing" (a row exists, both findings tables return
+zero rows for that `run_id`), and it stops the findings tables' independent
+identity spaces (applications vs. service tokens) from gating each other.
+
+| Column | Type | Notes |
+|---|---|---|
+| `run_id` | `TEXT PRIMARY KEY` | Same `run_id` written to both findings tables for that run |
+| `evaluated_at` | `TEXT NOT NULL` | ISO 8601 |
+| `run_trigger` | `TEXT NOT NULL` | `interactive` or `scheduled` |
+| `app_count` | `INTEGER NOT NULL` | Count of `zt_app_findings` rows this run produced (may be 0) |
+| `token_count` | `INTEGER NOT NULL` | Count of `zt_token_findings` rows this run produced (may be 0) |
+
+**Index**: `(evaluated_at DESC)`.
+
 ## Entity relationships
 
 ```
