@@ -108,8 +108,13 @@ export async function listDanglingInsights(
   fetchImpl: typeof fetch = fetch,
 ): Promise<DanglingInsight[] | null> {
   try {
+    // Confirmed against a real account (2026-08-11): the bare
+    // `/accounts/{id}/insights` path this originally used doesn't exist —
+    // Cloudflare returned a routing error (7003/7000), not a permission
+    // failure. The real path has a `security-center` segment, per
+    // Cloudflare's own API reference.
     const insights = await cfFetch<RawInsight[]>(
-      `/accounts/${creds.accountId}/insights`,
+      `/accounts/${creds.accountId}/security-center/insights`,
       creds,
       fetchImpl,
     );
