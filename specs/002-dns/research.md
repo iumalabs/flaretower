@@ -21,10 +21,10 @@ dependency isn't justified yet.
 **Decision**: Consume Cloudflare's native **Security Insights** findings (`Dangling A Records`,
 `Dangling AAAA Records`, `Dangling CNAME Records` — confirmed as real, named insight types in
 [Security Insights](https://developers.cloudflare.com/security/security-insights/)) via the
-account/zone insights API (`GET /accounts/{account_id}/insights`, filtered by `issue_type`; exact
-list-endpoint query parameters pinned during implementation — the sub-resource
-`GET /accounts/{account_id}/insights/{insight_id}/audit-log` is confirmed to exist, which confirms
-the parent collection is a real, listable REST resource, not dashboard-only). Required token scope:
+account/zone insights API (`GET /accounts/{account_id}/security-center/insights`, filtered by
+`issue_type` — **path corrected 2026-08-11**: the `security-center` segment was missing from this
+section's original guess, confirmed live when the bare `/accounts/{account_id}/insights` path
+returned a Cloudflare routing error (7003/7000), not a permission failure). Required token scope:
 **`Account Security Insights`** — confirmed 2026-08-11 against the live dashboard's permission
 picker (account-scoped, under "App Security"; supersedes this section's original
 `Zone Security
