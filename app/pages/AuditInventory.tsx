@@ -73,8 +73,38 @@ async function fetchSummary(): Promise<SummaryResponse> {
   return await res.json();
 }
 
-function AlertRow({ alert }: { alert: UnifiedAlert }): JSX.Element {
+async function acknowledgeAlert(module: string, kind: string, id: string): Promise<void> {
+  const res = await fetch(`/api/audit/alerts/${module}/${kind}/${id}/acknowledge`, {
+    method: "POST",
+  });
+  if (res.status === 403) {
+    throw new Error("You don't have permission to acknowledge alerts.");
+  }
+  if (!res.ok) {
+    throw new Error(`Acknowledge failed: ${res.status}`);
+  }
+}
+
+function AlertRow(
+  { alert, onAcknowledged }: { alert: UnifiedAlert; onAcknowledged: (id: string) => void },
+): JSX.Element {
+  const [pending, setPending] = useState(false);
+  const [ackError, setAckError] = useState<string | null>(null);
   const critical = alert.new_status === "critical";
+
+  async function handleAcknowledge() {
+    setPending(true);
+    setAckError(null);
+    try {
+      await acknowledgeAlert(alert.module, alert.kind, alert.id);
+      onAcknowledged(alert.id);
+    } catch (err) {
+      setAckError(err instanceof Error ? err.message : "failed to acknowledge alert");
+    } finally {
+      setPending(false);
+    }
+  }
+
   return (
     <tr
       style={{
@@ -99,6 +129,30 @@ function AlertRow({ alert }: { alert: UnifiedAlert }): JSX.Element {
       </td>
       <td style={{ padding: "8px 0", fontSize: "var(--text-body-size)", color: "var(--fg-muted)" }}>
         {alert.previous_status ?? "(new)"} → {alert.new_status} · {alert.detected_at}
+      </td>
+      <td style={{ padding: "8px 8px 8px 0", textAlign: "right" }}>
+        <button
+          type="button"
+          onClick={handleAcknowledge}
+          disabled={pending}
+          style={{
+            background: "none",
+            border: "1px solid var(--border)",
+            borderRadius: 4,
+            padding: "4px 10px",
+            cursor: pending ? "default" : "pointer",
+            color: "var(--fg-secondary)",
+            font: "inherit",
+            fontSize: "var(--text-body-size)",
+          }}
+        >
+          {pending ? "Acknowledging…" : "Acknowledge"}
+        </button>
+        {ackError && (
+          <div style={{ color: "var(--status-critical-fg)", fontSize: "var(--text-body-size)" }}>
+            {ackError}
+          </div>
+        )}
       </td>
     </tr>
   );
@@ -175,6 +229,10 @@ export function AuditInventory(): JSX.Element {
       );
   }, []);
 
+  function handleAcknowledged(id: string) {
+    setData((prev) => prev && { alerts: prev.alerts.filter((a) => a.id !== id) });
+  }
+
   if (error) {
     return <p style={{ color: "var(--status-critical-fg)" }}>{error}</p>;
   }
@@ -221,7 +279,9 @@ export function AuditInventory(): JSX.Element {
           : (
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <tbody>
-                {data.alerts.map((a) => <AlertRow key={a.id} alert={a} />)}
+                {data.alerts.map((a) => (
+                  <AlertRow key={a.id} alert={a} onAcknowledged={handleAcknowledged} />
+                ))}
               </tbody>
             </table>
           )}

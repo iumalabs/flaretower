@@ -71,3 +71,19 @@ export const accessAuth: MiddlewareHandler<
 
   await next();
 };
+
+// Gates an in-app mutating action by the operator's own stored FlareTower
+// role (research.md §4) — never by Cloudflare Access group membership.
+// Reads the role accessAuth already resolved into the identity context, so
+// this never makes its own D1 call.
+export function requireRole(
+  role: AccessIdentity["role"],
+): MiddlewareHandler<{ Variables: { identity: AccessIdentity } }> {
+  return async (c, next) => {
+    const identity = c.get("identity");
+    if (identity.role !== role) {
+      return c.text("Forbidden", 403);
+    }
+    await next();
+  };
+}
