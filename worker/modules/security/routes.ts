@@ -19,6 +19,7 @@ import type {
   RateLimitingEvaluation,
   SslTlsEvaluation,
   SslTlsStatus,
+  TurnstileWidget,
   WafEvaluation,
 } from "./types.ts";
 
@@ -297,17 +298,40 @@ interface RateLimitingFindingRow {
   reason: string;
 }
 
+// Serializes a Turnstile widget list for the API response, preserving
+// the null-vs-empty-array distinction all the way through: null means
+// the list itself could not be fetched (not-evaluated), a `.map` over
+// an actual (possibly empty) array means it was fetched successfully
+// (confirmed — possibly zero — widgets). See inventory.ts's
+// SecurityInventory.turnstileWidgets doc comment for why this
+// distinction exists (FR-012).
+// Exported for direct unit-testing (T025) — GET /inventory has no
+// harness in this codebase for exercising the full Hono route against a
+// mocked D1, so this is the pure sliver of that route's logic that
+// carries the null signal.
+export function serializeTurnstileWidgets(
+  widgets: TurnstileWidget[] | null,
+): Array<{ sitekey: string; name: string; domains: string[] }> | null {
+  return widgets === null
+    ? null
+    : widgets.map((w) => ({ sitekey: w.sitekey, name: w.name, domains: w.domains }));
+}
+
 // Every zone always produces exactly one ssl_tls_findings row per run
 // (data-model.md) — the most reliable table to source "did a run
 // happen" from, same pattern as Module 4's pages_subdomain_findings.
 securityRoutes.get("/inventory", async (c) => {
   const creds = { accountId: c.env.CF_ACCOUNT_ID, apiToken: c.env.CF_API_TOKEN };
 
+  // Same null-on-total-failure idiom `buildSecurityInventory()` uses for
+  // this exact fetch (inventory.ts) — a scoped-down token (missing
+  // `Turnstile Read`) or a transient API error must surface as
+  // not-evaluated, not as a confirmed-empty `[]` (T025, FR-012).
   const [latest, turnstileWidgets] = await Promise.all([
     c.env.DB.prepare(
       `SELECT run_id, evaluated_at FROM ssl_tls_findings ORDER BY evaluated_at DESC LIMIT 1`,
     ).first<{ run_id: string; evaluated_at: string }>(),
-    listTurnstileWidgets(creds).catch(() => []),
+    listTurnstileWidgets(creds).catch(() => null),
   ]);
 
   if (!latest) {
@@ -315,11 +339,7 @@ securityRoutes.get("/inventory", async (c) => {
       run_id: null,
       evaluated_at: null,
       zones: [],
-      turnstile_widgets: turnstileWidgets.map((w) => ({
-        sitekey: w.sitekey,
-        name: w.name,
-        domains: w.domains,
-      })),
+      turnstile_widgets: serializeTurnstileWidgets(turnstileWidgets),
     });
   }
 
@@ -363,11 +383,7 @@ securityRoutes.get("/inventory", async (c) => {
         rate_limiting: rateLimiting && { status: rateLimiting.status, reason: rateLimiting.reason },
       };
     }),
-    turnstile_widgets: turnstileWidgets.map((w) => ({
-      sitekey: w.sitekey,
-      name: w.name,
-      domains: w.domains,
-    })),
+    turnstile_widgets: serializeTurnstileWidgets(turnstileWidgets),
   });
 });
 

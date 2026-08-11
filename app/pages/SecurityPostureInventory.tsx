@@ -26,7 +26,11 @@ interface SecurityInventoryResponse {
   run_id: string | null;
   evaluated_at: string | null;
   zones: ZoneFinding[];
-  turnstile_widgets: TurnstileWidget[];
+  // null = the Turnstile widgets list itself could not be fetched (e.g. a
+  // scoped-down token, or a transient API error) — distinct from a
+  // successfully fetched, confirmed-empty array. See
+  // worker/modules/security/inventory.ts's SecurityInventory doc comment.
+  turnstile_widgets: TurnstileWidget[] | null;
 }
 
 async function fetchSecurityInventory(): Promise<SecurityInventoryResponse> {
@@ -149,7 +153,12 @@ export function SecurityPostureInventory(): JSX.Element {
     return <p style={{ color: "var(--fg-muted)" }}>Loading security posture inventory…</p>;
   }
 
-  if (data.zones.length === 0 && data.turnstile_widgets.length === 0) {
+  // `run_id === null` is the backend's authoritative "no evaluation run
+  // yet" signal (worker/modules/security/routes.ts) — a zone/widget
+  // array-length check is wrong here, since a real completed run against
+  // a genuinely zero-zone account also produces empty arrays and must
+  // render as a confirmed-empty result, not this message.
+  if (data.run_id === null) {
     return (
       <p style={{ color: "var(--fg-muted)" }}>
         No evaluation runs yet. Trigger one via <code>POST /api/security/evaluate</code>.
@@ -195,7 +204,13 @@ export function SecurityPostureInventory(): JSX.Element {
         >
           Turnstile widgets
         </h2>
-        {data.turnstile_widgets.length === 0
+        {data.turnstile_widgets === null
+          ? (
+            <p style={{ color: "var(--status-critical-fg)" }}>
+              Turnstile widgets could not be evaluated.
+            </p>
+          )
+          : data.turnstile_widgets.length === 0
           ? <p style={{ color: "var(--fg-muted)" }}>No Turnstile widgets configured.</p>
           : (
             <ul style={{ margin: 0, paddingLeft: 20 }}>

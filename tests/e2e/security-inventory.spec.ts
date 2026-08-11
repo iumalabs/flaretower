@@ -140,3 +140,44 @@ test("US3 — DNSSEC/WAF/rate-limiting gaps render warning, protected zone rende
   await expect(gapSection.locator("tr", { hasText: "Rate limiting" }).getByText("WARNING"))
     .toBeVisible();
 });
+
+// Regression coverage for the spec's "account has zero zones" edge case
+// (Edge Cases / SC-002): a completed run against a zero-zone account must
+// render the confirmed-empty result, not the "no evaluation runs yet"
+// message — the empty-state check must key off `run_id === null`, not
+// off the zones/turnstile_widgets arrays being empty, since a real
+// completed run can legitimately produce empty arrays too.
+test("a completed run against a zero-zone account renders confirmed-empty, not 'no evaluation runs yet'", async ({ page }) => {
+  await page.route("**/api/security/inventory", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        run_id: "run-2",
+        evaluated_at: "2026-08-12T00:00:00Z",
+        zones: [],
+        turnstile_widgets: [],
+      }),
+    }));
+  await page.goto("/");
+  await page.getByRole("button", { name: "Security Posture" }).click();
+
+  await expect(page.getByText("No evaluation runs yet", { exact: false })).not.toBeVisible();
+  await expect(page.getByText("Security posture inventory")).toBeVisible();
+  await expect(page.getByText("run run-2", { exact: false })).toBeVisible();
+  await expect(page.getByText("No Turnstile widgets configured.")).toBeVisible();
+});
+
+test("no evaluation run yet (run_id null) still renders the 'trigger one' message", async ({ page }) => {
+  await page.route("**/api/security/inventory", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ run_id: null, evaluated_at: null, zones: [], turnstile_widgets: [] }),
+    }));
+  await page.goto("/");
+  await page.getByRole("button", { name: "Security Posture" }).click();
+
+  await expect(page.getByText("No evaluation runs yet", { exact: false })).toBeVisible();
+  await expect(page.getByText("Security posture inventory")).not.toBeVisible();
+});

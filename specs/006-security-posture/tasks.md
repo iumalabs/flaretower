@@ -238,7 +238,7 @@ this module's headline value, same reasoning as every prior module.
 
 ## Phase 6: Convergence
 
-- [ ] T025 Preserve the null-vs-empty-array distinction for a failed
+- [x] T025 Preserve the null-vs-empty-array distinction for a failed
       Turnstile widget fetch in `GET /api/security/inventory`
       (`worker/modules/security/routes.ts`, both the no-run-yet branch
       and the main branch): both currently call
@@ -253,7 +253,7 @@ this module's headline value, same reasoning as every prior module.
       empty (confirmed-zero) list") establish but the route discards.
       Breaks quickstart.md Scenario 5 for the Turnstile field. per
       FR-012 (contradicts)
-- [ ] T026 Fix the empty-state check in
+- [x] T026 Fix the empty-state check in
       `app/pages/SecurityPostureInventory.tsx` (`if (data.zones.length
       === 0 && data.turnstile_widgets.length === 0)`) to key off
       `data.run_id === null` instead of both arrays being empty: the
