@@ -44,16 +44,17 @@ write-capable `audit_log` mechanism ready for the first future Cloudflare-mutati
 
 FlareTower ships with two **explicit, symmetric** Wrangler environments — `env.production` and
 `env.preview` in `wrangler.jsonc` — each with its own D1 database, so a preview build's traffic can
-never touch production findings/alerts. Neither is an implicit "top-level config"; every command
-below always names one explicitly via `--env`, which is also what Wrangler itself recommends the
-moment it detects named environments but an ambiguous command.
+never touch production findings/alerts. Both resolve to the **same** Cloudflare Worker resource
+(`flaretower`) as different versions, not two separate resources — see
+[Deployment](#deployment) for why that's the right shape here. Neither environment is an implicit
+"top-level config"; every command below always names one explicitly via `--env`, which is also
+what Wrangler itself recommends the moment it detects named environments but an ambiguous command.
 
 - **production** — deployed via `deno task deploy` (`wrangler deploy --env production`); runs the
   hourly scheduled drift audit.
-- **preview** — deployed via `deno task deploy:preview` (`wrangler versions upload --env preview`,
-  matching Workers Builds' own preview-branch deploy command); no scheduled drift audit
-  (`triggers.crons` is empty), so preview builds don't run duplicate hourly scans against the same
-  real Cloudflare account.
+- **preview** — deployed via `deno task deploy:preview` (`wrangler versions upload --env preview`);
+  no scheduled drift audit (`triggers.crons` is empty), so it doesn't run duplicate hourly scans
+  against the same real Cloudflare account.
 
 ```sh
 # Install dependencies (creates a local, gitignored node_modules/ — see
@@ -85,8 +86,8 @@ specifically want preview builds gated differently from production.
 
 Local dev (`deno task dev`, and Playwright's e2e webserver) targets the **preview** environment by
 default, via the committed `.env.development` file (`CLOUDFLARE_ENV=preview` — not a secret, just
-which Wrangler environment name to resolve; see [Cloudflare's own docs on this
-mechanism](https://developers.cloudflare.com/workers/vite-plugin/reference/cloudflare-environments/)).
+which Wrangler environment name to resolve; see
+[Cloudflare's own docs on this mechanism](https://developers.cloudflare.com/workers/vite-plugin/reference/cloudflare-environments/)).
 Override per-invocation with `CLOUDFLARE_ENV=production deno task dev` if you specifically need to
 run against production bindings locally.
 
@@ -193,13 +194,26 @@ capable of reading (and eventually writing) the entire Cloudflare account — pu
 Native Cloudflare ↔ GitHub integration (Workers Builds). No custom CI pipeline for deploys; GitHub
 Actions may run lint/test/typecheck as PR gates, but does not deploy.
 
-Workers Builds needs its per-branch deploy commands set explicitly, since this project uses named
-Wrangler environments (Setup, above) rather than the tool's zero-config default:
+**`env.production` and `env.preview` are one Cloudflare Worker resource (`flaretower`), not two** —
+both environments share the same `name`, so they resolve to different *versions* of the same
+resource rather than separate resources. Worker versions carry their own bindings independently
+(confirmed live 2026-08-11: a `wrangler versions upload --env preview` version genuinely gets
+`flaretower-preview`'s D1, the promoted production version keeps `flaretower-production`'s), so
+Cloudflare's native per-branch preview-URL mechanism just works with a single Workers Builds
+connection — no second GitHub connection or second resource needed. (An earlier, incorrect version
+of this setup gave each environment a distinct `name`, which does create two independent Worker
+resources with no automatic preview linking between them — confirmed by deploying that way and
+having to push a probe commit to prove neither triggered the other. Not what's wanted here.)
+
+Connect **once**: Cloudflare dashboard → **Workers & Pages** → `flaretower` → **Settings** →
+**Build**, connect the GitHub repo, then set:
 
 - **Production branch** (`main`) deploy command: `deno task deploy` (`wrangler deploy --env
-  production` — `env.production`, `flaretower-production`'s D1 binding).
-- **Preview deploy command** (every other branch/PR): `deno task deploy:preview`
-  (`wrangler versions upload --env preview` — `env.preview`, `flaretower-preview`'s D1 binding).
+  production`).
+- **Preview deploy command** (every other branch/PR): `deno task deploy:preview` (`wrangler
+  versions upload --env preview`) — Workers Builds posts each PR's own preview URL as a PR comment
+  automatically.
 
-Configure both in the Cloudflare dashboard → **Workers & Pages** → the `flaretower` Worker →
-**Settings** → **Build** → **Build configuration**, after connecting the GitHub repository.
+Build command for both: `deno task build`.
+
+Build command for both: `deno task build`.

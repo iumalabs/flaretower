@@ -15,18 +15,18 @@
   "assets": {
     "directory": "./dist/client",
     "binding": "ASSETS",
-    "not_found_handling": "single-page-application",
+    "not_found_handling": "single-page-application"
   },
 
   "limits": {
     // I/O-bound workload (research.md §5) — explicit headroom, not the
     // full 5-minute ceiling.
-    "cpu_ms": 50000,
+    "cpu_ms": 50000
   },
 
-  // Bindings (vars, secrets, d1_databases, triggers) are NOT inheritable —
-  // Wrangler requires each named environment to redeclare them in full, so
-  // both environments below are fully explicit and symmetric. There is
+  // Bindings (vars, secrets, d1_databases) are NOT inheritable — Wrangler
+  // requires each named environment to redeclare them in full, so both
+  // environments below are fully explicit and symmetric. There is
   // deliberately no top-level `vars`/`d1_databases`/etc: an earlier version
   // of this file treated the top level as an implicit "production" (no
   // `--env` flag needed), which is exactly the ambiguity Wrangler itself
@@ -34,6 +34,24 @@
   // and caused a real `wrangler secret put --env production` failure during
   // setup. Local dev (`deno task dev`) picks an environment via the
   // `CLOUDFLARE_ENV` var — see `.env.development` (defaults to `preview`).
+  //
+  // Both environments share the same `name` ("flaretower", the top-level
+  // value — omitted here so it inherits rather than risking drift) so this
+  // stays **one** Cloudflare Worker resource with two differently-bound
+  // versions, not two resources. Confirmed (2026-08-11) that Worker
+  // versions carry their own bindings independently — a `wrangler versions
+  // upload --env preview` version genuinely gets `flaretower-preview`'s D1,
+  // while the promoted production version keeps `flaretower-production`'s —
+  // so Cloudflare's own native preview-URL mechanism (one Workers Builds
+  // connection, its built-in preview-branch deploy command) is sufficient;
+  // no second GitHub connection or second resource is needed. (An earlier
+  // version of this file gave each environment an explicit, *different*
+  // `name`, which does create two separate resources — confirmed by
+  // deploying that way and observing two independent Worker scripts; not
+  // what's wanted here, since it forfeits Cloudflare's automatic per-branch
+  // preview links in exchange for secret isolation this project doesn't
+  // need — `CF_API_TOKEN` is the same read-only scope regardless of which
+  // version serves a request.)
   "env": {
     "production": {
       "vars": {
@@ -42,56 +60,57 @@
         // for the API token itself.
         "TEAM_DOMAIN": "https://yugai.cloudflareaccess.com",
         "POLICY_AUD": "9f35b7e90bd62403706d6f14ca10868bcf065a18c10433acd8c4c24aea997d1d",
-        "CF_ACCOUNT_ID": "8b655d0dde6d223b9ce11116a014973a",
+        "CF_ACCOUNT_ID": "8b655d0dde6d223b9ce11116a014973a"
       },
       "secrets": {
         // Declared here for validation/type-generation only (constitution
         // Principle VIII) — the actual value is set via
         // `wrangler secret put CF_API_TOKEN --env production`, never here.
-        "required": ["CF_API_TOKEN"],
+        "required": ["CF_API_TOKEN"]
       },
       "d1_databases": [
         {
           "binding": "DB",
           "database_name": "flaretower-production",
           "database_id": "9480e87c-3df8-4e97-b08a-5b9e5cefe2f0",
-          "migrations_dir": "worker/db/migrations",
-        },
+          "migrations_dir": "worker/db/migrations"
+        }
       ],
       "triggers": {
         // Placeholder cadence for the Module 1 drift audit — exact frequency
         // is a deployment-time decision (research.md §5), not fixed by the
         // spec.
-        "crons": ["0 * * * *"],
-      },
+        "crons": ["0 * * * *"]
+      }
     },
 
     // Preview builds (PRs / non-production branches, via Workers Builds'
     // `wrangler versions upload --env preview`) get their own D1 database —
     // never the production one — so a preview build's evaluate/acknowledge
-    // traffic can't touch real production findings/alerts. No scheduled
-    // trigger, so preview builds don't run duplicate hourly scans against
-    // the same real Cloudflare account.
+    // traffic can't touch real production findings/alerts. `triggers.crons`
+    // is irrelevant here in practice (scheduled events fire against the
+    // resource's deployed/promoted version, not unpromoted preview
+    // versions) but left empty for clarity of intent.
     "preview": {
       "vars": {
         "TEAM_DOMAIN": "https://yugai.cloudflareaccess.com",
         "POLICY_AUD": "9f35b7e90bd62403706d6f14ca10868bcf065a18c10433acd8c4c24aea997d1d",
-        "CF_ACCOUNT_ID": "8b655d0dde6d223b9ce11116a014973a",
+        "CF_ACCOUNT_ID": "8b655d0dde6d223b9ce11116a014973a"
       },
       "secrets": {
-        "required": ["CF_API_TOKEN"],
+        "required": ["CF_API_TOKEN"]
       },
       "d1_databases": [
         {
           "binding": "DB",
           "database_name": "flaretower-preview",
           "database_id": "ebc52981-ddf4-47ec-aefc-a1c6ed6ac1e2",
-          "migrations_dir": "worker/db/migrations",
-        },
+          "migrations_dir": "worker/db/migrations"
+        }
       ],
       "triggers": {
-        "crons": [],
-      },
-    },
-  },
+        "crons": []
+      }
+    }
+  }
 }
