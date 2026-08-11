@@ -207,3 +207,34 @@ this module's core value, same reasoning as every prior module.
   handler — review it with that in mind, same caveat as Module 2's T020.
 - Run `quickstart.md` in full (T022) before considering Module 3 done —
   same real-account caveat as every prior module.
+
+---
+
+## Phase 6: Convergence
+
+- [ ] T025 Fix `GET /api/zero-trust/inventory` in
+      `worker/modules/zero-trust/routes.ts` so it stops gating the entire
+      response on `zt_app_findings` alone: the handler currently looks up
+      the latest run via `SELECT ... FROM zt_app_findings ORDER BY
+      evaluated_at DESC LIMIT 1` and returns an all-empty response
+      (`applications: []`, `service_tokens: []`) whenever that query finds
+      no rows — which happens whenever the account has zero Access
+      applications, even if `zt_token_findings` holds legitimate,
+      already-evaluated service-token results for the same run. Decouple
+      the "has this run's data" check from the applications table alone
+      (e.g. determine the latest run/evaluated_at independently for each
+      of `zt_app_findings` and `zt_token_findings`, or from a run-level
+      source) so service-token findings are never silently dropped when an
+      account happens to have no Access applications. per SC-002 (partial)
+- [ ] T026 Add a persisted way to distinguish "the Zero Trust evaluation
+      ran and legitimately found zero applications and zero service
+      tokens" from "the Zero Trust evaluation has never run" — currently
+      `runZeroTrustEvaluation` in `worker/modules/zero-trust/routes.ts`
+      only inserts rows into `zt_app_findings`/`zt_token_findings` when
+      there is at least one application or token to record
+      (`if (statements.length > 0)`), so a run against a genuinely empty
+      account persists nothing at all, and both `GET
+      /api/zero-trust/inventory` and `app/pages/ZeroTrustInventory.tsx`'s
+      "No evaluation runs yet" message cannot tell the two states apart.
+      per Edge Case: "What happens when the account has zero Access
+      applications or zero service tokens at all?" (partial)

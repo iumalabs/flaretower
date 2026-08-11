@@ -368,3 +368,45 @@ Scenarios 1–2 and 6, then decide whether to ship before US3/US4.
   already established for this repository (branch per unit of work, PR,
   merge).
 - Run `quickstart.md` in full (T033) before considering module 1 done.
+
+---
+
+## Phase 7: Convergence
+
+- [ ] T037 Make `buildWorkerInventory`'s top-level Cloudflare list calls
+      (`listWorkerScripts`, `listWorkerCustomDomains` in
+      `worker/modules/workers-access-exposure/inventory.ts`) degrade to a
+      `not_evaluated` sentinel finding on failure instead of throwing
+      uncaught — today a failure of `GET /accounts/{id}/workers/scripts` or
+      `.../workers/domains` propagates unhandled through `runEvaluation()`
+      (`worker/modules/workers-access-exposure/routes.ts`), so `POST
+      /api/exposure/evaluate` and the `scheduled` handler abort the whole run
+      with no `exposure_findings` rows written at all, instead of the "502
+      with a body distinguishing which resources couldn't be evaluated"
+      contract in `contracts/api.md`. The same file's own
+      `getAccountWorkersDevSubdomain`/`listAccessApplications`, and every
+      later module's `inventory.ts` (e.g. `worker/modules/pages/inventory.ts`,
+      `worker/modules/security/inventory.ts`), already use the
+      evaluationError-sentinel pattern this is missing. per FR-011 (partial)
+- [ ] T038 Enumerate legacy zone-bound Worker Routes (`GET
+      /zones/{zone_id}/workers/routes`, `Workers Routes Read` permission) in
+      `worker/modules/workers-access-exposure/inventory.ts` alongside Custom
+      Domains, or formally amend `plan.md`/`research.md` to document that
+      this is an intentional scope narrowing — `plan.md`'s Project Structure
+      section names `inventory.ts` as covering "scripts, custom domains,
+      routes, access apps/policies" and `research.md` §3 lists the routes
+      endpoint, but the implementation only calls
+      `/accounts/{id}/workers/domains`; a Worker reachable solely via a
+      legacy Route (not a Custom Domain) is currently invisible to the
+      inventory, which is exactly the class of blind spot this module exists
+      to close. `README.md`'s token-scope table already documents this gap
+      as a conscious deferral ("reserved — kept for future route-level
+      checks") but the design docs were never updated to match. per plan:
+      inventory.ts touch-point (routes) (missing)
+- [ ] T039 Update `README.md`'s "Required API token scopes" table to account
+      for the `/accounts/{id}/workers/domains` endpoint that
+      `listWorkerCustomDomains()` (`worker/modules/workers-access-exposure/inventory.ts`)
+      actually calls — the `Workers Scripts Read` row's endpoint list omits
+      it, and `Workers Routes Read` is marked "reserved... not used," so the
+      table doesn't currently name any scope for the endpoint custom-domain
+      detection depends on. per Constitution VIII (partial)

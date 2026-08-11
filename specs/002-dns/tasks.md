@@ -246,3 +246,33 @@ record critical flag doesn't yet deliver the module's core value.
   what the shared scheduled invocation does.
 - Run `quickstart.md` in full (T023) before considering Module 2 done —
   same real-account caveat as Module 1's T033.
+
+---
+
+## Phase 6: Convergence
+
+- [ ] T026 Fix `GET /api/dns/inventory` so a zone with zero DNS records is
+      not silently omitted: `runDnsEvaluation` in `worker/modules/dns/routes.ts`
+      derives `dns_findings` rows only via `results.flatMap((zone) => zone.records.map(...))`,
+      so a zone with an empty `records` array (a legitimate, successfully-enumerated
+      empty zone, per `buildDnsInventory`) contributes zero rows to that run;
+      `GET /api/dns/inventory` then groups strictly from `dns_findings` rows,
+      so that zone never appears in the response at all — contradicting
+      FR-003 ("every zone represented exactly once"), US1/AC3 ("a zone with
+      zero records... appears with an empty record list, not omitted
+      entirely"), and SC-002 ("100% of zones... zero silent omissions").
+      Needs either a zone-level row/marker persisted alongside record rows,
+      or the read path to independently source the full zone list so an
+      empty zone still renders with an empty record list. per FR-003
+      (contradicts)
+- [ ] T027 Update the README's `Required API token scopes` table
+      (`Account Security Insights` row) — the **Cloudflare API endpoint**
+      column still lists `GET /accounts/{id}/insights`, the original,
+      pre-correction guess that research.md's 2026-08-11 update confirmed
+      returns a Cloudflare routing error (7003/7000) live. The code
+      (`worker/modules/dns/inventory.ts`'s `listDanglingInsights`) and
+      research.md §2 both use the corrected path
+      `GET /accounts/{id}/security-center/insights`; the README's endpoint
+      column — whose own stated purpose is to be "the unambiguous, stable
+      identifier" for finding the right scope in the dashboard — was not
+      updated to match. per research.md §2 (partial)
