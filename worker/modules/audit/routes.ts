@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { requireRole } from "../../auth/access-jwt.ts";
 import { acknowledgeAlert, queryUnifiedAlerts } from "./inbox.ts";
 import { computeChanges } from "./changes.ts";
 import { computePostureSummary } from "./summary.ts";
@@ -27,7 +28,7 @@ auditRoutes.get("/alerts", async (c) => {
   });
 });
 
-auditRoutes.post("/alerts/:module/:kind/:id/acknowledge", async (c) => {
+auditRoutes.post("/alerts/:module/:kind/:id/acknowledge", requireRole("admin"), async (c) => {
   const module = c.req.param("module");
   const kind = c.req.param("kind");
   const id = c.req.param("id");

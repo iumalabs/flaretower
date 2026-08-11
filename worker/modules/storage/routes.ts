@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { requireRole } from "../../auth/access-jwt.ts";
 import { buildStorageInventory } from "./inventory.ts";
 import { evaluateBuckets, evaluateD1Databases, evaluateKvNamespaces } from "./evaluate.ts";
 import {
@@ -383,7 +384,7 @@ const ALERT_TABLE_BY_KIND: Record<string, string> = {
 
 // Not a Cloudflare account mutation (FR-015 scope boundary) — not written
 // to audit_log, same as every prior module's equivalent endpoint.
-storageRoutes.post("/alerts/:kind/:id/acknowledge", async (c) => {
+storageRoutes.post("/alerts/:kind/:id/acknowledge", requireRole("admin"), async (c) => {
   const kind = c.req.param("kind");
   const id = c.req.param("id");
   const table = ALERT_TABLE_BY_KIND[kind];

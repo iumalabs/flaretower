@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { requireRole } from "../../auth/access-jwt.ts";
 import { buildDnsInventory, listDanglingInsights } from "./inventory.ts";
 import { evaluateDnsInventory } from "./evaluate.ts";
 import { diffForDnsAlerts, dnsRecordKey } from "./alerts.ts";
@@ -196,7 +197,7 @@ dnsRoutes.get("/alerts", async (c) => {
 
 // Not a Cloudflare account mutation (FR-012 scope boundary) — not written
 // to audit_log, same as Module 1's equivalent endpoint.
-dnsRoutes.post("/alerts/:id/acknowledge", async (c) => {
+dnsRoutes.post("/alerts/:id/acknowledge", requireRole("admin"), async (c) => {
   const id = c.req.param("id");
 
   const existing = await c.env.DB.prepare(

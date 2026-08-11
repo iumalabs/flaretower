@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { requireRole } from "../../auth/access-jwt.ts";
 import { buildWorkerInventory, listAccessApplications } from "./inventory.ts";
 import { evaluateInventory } from "./evaluate.ts";
 import { diffForAlerts } from "./alerts.ts";
@@ -166,7 +167,7 @@ exposureRoutes.get("/alerts", async (c) => {
 // Not a Cloudflare account mutation (FR-012 scope boundary) — this is
 // FlareTower's own state, so it is intentionally not written to
 // `audit_log` (data-model.md's note on the baseline schema).
-exposureRoutes.post("/alerts/:id/acknowledge", async (c) => {
+exposureRoutes.post("/alerts/:id/acknowledge", requireRole("admin"), async (c) => {
   const id = c.req.param("id");
 
   const existing = await c.env.DB.prepare(

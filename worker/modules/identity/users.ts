@@ -68,3 +68,41 @@ export async function upsertOperator(
 
   return { sub: identity.sub, email: identity.email, idp, role, createdAt: now, lastSeenAt: now };
 }
+
+// FR-011 — an admin needs to see who to promote; there is no other surface
+// (no UI, no user-listing elsewhere) that exposes known operators.
+export async function listOperators(db: D1Database): Promise<Operator[]> {
+  const { results } = await db
+    .prepare(`SELECT sub, email, idp, role, created_at, last_seen_at FROM users ORDER BY created_at`)
+    .all<UserRow>();
+
+  return results.map((r) => ({
+    sub: r.sub,
+    email: r.email,
+    idp: r.idp,
+    role: r.role,
+    createdAt: r.created_at,
+    lastSeenAt: r.last_seen_at,
+  }));
+}
+
+export type SetRoleResult =
+  | { outcome: "ok"; sub: string; role: Role }
+  | { outcome: "not_found" };
+
+// FR-006 — grants or revokes the elevated permission level for a known
+// operator. The caller (routes.ts) is responsible for validating that
+// `role` is one of the two accepted values before calling this.
+export async function setOperatorRole(
+  db: D1Database,
+  sub: string,
+  role: Role,
+): Promise<SetRoleResult> {
+  const existing = await db.prepare(`SELECT sub FROM users WHERE sub = ?`).bind(sub).first<
+    { sub: string }
+  >();
+  if (!existing) return { outcome: "not_found" };
+
+  await db.prepare(`UPDATE users SET role = ? WHERE sub = ?`).bind(role, sub).run();
+  return { outcome: "ok", sub, role };
+}

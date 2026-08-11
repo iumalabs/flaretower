@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { requireRole } from "../../auth/access-jwt.ts";
 import { buildZeroTrustInventory } from "./inventory.ts";
 import { evaluateApplications, evaluateServiceTokens } from "./evaluate.ts";
 import { diffForAppAlerts, diffForTokenAlerts } from "./alerts.ts";
@@ -267,7 +268,7 @@ const ALERT_TABLE_BY_KIND: Record<string, string> = {
 
 // Not a Cloudflare account mutation (FR-014 scope boundary) — not written
 // to audit_log, same as every prior module's equivalent endpoint.
-zeroTrustRoutes.post("/alerts/:kind/:id/acknowledge", async (c) => {
+zeroTrustRoutes.post("/alerts/:kind/:id/acknowledge", requireRole("admin"), async (c) => {
   const kind = c.req.param("kind");
   const id = c.req.param("id");
   const table = ALERT_TABLE_BY_KIND[kind];
