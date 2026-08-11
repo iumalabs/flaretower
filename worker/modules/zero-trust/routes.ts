@@ -91,10 +91,18 @@ export async function runZeroTrustEvaluation(
     )
   );
 
-  const statements = [...appStatements, ...tokenStatements];
-  if (statements.length > 0) {
-    await env.DB.batch(statements);
-  }
+  // Written unconditionally — even a run against a genuinely empty account
+  // (0 apps, 0 tokens) must leave a trace, so GET /inventory can tell
+  // "ran, found nothing" apart from "never ran" (T026). This is also the
+  // shared source of truth GET /inventory uses to find the latest run,
+  // instead of inferring it from zt_app_findings alone (T025).
+  const runLogStatement = env.DB.prepare(
+    `INSERT INTO zt_evaluation_runs (run_id, evaluated_at, run_trigger, app_count, token_count)
+     VALUES (?, ?, ?, ?, ?)`,
+  ).bind(runId, evaluatedAt, trigger, appResults.length, tokenResults.length);
+
+  const statements = [runLogStatement, ...appStatements, ...tokenStatements];
+  await env.DB.batch(statements);
 
   const newAppAlerts = diffForAppAlerts(appResults, previousAppStatuses);
   const newTokenAlerts = diffForTokenAlerts(tokenResults, previousTokenStatuses);
@@ -164,26 +172,33 @@ interface TokenFindingRow {
 }
 
 zeroTrustRoutes.get("/inventory", async (c) => {
-  const latestApps = await c.env.DB.prepare(
-    `SELECT run_id, evaluated_at FROM zt_app_findings ORDER BY evaluated_at DESC LIMIT 1`,
+  // The latest run is determined from zt_evaluation_runs — a shared,
+  // run-scoped source of truth — not from either findings table alone.
+  // Gating on zt_app_findings alone (the prior behavior) silently dropped
+  // legitimate zt_token_findings whenever the account had zero Access
+  // applications for that run (T025). A run row also exists even when a
+  // run found zero apps AND zero tokens (T026), so `null` here means
+  // "never evaluated," never "evaluated, found nothing."
+  const latestRun = await c.env.DB.prepare(
+    `SELECT run_id, evaluated_at FROM zt_evaluation_runs ORDER BY evaluated_at DESC LIMIT 1`,
   ).first<{ run_id: string; evaluated_at: string }>();
 
-  if (!latestApps) {
+  if (!latestRun) {
     return c.json({ run_id: null, evaluated_at: null, applications: [], service_tokens: [] });
   }
 
   const [{ results: appRows }, { results: tokenRows }] = await Promise.all([
     c.env.DB.prepare(
       `SELECT app_id, app_domain, status, reason FROM zt_app_findings WHERE run_id = ? ORDER BY app_domain`,
-    ).bind(latestApps.run_id).all<AppFindingRow>(),
+    ).bind(latestRun.run_id).all<AppFindingRow>(),
     c.env.DB.prepare(
       `SELECT token_id, token_name, expires_at, status, reason FROM zt_token_findings WHERE run_id = ? ORDER BY token_name`,
-    ).bind(latestApps.run_id).all<TokenFindingRow>(),
+    ).bind(latestRun.run_id).all<TokenFindingRow>(),
   ]);
 
   return c.json({
-    run_id: latestApps.run_id,
-    evaluated_at: latestApps.evaluated_at,
+    run_id: latestRun.run_id,
+    evaluated_at: latestRun.evaluated_at,
     applications: appRows.map((a) => ({
       app_id: a.app_id,
       app_domain: a.app_domain,

@@ -212,7 +212,7 @@ this module's core value, same reasoning as every prior module.
 
 ## Phase 6: Convergence
 
-- [ ] T025 Fix `GET /api/zero-trust/inventory` in
+- [x] T025 Fix `GET /api/zero-trust/inventory` in
       `worker/modules/zero-trust/routes.ts` so it stops gating the entire
       response on `zt_app_findings` alone: the handler currently looks up
       the latest run via `SELECT ... FROM zt_app_findings ORDER BY
@@ -226,7 +226,7 @@ this module's core value, same reasoning as every prior module.
       of `zt_app_findings` and `zt_token_findings`, or from a run-level
       source) so service-token findings are never silently dropped when an
       account happens to have no Access applications. per SC-002 (partial)
-- [ ] T026 Add a persisted way to distinguish "the Zero Trust evaluation
+- [x] T026 Add a persisted way to distinguish "the Zero Trust evaluation
       ran and legitimately found zero applications and zero service
       tokens" from "the Zero Trust evaluation has never run" — currently
       `runZeroTrustEvaluation` in `worker/modules/zero-trust/routes.ts`

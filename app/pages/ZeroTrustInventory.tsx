@@ -90,10 +90,25 @@ export function ZeroTrustInventory(): JSX.Element {
     return <p style={{ color: "var(--fg-muted)" }}>Loading Zero Trust inventory…</p>;
   }
 
-  if (data.applications.length === 0 && data.service_tokens.length === 0) {
+  // `run_id === null` is the only reliable "never evaluated" signal — it
+  // comes from the run-log table (worker/db/migrations/0008), written on
+  // every run regardless of finding count. Array emptiness alone can't
+  // distinguish "never ran" from "ran and legitimately found nothing,"
+  // so it must not gate this empty state (see specs/003-zero-trust/tasks.md
+  // T026).
+  if (data.run_id === null) {
     return (
       <p style={{ color: "var(--fg-muted)" }}>
         No evaluation runs yet. Trigger one via <code>POST /api/zero-trust/evaluate</code>.
+      </p>
+    );
+  }
+
+  if (data.applications.length === 0 && data.service_tokens.length === 0) {
+    return (
+      <p style={{ color: "var(--fg-muted)" }}>
+        Last evaluated {data.evaluated_at} · run {data.run_id}{" "}
+        — no Access applications or service tokens found in this account.
       </p>
     );
   }

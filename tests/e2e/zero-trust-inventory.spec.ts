@@ -91,3 +91,43 @@ test("US3 — service token statuses render distinctly: critical, warning, safe"
   const healthyRow = page.locator("tr", { hasText: "healthy-token" });
   await expect(healthyRow.getByText("PROTECTED")).toBeVisible();
 });
+
+// Regression coverage for specs/003-zero-trust/tasks.md T025/T026 — the
+// empty-state message must be driven by `run_id`, not by array emptiness,
+// so "never evaluated" and "evaluated, found nothing" read differently.
+test("T026 — a completed run with zero apps and zero tokens shows a distinct message from 'never evaluated'", async ({ page }) => {
+  await page.route("**/api/zero-trust/inventory", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        run_id: "run-empty",
+        evaluated_at: "2026-08-12T00:00:00Z",
+        applications: [],
+        service_tokens: [],
+      }),
+    }));
+  await page.reload();
+  await page.getByRole("button", { name: "Zero Trust" }).click();
+
+  await expect(page.getByText("no Access applications or service tokens found")).toBeVisible();
+  await expect(page.getByText("No evaluation runs yet.")).not.toBeVisible();
+});
+
+test("T026 — a run_id of null renders the 'never evaluated' message, not the empty-account message", async ({ page }) => {
+  await page.route("**/api/zero-trust/inventory", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        run_id: null,
+        evaluated_at: null,
+        applications: [],
+        service_tokens: [],
+      }),
+    }));
+  await page.reload();
+  await page.getByRole("button", { name: "Zero Trust" }).click();
+
+  await expect(page.getByText("No evaluation runs yet.")).toBeVisible();
+});
