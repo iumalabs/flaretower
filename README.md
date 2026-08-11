@@ -42,15 +42,18 @@ write-capable `audit_log` mechanism ready for the first future Cloudflare-mutati
 
 ## Setup
 
-FlareTower ships with two Wrangler environments, each with its own D1 database, so a preview build's
-traffic can never touch production findings/alerts:
+FlareTower ships with two **explicit, symmetric** Wrangler environments — `env.production` and
+`env.preview` in `wrangler.jsonc` — each with its own D1 database, so a preview build's traffic can
+never touch production findings/alerts. Neither is an implicit "top-level config"; every command
+below always names one explicitly via `--env`, which is also what Wrangler itself recommends the
+moment it detects named environments but an ambiguous command.
 
-- **production** — `wrangler.jsonc`'s top-level config; deployed via `deno task deploy`
-  (`wrangler deploy --env=""`); runs the hourly scheduled drift audit.
-- **preview** — `wrangler.jsonc`'s `env.preview` block; deployed via `deno task deploy:preview`
-  (`wrangler versions upload --env preview`, matching Workers Builds' own preview-branch deploy
-  command); no scheduled drift audit (`triggers.crons` is empty), so preview builds don't run
-  duplicate hourly scans against the same real Cloudflare account.
+- **production** — deployed via `deno task deploy` (`wrangler deploy --env production`); runs the
+  hourly scheduled drift audit.
+- **preview** — deployed via `deno task deploy:preview` (`wrangler versions upload --env preview`,
+  matching Workers Builds' own preview-branch deploy command); no scheduled drift audit
+  (`triggers.crons` is empty), so preview builds don't run duplicate hourly scans against the same
+  real Cloudflare account.
 
 ```sh
 # Install dependencies (creates a local, gitignored node_modules/ — see
@@ -58,27 +61,34 @@ traffic can never touch production findings/alerts:
 deno install
 
 # Create both D1 databases and wire their real IDs into wrangler.jsonc
-# (top-level d1_databases block for production, env.preview.d1_databases for preview)
+# (env.production.d1_databases for production, env.preview.d1_databases for preview)
 deno run -A npm:wrangler d1 create flaretower-production
 deno run -A npm:wrangler d1 create flaretower-preview
 
 # Apply migrations to all four targets
-deno task db:migrations:apply:local            # production binding, local sqlite (used by `deno task dev`)
+deno task db:migrations:apply:local            # production binding, local sqlite
 deno task db:migrations:apply:remote           # production, remote
-deno task db:migrations:apply:preview:local    # preview binding, local sqlite
+deno task db:migrations:apply:preview:local    # preview binding, local sqlite (used by `deno task dev`)
 deno task db:migrations:apply:preview:remote   # preview, remote
 
 # Configure secrets and vars
 cp .dev.vars.example .dev.vars   # local dev only, gitignored
-deno run -A npm:wrangler secret put CF_API_TOKEN                  # production
-deno run -A npm:wrangler secret put CF_API_TOKEN --env preview    # preview
+deno run -A npm:wrangler secret put CF_API_TOKEN --env production
+deno run -A npm:wrangler secret put CF_API_TOKEN --env preview
 ```
 
-Fill in `wrangler.jsonc`'s `vars` block **in both the top-level and `env.preview`** (`TEAM_DOMAIN`,
-`POLICY_AUD`, `CF_ACCOUNT_ID`) and `.dev.vars` (`TEAM_DOMAIN`, `POLICY_AUD` for local dev) with real
-values — see [Authentication](#authentication) for what they mean. The same Access application/token
-normally protects both environments; use separate ones only if you specifically want preview builds
-gated differently from production.
+Fill in `wrangler.jsonc`'s `vars` block **in both `env.production` and `env.preview`**
+(`TEAM_DOMAIN`, `POLICY_AUD`, `CF_ACCOUNT_ID`) and `.dev.vars` (`TEAM_DOMAIN`, `POLICY_AUD` for
+local dev) with real values — see [Authentication](#authentication) for what they mean. The same
+Access application/token normally protects both environments; use separate ones only if you
+specifically want preview builds gated differently from production.
+
+Local dev (`deno task dev`, and Playwright's e2e webserver) targets the **preview** environment by
+default, via the committed `.env.development` file (`CLOUDFLARE_ENV=preview` — not a secret, just
+which Wrangler environment name to resolve; see [Cloudflare's own docs on this
+mechanism](https://developers.cloudflare.com/workers/vite-plugin/reference/cloudflare-environments/)).
+Override per-invocation with `CLOUDFLARE_ENV=production deno task dev` if you specifically need to
+run against production bindings locally.
 
 ## Local development
 
@@ -186,8 +196,8 @@ Actions may run lint/test/typecheck as PR gates, but does not deploy.
 Workers Builds needs its per-branch deploy commands set explicitly, since this project uses named
 Wrangler environments (Setup, above) rather than the tool's zero-config default:
 
-- **Production branch** (`main`) deploy command: `deno task deploy` (`wrangler deploy --env=""` —
-  the top-level config, `flaretower-production`'s D1 binding).
+- **Production branch** (`main`) deploy command: `deno task deploy` (`wrangler deploy --env
+  production` — `env.production`, `flaretower-production`'s D1 binding).
 - **Preview deploy command** (every other branch/PR): `deno task deploy:preview`
   (`wrangler versions upload --env preview` — `env.preview`, `flaretower-preview`'s D1 binding).
 

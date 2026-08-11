@@ -1,6 +1,11 @@
 # Secrets — never committed
 .env
 .env.*
+# Exception: .env.development holds only CLOUDFLARE_ENV=preview (which
+# Wrangler environment `deno task dev` targets locally) — not a credential,
+# committed so local dev works out of the box (constitution Principle VIII
+# only reserves secrecy for the API token itself).
+!.env.development
 .dev.vars
 
 # Claude Code local-only state (credentials, local overrides)
