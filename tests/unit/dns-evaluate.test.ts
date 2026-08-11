@@ -70,10 +70,20 @@ Deno.test("evaluateRecord - not_evaluated (not silently safe) for a proxy-capabl
   assertEquals(result.status, "not_evaluated");
 });
 
-Deno.test("evaluateRecord - insight matching requires zone+name+type to all agree", () => {
+Deno.test("evaluateRecord - insight matching ignores zoneName, since the real API doesn't reliably expose one — recordName+recordType is enough (FQDNs are already zone-qualified)", () => {
   const result = evaluateRecord(
+    // Same recordName+recordType as the fixture insight, but a DIFFERENT
+    // zoneName than the insight carries — must still match.
     record({ zoneName: "different.com", recordName: "old-blog.example.com", recordType: "CNAME" }),
-    [insight()], // insight is for zoneName "example.com"
+    [insight({ zoneName: "example.com" })],
+  );
+  assertEquals(result.status, "critical");
+});
+
+Deno.test("evaluateRecord - insight matching still requires name+type to both agree", () => {
+  const result = evaluateRecord(
+    record({ recordName: "old-blog.example.com", recordType: "A" }), // same name, different type
+    [insight({ recordType: "CNAME" })],
   );
   assertEquals(result.status, "safe");
 });

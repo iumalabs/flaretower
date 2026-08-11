@@ -30,6 +30,16 @@ picker (account-scoped, under "App Security"; supersedes this section's original
 `Zone Security
 Center Insights` guess — see §6 below).
 
+**Response shape, corrected 2026-08-11 against real data**: the list response wraps its array as
+`result: { issues: [...] }`, not a bare array — the bare-array assumption threw
+`insights.filter is not a function` the moment the path fix above let a real response through. Each
+issue also has no top-level `zone_name` or `description` field (both were this section's original,
+never-corrected guesses) — the real fields are `subject` (the affected record's FQDN) and
+`resolve_text` (human-readable guidance). Since there's no reliable zone-name field, matching an
+insight to a `DnsRecord` in `evaluate.ts`'s `findDanglingMatch()` uses `recordName` (FQDN) +
+`recordType` only, not zone — record names are already zone-qualified, so this is both simpler and
+correct, unlike requiring a zone match that could never succeed.
+
 **Rationale**: Cloudflare already runs exactly this heuristic scan natively, on a schedule, using
 signatures for decommissioned/claimable third-party resources that Cloudflare's own security team
 actively maintains and expands. Reimplementing dangling-target detection ourselves (DNS-resolving

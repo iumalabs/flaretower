@@ -9,12 +9,18 @@ import type {
   ZoneEvaluation,
 } from "./types.ts";
 
+// Matches on recordName + recordType only, not zoneName — Cloudflare's
+// Security Insights API doesn't reliably expose a usable zone-name field
+// (inventory.ts's listDanglingInsights leaves it ""), so requiring an exact
+// zoneName match would silently never match anything, turning a real
+// dangling record into a false "safe". recordName is already a
+// zone-qualified FQDN, so it alone is enough to identify the record
+// correctly.
 function findDanglingMatch(
   record: DnsRecord,
   insights: DanglingInsight[],
 ): DanglingInsight | undefined {
   return insights.find((i) =>
-    i.zoneName === record.zoneName &&
     i.recordName === record.recordName &&
     i.recordType === record.recordType
   );
