@@ -1,14 +1,18 @@
 import { createRemoteJWKSet, jwtVerify } from "jose";
 import type { MiddlewareHandler } from "hono";
+import { fetchIdentityProvider } from "./get-identity.ts";
+import { upsertOperator } from "../modules/identity/users.ts";
 
 export interface AccessIdentity {
   sub: string;
   email: string;
+  role: "member" | "admin";
 }
 
 interface AccessEnv {
   TEAM_DOMAIN: string;
   POLICY_AUD: string;
+  DB: D1Database;
 }
 
 // One JWKS per team domain, reused across requests within a warm isolate so
@@ -25,9 +29,11 @@ function getJWKS(teamDomain: string) {
   return jwks;
 }
 
-// Fail closed on every path: missing header, verification failure, or a
-// payload missing the claims we need all return 403 with no detail about
-// which case it was (constitution Principle II).
+// Fail closed on every path: missing header, verification failure, a
+// payload missing the claims we need, or a failure recognizing the operator
+// all return 403 with no detail about which case it was (constitution
+// Principle II) — an operator whose identity can't be established or
+// resolved to a role isn't authenticated, full stop.
 export const accessAuth: MiddlewareHandler<
   { Bindings: AccessEnv; Variables: { identity: AccessIdentity } }
 > = async (c, next) => {
@@ -49,7 +55,16 @@ export const accessAuth: MiddlewareHandler<
       return c.text("Forbidden", 403);
     }
 
-    c.set("identity", { sub, email });
+    // Recognizes the operator (research.md §3) — the very first ever
+    // created is auto-elevated (FR-005); IdP enrichment is only fetched on
+    // that same first-sight path.
+    const operator = await upsertOperator(
+      c.env.DB,
+      { sub, email },
+      () => fetchIdentityProvider(c.env.TEAM_DOMAIN, token),
+    );
+
+    c.set("identity", { sub, email, role: operator.role });
   } catch {
     return c.text("Forbidden", 403);
   }
