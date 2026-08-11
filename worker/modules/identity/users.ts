@@ -73,7 +73,9 @@ export async function upsertOperator(
 // (no UI, no user-listing elsewhere) that exposes known operators.
 export async function listOperators(db: D1Database): Promise<Operator[]> {
   const { results } = await db
-    .prepare(`SELECT sub, email, idp, role, created_at, last_seen_at FROM users ORDER BY created_at`)
+    .prepare(
+      `SELECT sub, email, idp, role, created_at, last_seen_at FROM users ORDER BY created_at`,
+    )
     .all<UserRow>();
 
   return results.map((r) => ({
