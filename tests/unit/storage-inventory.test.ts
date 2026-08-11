@@ -38,7 +38,7 @@ Deno.test("listR2Buckets - maps bucket names", async () => {
       () =>
         jsonResponse({
           success: true,
-          result: [{ name: "uploads" }, { name: "backups" }],
+          result: { buckets: [{ name: "uploads" }, { name: "backups" }] },
           errors: [],
         }),
     ],
@@ -157,7 +157,7 @@ Deno.test("buildStorageInventory - every bucket, namespace, and database is enum
   const fetchImpl = mockFetch([
     [
       "/r2/buckets",
-      () => jsonResponse({ success: true, result: [{ name: "uploads" }], errors: [] }),
+      () => jsonResponse({ success: true, result: { buckets: [{ name: "uploads" }] }, errors: [] }),
     ],
     [
       "/storage/kv/namespaces",
@@ -189,7 +189,7 @@ Deno.test("buildStorageInventory - a per-bucket domain-fetch failure sets that b
     ["/r2/buckets", () =>
       jsonResponse({
         success: true,
-        result: [{ name: "broken-bucket" }, { name: "healthy-bucket" }],
+        result: { buckets: [{ name: "broken-bucket" }, { name: "healthy-bucket" }] },
         errors: [],
       })],
     [
@@ -239,7 +239,7 @@ Deno.test("buildStorageInventory - buckets, namespaces, and databases fail indep
   const fetchImpl = mockFetch([
     [
       "/r2/buckets",
-      () => jsonResponse({ success: true, result: [{ name: "uploads" }], errors: [] }),
+      () => jsonResponse({ success: true, result: { buckets: [{ name: "uploads" }] }, errors: [] }),
     ],
     [
       "/storage/kv/namespaces",
@@ -307,7 +307,7 @@ Deno.test("listScriptBindings - maps binding type and target id", async () => {
 
 Deno.test("buildStorageInventory - a namespace/database referenced by a Worker's bindings is safe, an unreferenced one is warning", async () => {
   const fetchImpl = mockFetch([
-    ["/r2/buckets", () => jsonResponse({ success: true, result: [], errors: [] })],
+    ["/r2/buckets", () => jsonResponse({ success: true, result: { buckets: [] }, errors: [] })],
     [
       "/storage/kv/namespaces",
       () =>
@@ -345,7 +345,7 @@ Deno.test("buildStorageInventory - a namespace/database referenced by a Worker's
 
 Deno.test("buildStorageInventory - a per-script bindings-fetch failure marks allBindingsConfirmed false, other scripts' bindings still counted", async () => {
   const fetchImpl = mockFetch([
-    ["/r2/buckets", () => jsonResponse({ success: true, result: [], errors: [] })],
+    ["/r2/buckets", () => jsonResponse({ success: true, result: { buckets: [] }, errors: [] })],
     ["/storage/kv/namespaces", () => jsonResponse({ success: true, result: [], errors: [] })],
     ["/d1/database", () => jsonResponse({ success: true, result: [], errors: [] })],
     EMPTY_ACCESS_APPS,
