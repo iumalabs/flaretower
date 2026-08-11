@@ -139,19 +139,19 @@ Deno.test("listDanglingInsights - filters to only dangling A/AAAA/CNAME issue ty
     ["/insights", () =>
       jsonResponse({
         success: true,
-        result: [
-          {
-            issue_type: "dangling_dns_cname",
-            zone_name: "example.com",
-            subject: "old-blog.example.com",
-            description: "target no longer exists",
-          },
-          {
-            issue_type: "missing_dmarc_record", // unrelated insight type — must be filtered out
-            zone_name: "example.com",
-            subject: "example.com",
-          },
-        ],
+        result: {
+          issues: [
+            {
+              issue_type: "dangling_dns_cname",
+              subject: "old-blog.example.com",
+              resolve_text: "target no longer exists",
+            },
+            {
+              issue_type: "missing_dmarc_record", // unrelated insight type — must be filtered out
+              subject: "example.com",
+            },
+          ],
+        },
         errors: [],
       })],
   ]);
@@ -159,9 +159,9 @@ Deno.test("listDanglingInsights - filters to only dangling A/AAAA/CNAME issue ty
   const insights = await listDanglingInsights(creds, fetchImpl);
 
   assertEquals(insights?.length, 1);
-  assertEquals(insights?.[0].zoneName, "example.com");
   assertEquals(insights?.[0].recordName, "old-blog.example.com");
   assertEquals(insights?.[0].recordType, "CNAME");
+  assertEquals(insights?.[0].reason, "target no longer exists");
 });
 
 Deno.test("listDanglingInsights - returns null (not throws, not empty array) when the insights API itself fails", async () => {

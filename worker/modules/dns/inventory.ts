@@ -71,11 +71,15 @@ interface RawDnsRecord {
   proxied?: boolean;
 }
 
+// Confirmed against Cloudflare's own API reference and a real account
+// (2026-08-11): an insight has no top-level `zone_name` or `description`
+// field — those were this module's original, never-corrected guesses.
+// `subject` (the affected record's full/FQDN name) and `resolve_text`
+// (human-readable guidance) are the real fields.
 interface RawInsight {
   issue_type: string;
-  zone_name?: string;
   subject?: string;
-  description?: string;
+  resolve_text?: string;
 }
 
 const DANGLING_ISSUE_TYPES = new Set([
@@ -113,18 +117,27 @@ export async function listDanglingInsights(
     // Cloudflare returned a routing error (7003/7000), not a permission
     // failure. The real path has a `security-center` segment, per
     // Cloudflare's own API reference.
-    const insights = await cfFetch<RawInsight[]>(
+    // The list response wraps its array as `{ issues: [...] }`, not a bare
+    // array (confirmed live 2026-08-11 — the bare-array assumption threw
+    // "insights.filter is not a function" the moment the routing-path bug
+    // above was fixed and a real response came back).
+    const { issues } = await cfFetch<{ issues: RawInsight[] }>(
       `/accounts/${creds.accountId}/security-center/insights`,
       creds,
       fetchImpl,
     );
-    return insights
+    return issues
       .filter((i) => DANGLING_ISSUE_TYPES.has(i.issue_type))
       .map((i) => ({
-        zoneName: i.zone_name ?? "",
+        // zoneName is intentionally not sourced from the API here — no
+        // reliable top-level zone-name field exists (research.md §2). The
+        // match in evaluate.ts's findDanglingMatch() keys on recordName +
+        // recordType instead, which is safe: DNS record names are FQDNs,
+        // already zone-qualified.
+        zoneName: "",
         recordName: i.subject ?? "",
         recordType: i.issue_type.replace("dangling_dns_", "").toUpperCase(),
-        reason: i.description ?? `dangling ${i.issue_type} target`,
+        reason: i.resolve_text ?? `dangling ${i.issue_type} target`,
       }));
   } catch (err) {
     // Swallowed into "not_evaluated" for every record (FR-011) rather than
