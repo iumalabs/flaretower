@@ -251,7 +251,7 @@ record critical flag doesn't yet deliver the module's core value.
 
 ## Phase 6: Convergence
 
-- [ ] T026 Fix `GET /api/dns/inventory` so a zone with zero DNS records is
+- [x] T026 Fix `GET /api/dns/inventory` so a zone with zero DNS records is
       not silently omitted: `runDnsEvaluation` in `worker/modules/dns/routes.ts`
       derives `dns_findings` rows only via `results.flatMap((zone) => zone.records.map(...))`,
       so a zone with an empty `records` array (a legitimate, successfully-enumerated
@@ -265,7 +265,7 @@ record critical flag doesn't yet deliver the module's core value.
       or the read path to independently source the full zone list so an
       empty zone still renders with an empty record list. per FR-003
       (contradicts)
-- [ ] T027 Update the README's `Required API token scopes` table
+- [x] T027 Update the README's `Required API token scopes` table
       (`Account Security Insights` row) — the **Cloudflare API endpoint**
       column still lists `GET /accounts/{id}/insights`, the original,
       pre-correction guess that research.md's 2026-08-11 update confirmed
