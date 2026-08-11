@@ -69,13 +69,14 @@ Deno.test("queryUnifiedAlerts - merges alerts from multiple sources, sorted by d
     ],
   });
 
-  const alerts = await queryUnifiedAlerts(db);
+  const { alerts, unavailableSources } = await queryUnifiedAlerts(db);
 
   assertEquals(alerts.length, 2);
   assertEquals(alerts[0].id, "a2"); // most recent first
   assertEquals(alerts[0].module, "security");
   assertEquals(alerts[1].id, "a1");
   assertEquals(alerts[1].module, "exposure");
+  assertEquals(unavailableSources, []);
 });
 
 Deno.test("queryUnifiedAlerts - a per-source read failure doesn't blank out the others", async () => {
@@ -95,7 +96,7 @@ Deno.test("queryUnifiedAlerts - a per-source read failure doesn't blank out the 
     new Set(["exposure_alerts"]),
   );
 
-  const alerts = await queryUnifiedAlerts(db);
+  const { alerts } = await queryUnifiedAlerts(db);
 
   assertEquals(alerts.length, 1);
   assertEquals(alerts[0].id, "a2");
@@ -103,8 +104,37 @@ Deno.test("queryUnifiedAlerts - a per-source read failure doesn't blank out the 
 
 Deno.test("queryUnifiedAlerts - empty result when no source has any outstanding alerts", async () => {
   const db = createMockD1({});
-  const alerts = await queryUnifiedAlerts(db);
+  const { alerts, unavailableSources } = await queryUnifiedAlerts(db);
   assertEquals(alerts, []);
+  assertEquals(unavailableSources, []);
+});
+
+Deno.test("queryUnifiedAlerts - a rejected source is reported as unavailable, distinct from a source with zero rows", async () => {
+  const db = createMockD1(
+    {
+      ssl_tls_alerts: [
+        {
+          id: "a2",
+          entity_label: "example.com",
+          previous_status: "safe",
+          new_status: "critical",
+          detected_at: "2026-08-10T06:00:00Z",
+          acknowledged_at: null,
+        },
+      ],
+      // dns_alerts is intentionally absent: this source legitimately has
+      // zero rows and must NOT show up in unavailableSources.
+    },
+    new Set(["exposure_alerts"]),
+  );
+
+  const { unavailableSources } = await queryUnifiedAlerts(db);
+
+  assertEquals(unavailableSources.length, 1);
+  assertEquals(unavailableSources[0].module, "exposure");
+  assertEquals(unavailableSources[0].kind, "hostname");
+  assertEquals(unavailableSources[0].error.includes("exposure_alerts"), true);
+  assertEquals(unavailableSources.some((s) => s.module === "dns"), false);
 });
 
 Deno.test("acknowledgeAlert - unknown module/kind pair returns unknown_source", async () => {

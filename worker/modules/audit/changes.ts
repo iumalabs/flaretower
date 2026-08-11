@@ -1,7 +1,12 @@
 // "What changed since a point in time" digest: for each of the fourteen
 // sources, compares each entity's latest finding against its most
 // recent finding at or before a requested cutoff (research.md §5).
-import { AUDIT_SOURCES, type AuditSource } from "./sources.ts";
+import {
+  AUDIT_SOURCES,
+  type AuditSource,
+  errorMessage,
+  type UnavailableSource,
+} from "./sources.ts";
 
 export interface ChangeEntry {
   module: string;
@@ -81,14 +86,36 @@ async function computeChangesForSource(
   return changes;
 }
 
+export interface ChangesResult {
+  changes: ChangeEntry[];
+  // Sources whose findings-table read rejected outright — kept separate
+  // from `changes` so a genuine read failure never gets folded into
+  // "nothing changed for this source" (FR-010).
+  unavailableSources: UnavailableSource[];
+}
+
 // A per-source read failure doesn't blank out the other thirteen
 // (spec FR-010) — Promise.allSettled, not Promise.all.
-export async function computeChanges(db: D1Database, since: string): Promise<ChangeEntry[]> {
+export async function computeChanges(db: D1Database, since: string): Promise<ChangesResult> {
   const results = await Promise.allSettled(
     AUDIT_SOURCES.map((source) => computeChangesForSource(db, source, since)),
   );
 
-  return results
-    .filter((r): r is PromiseFulfilledResult<ChangeEntry[]> => r.status === "fulfilled")
-    .flatMap((r) => r.value);
+  const changes: ChangeEntry[] = [];
+  const unavailableSources: UnavailableSource[] = [];
+
+  results.forEach((result, i) => {
+    const source = AUDIT_SOURCES[i];
+    if (result.status === "fulfilled") {
+      changes.push(...result.value);
+    } else {
+      unavailableSources.push({
+        module: source.module,
+        kind: source.kind,
+        error: `could not read ${source.findingsTable}: ${errorMessage(result.reason)}`,
+      });
+    }
+  });
+
+  return { changes, unavailableSources };
 }

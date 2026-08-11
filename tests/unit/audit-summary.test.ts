@@ -47,21 +47,25 @@ Deno.test("computePostureSummary - a source with a completed run reports correct
     { r1: [{ status: "safe", count: 3 }, { status: "critical", count: 1 }] },
   );
 
-  const summary = await computePostureSummary(db);
-  const sslEntry = summary.find((e) => e.module === "security" && e.kind === "ssl_tls");
+  const { modules, unavailableSources } = await computePostureSummary(db);
+  const sslEntry = modules.find((e) => e.module === "security" && e.kind === "ssl_tls");
 
   assertEquals(sslEntry?.hasData, true);
   assertEquals(sslEntry?.counts, { safe: 3, warning: 0, critical: 1, not_evaluated: 0 });
+  assertEquals(unavailableSources, []);
 });
 
 Deno.test("computePostureSummary - a source that has never run reports has_data false with zero counts, not confirmed-clean", async () => {
   const db = createMockD1({}, {});
 
-  const summary = await computePostureSummary(db);
-  const dnsEntry = summary.find((e) => e.module === "dns" && e.kind === "record");
+  const { modules, unavailableSources } = await computePostureSummary(db);
+  const dnsEntry = modules.find((e) => e.module === "dns" && e.kind === "record");
 
   assertEquals(dnsEntry?.hasData, false);
   assertEquals(dnsEntry?.counts, { safe: 0, warning: 0, critical: 0, not_evaluated: 0 });
+  // Never having run is not the same as a read failure — dns/record must
+  // not show up in unavailableSources.
+  assertEquals(unavailableSources.some((s) => s.module === "dns"), false);
 });
 
 Deno.test("computePostureSummary - always returns all fourteen sources, even on a per-source read failure", async () => {
@@ -71,10 +75,32 @@ Deno.test("computePostureSummary - always returns all fourteen sources, even on 
     new Set(["exposure_findings"]),
   );
 
-  const summary = await computePostureSummary(db);
+  const { modules } = await computePostureSummary(db);
 
-  assertEquals(summary.length, 14);
-  const exposureEntry = summary.find((e) => e.module === "exposure" && e.kind === "hostname");
+  assertEquals(modules.length, 14);
+  const exposureEntry = modules.find((e) => e.module === "exposure" && e.kind === "hostname");
   assertEquals(exposureEntry?.hasData, false);
   assertEquals(exposureEntry?.counts, { safe: 0, warning: 0, critical: 0, not_evaluated: 0 });
+});
+
+Deno.test("computePostureSummary - a rejected source is reported as unavailable, distinct from a source that never ran", async () => {
+  const db = createMockD1(
+    {},
+    {},
+    new Set(["exposure_findings"]),
+  );
+
+  const { modules, unavailableSources } = await computePostureSummary(db);
+
+  // Both exposure (rejected) and dns (never run) report hasData: false...
+  const exposureEntry = modules.find((e) => e.module === "exposure" && e.kind === "hostname");
+  const dnsEntry = modules.find((e) => e.module === "dns" && e.kind === "record");
+  assertEquals(exposureEntry?.hasData, false);
+  assertEquals(dnsEntry?.hasData, false);
+
+  // ...but only the rejected one shows up in unavailableSources.
+  assertEquals(unavailableSources.length, 1);
+  assertEquals(unavailableSources[0].module, "exposure");
+  assertEquals(unavailableSources[0].kind, "hostname");
+  assertEquals(unavailableSources[0].error.includes("exposure_findings"), true);
 });

@@ -41,7 +41,7 @@ Deno.test("computeChanges - reports an entity whose status changed since the cut
     { ssl_tls_findings: [{ zone_id: "z1", zone_name: "example.com", status: "safe" }] },
   );
 
-  const changes = await computeChanges(db, "2026-08-09T00:00:00Z");
+  const { changes } = await computeChanges(db, "2026-08-09T00:00:00Z");
 
   assertEquals(changes.length, 1);
   assertEquals(changes[0].module, "security");
@@ -57,7 +57,7 @@ Deno.test("computeChanges - omits an entity whose status is unchanged", async ()
     { ssl_tls_findings: [{ zone_id: "z1", zone_name: "example.com", status: "safe" }] },
   );
 
-  const changes = await computeChanges(db, "2026-08-09T00:00:00Z");
+  const { changes } = await computeChanges(db, "2026-08-09T00:00:00Z");
 
   assertEquals(changes, []);
 });
@@ -68,7 +68,7 @@ Deno.test("computeChanges - a brand-new entity (no row at-or-before cutoff) has 
     { r2_bucket_findings: [] },
   );
 
-  const changes = await computeChanges(db, "2026-08-09T00:00:00Z");
+  const { changes } = await computeChanges(db, "2026-08-09T00:00:00Z");
 
   assertEquals(changes.length, 1);
   assertEquals(changes[0].module, "storage");
@@ -90,14 +90,35 @@ Deno.test("computeChanges - a per-source read failure doesn't blank out the othe
     new Set(["ssl_tls_findings"]),
   );
 
-  const changes = await computeChanges(db, "2026-08-09T00:00:00Z");
+  const { changes, unavailableSources } = await computeChanges(db, "2026-08-09T00:00:00Z");
 
   assertEquals(changes.length, 1);
   assertEquals(changes[0].kind, "r2_bucket");
+  assertEquals(unavailableSources.length, 1);
+  assertEquals(unavailableSources[0].module, "security");
+  assertEquals(unavailableSources[0].kind, "ssl_tls");
 });
 
 Deno.test("computeChanges - empty result when nothing changed anywhere", async () => {
   const db = createMockD1({}, {});
-  const changes = await computeChanges(db, "2026-08-09T00:00:00Z");
+  const { changes, unavailableSources } = await computeChanges(db, "2026-08-09T00:00:00Z");
   assertEquals(changes, []);
+  assertEquals(unavailableSources, []);
+});
+
+Deno.test("computeChanges - a rejected source is reported as unavailable, distinct from a source with no changes", async () => {
+  const db = createMockD1(
+    { ssl_tls_findings: [{ zone_id: "z1", zone_name: "example.com", status: "safe" }] },
+    { ssl_tls_findings: [{ zone_id: "z1", zone_name: "example.com", status: "safe" }] },
+    new Set(["r2_bucket_findings"]),
+  );
+
+  const { changes, unavailableSources } = await computeChanges(db, "2026-08-09T00:00:00Z");
+
+  // ssl_tls genuinely has no change — must not appear as unavailable.
+  assertEquals(changes, []);
+  assertEquals(unavailableSources.length, 1);
+  assertEquals(unavailableSources[0].module, "storage");
+  assertEquals(unavailableSources[0].kind, "r2_bucket");
+  assertEquals(unavailableSources[0].error.includes("r2_bucket_findings"), true);
 });
