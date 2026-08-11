@@ -45,10 +45,10 @@ write-capable `audit_log` mechanism ready for the first future Cloudflare-mutati
 FlareTower ships with two **explicit, symmetric** Wrangler environments — `env.production` and
 `env.preview` in `wrangler.jsonc` — each with its own D1 database, so a preview build's traffic can
 never touch production findings/alerts. Both resolve to the **same** Cloudflare Worker resource
-(`flaretower`) as different versions, not two separate resources — see
-[Deployment](#deployment) for why that's the right shape here. Neither environment is an implicit
-"top-level config"; every command below always names one explicitly via `--env`, which is also
-what Wrangler itself recommends the moment it detects named environments but an ambiguous command.
+(`flaretower`) as different versions, not two separate resources — see [Deployment](#deployment) for
+why that's the right shape here. Neither environment is an implicit "top-level config"; every
+command below always names one explicitly via `--env`, which is also what Wrangler itself recommends
+the moment it detects named environments but an ambiguous command.
 
 - **production** — deployed via `deno task deploy` (`wrangler deploy --env production`); runs the
   hourly scheduled drift audit.
@@ -74,15 +74,20 @@ deno task db:migrations:apply:preview:remote   # preview, remote
 
 # Configure secrets and vars
 cp .dev.vars.example .dev.vars   # local dev only, gitignored
-deno run -A npm:wrangler secret put CF_API_TOKEN --env production
-deno run -A npm:wrangler secret put CF_API_TOKEN --env preview
+deno run -A npm:wrangler secret put CF_API_TOKEN
 ```
+
+**Set the secret with no `--env` flag** — `env.production` and `env.preview` are one shared Worker
+resource (`flaretower`), so the secret is shared across both versions too. Do **not** run
+`wrangler secret put CF_API_TOKEN --env production`: `wrangler secret`'s subcommands have a
+[known bug](https://github.com/cloudflare/workers-sdk/issues/12300) where `--env` always appends an
+env suffix to the resolved Worker name (unlike `deploy`/`versions upload`, which correctly respect a
+shared `name`) — running it that way silently targets/creates a _different_, wrongly-named Worker
+resource instead of setting the secret on `flaretower`.
 
 Fill in `wrangler.jsonc`'s `vars` block **in both `env.production` and `env.preview`**
 (`TEAM_DOMAIN`, `POLICY_AUD`, `CF_ACCOUNT_ID`) and `.dev.vars` (`TEAM_DOMAIN`, `POLICY_AUD` for
-local dev) with real values — see [Authentication](#authentication) for what they mean. The same
-Access application/token normally protects both environments; use separate ones only if you
-specifically want preview builds gated differently from production.
+local dev) with real values — see [Authentication](#authentication) for what they mean.
 
 Local dev (`deno task dev`, and Playwright's e2e webserver) targets the **preview** environment by
 default, via the committed `.env.development` file (`CLOUDFLARE_ENV=preview` — not a secret, just
@@ -195,7 +200,7 @@ Native Cloudflare ↔ GitHub integration (Workers Builds). No custom CI pipeline
 Actions may run lint/test/typecheck as PR gates, but does not deploy.
 
 **`env.production` and `env.preview` are one Cloudflare Worker resource (`flaretower`), not two** —
-both environments share the same `name`, so they resolve to different *versions* of the same
+both environments share the same `name`, so they resolve to different _versions_ of the same
 resource rather than separate resources. Worker versions carry their own bindings independently
 (confirmed live 2026-08-11: a `wrangler versions upload --env preview` version genuinely gets
 `flaretower-preview`'s D1, the promoted production version keeps `flaretower-production`'s), so
@@ -208,11 +213,13 @@ having to push a probe commit to prove neither triggered the other. Not what's w
 Connect **once**: Cloudflare dashboard → **Workers & Pages** → `flaretower` → **Settings** →
 **Build**, connect the GitHub repo, then set:
 
-- **Production branch** (`main`) deploy command: `deno task deploy` (`wrangler deploy --env
+- **Production branch** (`main`) deploy command: `deno task deploy`
+  (`wrangler deploy --env
   production`).
-- **Preview deploy command** (every other branch/PR): `deno task deploy:preview` (`wrangler
-  versions upload --env preview`) — Workers Builds posts each PR's own preview URL as a PR comment
-  automatically.
+- **Preview deploy command** (every other branch/PR): `deno task deploy:preview`
+  (`wrangler
+  versions upload --env preview`) — Workers Builds posts each PR's own preview URL as a
+  PR comment automatically.
 
 Build command for both: `deno task build`.
 
