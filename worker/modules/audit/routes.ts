@@ -3,6 +3,14 @@ import { requireRole } from "../../auth/access-jwt.ts";
 import { acknowledgeAlert, queryUnifiedAlerts } from "./inbox.ts";
 import { computeChanges } from "./changes.ts";
 import { computePostureSummary } from "./summary.ts";
+import type { UnavailableSource } from "./sources.ts";
+
+// Same wire shape from all three endpoints (FR-010 / spec.md Edge Cases
+// bullet 2) — a source whose D1 read rejected outright, distinct from
+// that source legitimately having no data.
+function toUnavailableSourcesJson(sources: UnavailableSource[]) {
+  return sources.map((s) => ({ module: s.module, kind: s.kind, error: s.error }));
+}
 
 interface Env {
   DB: D1Database;
@@ -13,7 +21,7 @@ export const auditRoutes = new Hono<{ Bindings: Env }>();
 const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
 
 auditRoutes.get("/alerts", async (c) => {
-  const alerts = await queryUnifiedAlerts(c.env.DB);
+  const { alerts, unavailableSources } = await queryUnifiedAlerts(c.env.DB);
   return c.json({
     alerts: alerts.map((a) => ({
       id: a.id,
@@ -25,6 +33,7 @@ auditRoutes.get("/alerts", async (c) => {
       detected_at: a.detectedAt,
       acknowledged_at: a.acknowledgedAt,
     })),
+    unavailable_sources: toUnavailableSourcesJson(unavailableSources),
   });
 });
 
@@ -49,7 +58,7 @@ auditRoutes.get("/changes", async (c) => {
   const sinceParam = c.req.query("since");
   const since = sinceParam ?? new Date(now.getTime() - TWENTY_FOUR_HOURS_MS).toISOString();
 
-  const changes = await computeChanges(c.env.DB, since);
+  const { changes, unavailableSources } = await computeChanges(c.env.DB, since);
 
   return c.json({
     since,
@@ -61,18 +70,20 @@ auditRoutes.get("/changes", async (c) => {
       previous_status: ch.previousStatus,
       current_status: ch.currentStatus,
     })),
+    unavailable_sources: toUnavailableSourcesJson(unavailableSources),
   });
 });
 
 auditRoutes.get("/summary", async (c) => {
-  const summary = await computePostureSummary(c.env.DB);
+  const { modules, unavailableSources } = await computePostureSummary(c.env.DB);
   return c.json({
-    modules: summary.map((entry) => ({
+    modules: modules.map((entry) => ({
       module: entry.module,
       kind: entry.kind,
       has_data: entry.hasData,
       counts: entry.counts,
     })),
+    unavailable_sources: toUnavailableSourcesJson(unavailableSources),
   });
 });
 
@@ -86,6 +97,6 @@ export async function runAuditDigest(
   _trigger: "interactive" | "scheduled",
 ): Promise<{ changeCount: number }> {
   const since = new Date(Date.now() - TWENTY_FOUR_HOURS_MS).toISOString();
-  const changes = await computeChanges(env.DB, since);
+  const { changes } = await computeChanges(env.DB, since);
   return { changeCount: changes.length };
 }

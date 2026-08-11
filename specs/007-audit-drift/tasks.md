@@ -228,7 +228,7 @@ scheduled digest (US4) only materializes US2's logic on a schedule.
 
 ## Phase 6: Convergence
 
-- [ ] T025 Distinguish a genuine per-source D1 read failure from "no data
+- [x] T025 Distinguish a genuine per-source D1 read failure from "no data
       yet"/"currently none" in the unified inbox, changes digest, and
       posture summary: track which of the fourteen sources' queries
       rejected in `worker/modules/audit/inbox.ts`

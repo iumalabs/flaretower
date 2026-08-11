@@ -145,6 +145,21 @@ export function findAuditSource(module: string, kind: string): AuditSource | und
   return AUDIT_SOURCES.find((s) => s.module === module && s.kind === kind);
 }
 
+// Shared across inbox.ts/changes.ts/summary.ts (FR-010 / spec.md Edge
+// Cases bullet 2): a genuine D1 read failure for one of the fourteen
+// sources must be reported distinctly from that source legitimately
+// having zero rows, in the same shape from all three query functions so
+// the API responses and AuditInventory.tsx don't each invent their own.
+export interface UnavailableSource {
+  module: string;
+  kind: string;
+  error: string;
+}
+
+export function errorMessage(reason: unknown): string {
+  return reason instanceof Error ? reason.message : "unknown error";
+}
+
 // Builds a SQL expression joining the given columns into one readable
 // label, e.g. ["zone_name", "record_name"] -> "zone_name || ' · ' || record_name".
 // Columns always come from a source's own *Columns list in this

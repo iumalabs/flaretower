@@ -13,8 +13,18 @@ interface UnifiedAlert {
   acknowledged_at: string | null;
 }
 
+// A source whose D1 read rejected outright, distinct from that source
+// legitimately having no data (FR-010 / spec.md Edge Cases bullet 2) —
+// same shape from all three of /alerts, /changes, /summary.
+interface UnavailableSource {
+  module: string;
+  kind: string;
+  error: string;
+}
+
 interface AlertsResponse {
   alerts: UnifiedAlert[];
+  unavailable_sources: UnavailableSource[];
 }
 
 interface ChangeEntry {
@@ -29,6 +39,7 @@ interface ChangesResponse {
   since: string;
   until: string;
   changes: ChangeEntry[];
+  unavailable_sources: UnavailableSource[];
 }
 
 interface PostureCounts {
@@ -47,6 +58,7 @@ interface PostureSummaryEntry {
 
 interface SummaryResponse {
   modules: PostureSummaryEntry[];
+  unavailable_sources: UnavailableSource[];
 }
 
 async function fetchAlerts(): Promise<AlertsResponse> {
@@ -179,7 +191,36 @@ function ChangeRow({ change }: { change: ChangeEntry }): JSX.Element {
   );
 }
 
-function SummaryRow({ entry }: { entry: PostureSummaryEntry }): JSX.Element {
+// Renders the sources GET /alerts, /changes, or /summary reported as
+// unreadable — distinct from "currently zero" so a real D1 outage never
+// reads as a clean bill of health (FR-010 / spec.md Edge Cases bullet 2).
+function UnavailableSourcesNotice(
+  { sources }: { sources: UnavailableSource[] },
+): JSX.Element | null {
+  if (sources.length === 0) return null;
+  return (
+    <div
+      style={{
+        marginBottom: 12,
+        padding: "8px 12px",
+        border: "1px solid var(--status-critical-fg)",
+        borderRadius: 4,
+        color: "var(--status-critical-fg)",
+        fontSize: "var(--text-body-size)",
+      }}
+    >
+      {sources.map((s) => (
+        <div key={`${s.module}/${s.kind}`}>
+          {s.module}/{s.kind} data not available — {s.error}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function SummaryRow(
+  { entry, unavailable }: { entry: PostureSummaryEntry; unavailable: boolean },
+): JSX.Element {
   return (
     <tr style={{ borderTop: "1px solid var(--rule-hairline)" }}>
       <td
@@ -193,7 +234,9 @@ function SummaryRow({ entry }: { entry: PostureSummaryEntry }): JSX.Element {
         {entry.module}/{entry.kind}
       </td>
       <td style={{ padding: "8px 0", fontSize: "var(--text-body-size)", color: "var(--fg-muted)" }}>
-        {entry.has_data
+        {unavailable
+          ? <span style={{ color: "var(--status-critical-fg)" }}>(not available)</span>
+          : entry.has_data
           ? (
             `${entry.counts.safe} safe · ${entry.counts.warning} warning · ${entry.counts.critical} critical · ${entry.counts.not_evaluated} not evaluated`
           )
@@ -230,7 +273,7 @@ export function AuditInventory(): JSX.Element {
   }, []);
 
   function handleAcknowledged(id: string) {
-    setData((prev) => prev && { alerts: prev.alerts.filter((a) => a.id !== id) });
+    setData((prev) => prev && { ...prev, alerts: prev.alerts.filter((a) => a.id !== id) });
   }
 
   if (error) {
@@ -274,6 +317,7 @@ export function AuditInventory(): JSX.Element {
         >
           Unified alerts inbox
         </h2>
+        <UnavailableSourcesNotice sources={data.unavailable_sources} />
         {data.alerts.length === 0
           ? <p style={{ color: "var(--fg-muted)" }}>No outstanding alerts across any module.</p>
           : (
@@ -306,6 +350,7 @@ export function AuditInventory(): JSX.Element {
         >
           What changed
         </h2>
+        {changesData && <UnavailableSourcesNotice sources={changesData.unavailable_sources} />}
         {changesError
           ? <p style={{ color: "var(--status-critical-fg)" }}>{changesError}</p>
           : !changesData
@@ -346,6 +391,7 @@ export function AuditInventory(): JSX.Element {
         >
           Account-wide posture summary
         </h2>
+        {summaryData && <UnavailableSourcesNotice sources={summaryData.unavailable_sources} />}
         {summaryError
           ? <p style={{ color: "var(--status-critical-fg)" }}>{summaryError}</p>
           : !summaryData
@@ -353,9 +399,18 @@ export function AuditInventory(): JSX.Element {
           : (
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <tbody>
-                {summaryData.modules.map((entry) => (
-                  <SummaryRow key={`${entry.module}/${entry.kind}`} entry={entry} />
-                ))}
+                {summaryData.modules.map((entry) => {
+                  const unavailable = summaryData.unavailable_sources.some(
+                    (s) => s.module === entry.module && s.kind === entry.kind,
+                  );
+                  return (
+                    <SummaryRow
+                      key={`${entry.module}/${entry.kind}`}
+                      entry={entry}
+                      unavailable={unavailable}
+                    />
+                  );
+                })}
               </tbody>
             </table>
           )}

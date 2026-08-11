@@ -2,7 +2,14 @@
 // sources' alert tables, merges, and sorts. No evaluation happens
 // here — every alert already exists; this only re-presents it
 // (data-model.md).
-import { AUDIT_SOURCES, type AuditSource, findAuditSource, labelSqlExpr } from "./sources.ts";
+import {
+  AUDIT_SOURCES,
+  type AuditSource,
+  errorMessage,
+  findAuditSource,
+  labelSqlExpr,
+  type UnavailableSource,
+} from "./sources.ts";
 
 export interface UnifiedAlert {
   id: string;
@@ -45,19 +52,39 @@ async function queryOneSource(db: D1Database, source: AuditSource): Promise<Unif
   }));
 }
 
+export interface UnifiedAlertsResult {
+  alerts: UnifiedAlert[];
+  // Sources whose alert-table read rejected outright — kept separate from
+  // `alerts` so a genuine read failure never gets folded into "this
+  // source currently has zero outstanding alerts" (FR-010).
+  unavailableSources: UnavailableSource[];
+}
+
 // A per-source read failure does not blank out the other thirteen
 // (spec FR-010) — Promise.allSettled, not Promise.all.
-export async function queryUnifiedAlerts(db: D1Database): Promise<UnifiedAlert[]> {
+export async function queryUnifiedAlerts(db: D1Database): Promise<UnifiedAlertsResult> {
   const results = await Promise.allSettled(
     AUDIT_SOURCES.map((source) => queryOneSource(db, source)),
   );
 
-  const alerts = results
-    .filter((r): r is PromiseFulfilledResult<UnifiedAlert[]> => r.status === "fulfilled")
-    .flatMap((r) => r.value);
+  const alerts: UnifiedAlert[] = [];
+  const unavailableSources: UnavailableSource[] = [];
+
+  results.forEach((result, i) => {
+    const source = AUDIT_SOURCES[i];
+    if (result.status === "fulfilled") {
+      alerts.push(...result.value);
+    } else {
+      unavailableSources.push({
+        module: source.module,
+        kind: source.kind,
+        error: `could not read ${source.alertsTable}: ${errorMessage(result.reason)}`,
+      });
+    }
+  });
 
   alerts.sort((a, b) => b.detectedAt.localeCompare(a.detectedAt));
-  return alerts;
+  return { alerts, unavailableSources };
 }
 
 export type AcknowledgeResult =

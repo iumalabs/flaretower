@@ -23,6 +23,7 @@ const MOCK_AUDIT_ALERTS = {
       acknowledged_at: null,
     },
   ],
+  unavailable_sources: [],
 };
 
 const MOCK_AUDIT_CHANGES = {
@@ -37,6 +38,7 @@ const MOCK_AUDIT_CHANGES = {
       current_status: "critical",
     },
   ],
+  unavailable_sources: [],
 };
 
 const MOCK_AUDIT_SUMMARY = {
@@ -52,6 +54,19 @@ const MOCK_AUDIT_SUMMARY = {
       kind: "record",
       has_data: false,
       counts: { safe: 0, warning: 0, critical: 0, not_evaluated: 0 },
+    },
+    {
+      module: "zero-trust",
+      kind: "application",
+      has_data: false,
+      counts: { safe: 0, warning: 0, critical: 0, not_evaluated: 0 },
+    },
+  ],
+  unavailable_sources: [
+    {
+      module: "zero-trust",
+      kind: "application",
+      error: "could not read zt_app_findings: D1_ERROR",
     },
   ],
 };
@@ -155,4 +170,25 @@ test("US3 — the posture summary renders per-module counts, and a no-data modul
   const dnsRow = page.locator("tr", { hasText: "dns/record" });
   await expect(dnsRow).toBeVisible();
   await expect(dnsRow.getByText("no data yet", { exact: false })).toBeVisible();
+});
+
+test("T025 — a source whose D1 read failed renders as not available, distinct from a source with no data yet", async ({ page }) => {
+  await expect(page.getByRole("heading", { name: "Account-wide posture summary" })).toBeVisible();
+
+  // zero-trust/application rejected outright — must read "(not available)",
+  // never fold into the same "no data yet" wording a source that simply
+  // hasn't run yet gets (dns/record, from the same mocked response).
+  const zeroTrustRow = page.locator("tr", { hasText: "zero-trust/application" });
+  await expect(zeroTrustRow).toBeVisible();
+  await expect(zeroTrustRow.getByText("(not available)", { exact: false })).toBeVisible();
+
+  const dnsRow = page.locator("tr", { hasText: "dns/record" });
+  await expect(dnsRow).toBeVisible();
+  await expect(dnsRow.getByText("no data yet", { exact: false })).toBeVisible();
+  await expect(dnsRow.getByText("(not available)", { exact: false })).toHaveCount(0);
+
+  // The section-level notice names the failed source and its error.
+  await expect(
+    page.getByText("zero-trust/application data not available", { exact: false }),
+  ).toBeVisible();
 });
