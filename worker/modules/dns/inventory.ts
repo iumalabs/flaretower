@@ -109,7 +109,14 @@ export async function listDanglingInsights(
         recordType: i.issue_type.replace("dangling_dns_", "").toUpperCase(),
         reason: i.description ?? `dangling ${i.issue_type} target`,
       }));
-  } catch {
+  } catch (err) {
+    // Swallowed into "not_evaluated" for every record (FR-011) rather than
+    // failing the whole evaluation — but still worth a log line so a real
+    // permission/API problem isn't invisible to whoever's watching
+    // `wrangler tail`.
+    console.error(
+      `listDanglingInsights failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
     return null;
   }
 }
