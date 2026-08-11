@@ -223,3 +223,20 @@ scheduled digest (US4) only materializes US2's logic on a schedule.
 - Run `quickstart.md` in full (T022) before considering Module 7 — and
   the full seven-module roadmap — done. Same real-account caveat as
   every prior module.
+
+---
+
+## Phase 6: Convergence
+
+- [ ] T025 Distinguish a genuine per-source D1 read failure from "no data
+      yet"/"currently none" in the unified inbox, changes digest, and
+      posture summary: track which of the fourteen sources' queries
+      rejected in `worker/modules/audit/inbox.ts`
+      (`queryUnifiedAlerts`), `worker/modules/audit/changes.ts`
+      (`computeChanges`), and `worker/modules/audit/summary.ts`
+      (`computePostureSummary`) — currently a `Promise.allSettled`
+      rejection is silently treated identically to "this source has zero
+      rows" — surface an explicit "not available" indicator per source
+      in `GET /api/audit/alerts`, `/changes`, and `/summary`, and render
+      it distinctly in `app/pages/AuditInventory.tsx`, per FR-010 /
+      spec.md Edge Cases bullet 2 (partial)

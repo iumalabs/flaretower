@@ -233,3 +233,35 @@ this module's headline value, same reasoning as every prior module.
 - Run `quickstart.md` in full (T022) before considering Module 6 done —
   same real-account caveat as every prior module, plus the added
   zone-ruleset scope-name confirmation noted in research.md §8.
+
+---
+
+## Phase 6: Convergence
+
+- [ ] T025 Preserve the null-vs-empty-array distinction for a failed
+      Turnstile widget fetch in `GET /api/security/inventory`
+      (`worker/modules/security/routes.ts`, both the no-run-yet branch
+      and the main branch): both currently call
+      `listTurnstileWidgets(creds).catch(() => [])` directly instead of
+      going through `buildSecurityInventory()`'s
+      `turnstileWidgets: TurnstileWidget[] | null`, so a scoped-down
+      token (missing `Turnstile Read`) or any transient API error is
+      silently rendered as "confirmed zero widgets" instead of
+      not-fully-evaluated — the exact distinction
+      `inventory.ts`'s own type and its dedicated unit test
+      ("a total failure to list Turnstile widgets yields null, not an
+      empty (confirmed-zero) list") establish but the route discards.
+      Breaks quickstart.md Scenario 5 for the Turnstile field. per
+      FR-012 (contradicts)
+- [ ] T026 Fix the empty-state check in
+      `app/pages/SecurityPostureInventory.tsx` (`if (data.zones.length
+      === 0 && data.turnstile_widgets.length === 0)`) to key off
+      `data.run_id === null` instead of both arrays being empty: the
+      backend already sets `run_id: null` precisely to mean "no
+      evaluation run yet" (`worker/modules/security/routes.ts`'s `if
+      (!latest) return { run_id: null, ... }`), so a real completed run
+      against a zero-zone account (the spec's explicitly named "account
+      has zero zones" edge case) incorrectly shows "No evaluation runs
+      yet. Trigger one via `POST /api/security/evaluate`." instead of
+      the required confirmed-empty result. per Edge Cases: "What
+      happens when the account has zero zones?" / SC-002 (contradicts)
