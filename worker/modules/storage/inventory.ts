@@ -117,7 +117,17 @@ export async function listR2Buckets(
   creds: CloudflareStorageCredentials,
   fetchImpl: typeof fetch = fetch,
 ): Promise<RawBucket[]> {
-  return await cfFetch<RawBucket[]>(`/accounts/${creds.accountId}/r2/buckets`, creds, fetchImpl);
+  // Unlike every other list endpoint this module calls, R2's own `result`
+  // is `{ buckets: [...] }`, not a bare array — confirmed against
+  // Cloudflare's own API reference and against a real account, where the
+  // bare-array assumption threw `rawBuckets.map is not a function` in
+  // production (2026-08-11).
+  const { buckets } = await cfFetch<{ buckets: RawBucket[] }>(
+    `/accounts/${creds.accountId}/r2/buckets`,
+    creds,
+    fetchImpl,
+  );
+  return buckets;
 }
 
 export async function listKvNamespaces(
