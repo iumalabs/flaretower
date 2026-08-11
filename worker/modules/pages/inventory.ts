@@ -2,6 +2,7 @@
 // prior module's inventory.ts shape. Exact response field names verified
 // against Cloudflare's documented API shapes (research.md §1); final
 // verification against a live account happens in T024 (quickstart.md).
+import { mapWithConcurrency } from "../../concurrency.ts";
 import type {
   AccessApplication,
   AccessPolicy,
@@ -188,7 +189,11 @@ async function fetchProjectsWithDomains(
     }];
   }
 
-  return await Promise.all(rawProjects.map(async (project) => {
+  // Each project already fires 2 concurrent fetches internally (domains +
+  // deployment) — capped at 2 concurrent projects (worker/concurrency.ts)
+  // keeps this module's own peak at 4 in-flight requests, under the
+  // 6-connection Workers limit (confirmed live, issue #292).
+  return await mapWithConcurrency(rawProjects, 2, async (project) => {
     const [domainsResult, deploymentResult] = await Promise.allSettled([
       listProjectDomains(creds, project.name, fetchImpl),
       listProjectProductionDeployment(creds, project.name, fetchImpl),
@@ -215,7 +220,7 @@ async function fetchProjectsWithDomains(
       customDomains,
       latestProductionDeployment,
     };
-  }));
+  });
 }
 
 export interface PagesInventory {

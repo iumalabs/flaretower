@@ -3,6 +3,7 @@
 // Exact response field names pinned against Cloudflare's documented API
 // shapes; final verification against a live account happens when Module 2's
 // T023 (quickstart.md) runs.
+import { mapWithConcurrency } from "../../concurrency.ts";
 import type { DanglingInsight, DnsRecord, Zone } from "./types.ts";
 
 export interface CloudflareDnsCredentials {
@@ -157,38 +158,39 @@ export async function buildDnsInventory(
 ): Promise<Zone[]> {
   const rawZones = await listZones(creds, fetchImpl);
 
-  return await Promise.all(
-    rawZones.map(async (z): Promise<Zone> => {
-      try {
-        const rawRecords = await listZoneRecords(z.id, creds, fetchImpl);
-        const records: DnsRecord[] = rawRecords.map((r) => ({
+  // One fetch per zone — capped at 5 concurrent (worker/concurrency.ts),
+  // since an account's zone count trivially exceeds the Workers runtime's
+  // 6-concurrent-connection limit otherwise (confirmed live, issue #292).
+  return await mapWithConcurrency(rawZones, 5, async (z): Promise<Zone> => {
+    try {
+      const rawRecords = await listZoneRecords(z.id, creds, fetchImpl);
+      const records: DnsRecord[] = rawRecords.map((r) => ({
+        zoneName: z.name,
+        recordName: r.name,
+        recordType: r.type,
+        content: r.content,
+        proxyCapable: r.proxiable,
+        proxied: r.proxiable ? (r.proxied ?? false) : null,
+      }));
+      return { zoneName: z.name, records };
+    } catch (err) {
+      // Could not list this zone's records at all — one sentinel record
+      // surfaces the failure (FR-011) rather than the zone silently
+      // showing zero records (which would read as "confirmed empty").
+      return {
+        zoneName: z.name,
+        records: [{
           zoneName: z.name,
-          recordName: r.name,
-          recordType: r.type,
-          content: r.content,
-          proxyCapable: r.proxiable,
-          proxied: r.proxiable ? (r.proxied ?? false) : null,
-        }));
-        return { zoneName: z.name, records };
-      } catch (err) {
-        // Could not list this zone's records at all — one sentinel record
-        // surfaces the failure (FR-011) rather than the zone silently
-        // showing zero records (which would read as "confirmed empty").
-        return {
-          zoneName: z.name,
-          records: [{
-            zoneName: z.name,
-            recordName: z.name,
-            recordType: "(zone)",
-            content: "",
-            proxyCapable: false,
-            proxied: null,
-            evaluationError: err instanceof Error
-              ? err.message
-              : "unknown error listing zone records",
-          }],
-        };
-      }
-    }),
-  );
+          recordName: z.name,
+          recordType: "(zone)",
+          content: "",
+          proxyCapable: false,
+          proxied: null,
+          evaluationError: err instanceof Error
+            ? err.message
+            : "unknown error listing zone records",
+        }],
+      };
+    }
+  });
 }

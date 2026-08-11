@@ -2,6 +2,7 @@
 // prior module's inventory.ts shape. Exact response field names verified
 // against Cloudflare's documented API shapes (research.md §1-§2); final
 // verification against a live account happens in T024 (quickstart.md).
+import { mapWithConcurrency } from "../../concurrency.ts";
 import type {
   AccessApplication,
   AccessPolicy,
@@ -265,15 +266,28 @@ async function buildBindingReferences(
   const d1DatabaseIds = new Set<string>();
   let allBindingsConfirmed = true;
 
-  const results = await Promise.allSettled(
-    scriptNames.map((name) => listScriptBindings(creds, name, fetchImpl)),
+  // One fetch per script — capped at 5 concurrent (worker/concurrency.ts),
+  // since an account's worker count trivially exceeds the Workers runtime's
+  // 6-concurrent-connection limit otherwise (confirmed live, issue #292).
+  // mapWithConcurrency doesn't isolate per-item rejections the way
+  // Promise.allSettled did, so this catches per script itself.
+  const results = await mapWithConcurrency(
+    scriptNames,
+    5,
+    async (name) => {
+      try {
+        return { ok: true as const, bindings: await listScriptBindings(creds, name, fetchImpl) };
+      } catch {
+        return { ok: false as const, bindings: [] };
+      }
+    },
   );
   for (const result of results) {
-    if (result.status === "rejected") {
+    if (!result.ok) {
       allBindingsConfirmed = false;
       continue;
     }
-    for (const binding of result.value) {
+    for (const binding of result.bindings) {
       if (binding.type === "kv_namespace" && binding.namespace_id) {
         kvNamespaceIds.add(binding.namespace_id);
       }
@@ -319,7 +333,11 @@ async function fetchBucketsWithDomains(
     }];
   }
 
-  return await Promise.all(rawBuckets.map(async (bucket) => {
+  // Each bucket already fires 2 concurrent fetches internally (managed +
+  // custom domains) — capped at 2 concurrent buckets (worker/concurrency.ts)
+  // keeps this module's own peak at 4 in-flight requests, under the
+  // 6-connection Workers limit (confirmed live, issue #292).
+  return await mapWithConcurrency(rawBuckets, 2, async (bucket) => {
     try {
       const [r2DevEnabled, customDomains] = await Promise.all([
         getBucketManagedDomain(creds, bucket.name, fetchImpl),
@@ -334,7 +352,7 @@ async function fetchBucketsWithDomains(
         evaluationError: `could not determine public access configuration: ${errorMessage(err)}`,
       };
     }
-  }));
+  });
 }
 
 // Unlike Modules 1-4, R2/KV/D1 are three fully independent resource
