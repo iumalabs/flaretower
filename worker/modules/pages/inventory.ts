@@ -39,14 +39,25 @@ async function cfFetch<T>(
     headers: { Authorization: `Bearer ${creds.apiToken}` },
   });
 
-  if (!res.ok) {
-    throw new CloudflareAPIError(`Cloudflare API ${path} returned HTTP ${res.status}`, res.status);
+  // Read the {success, errors} envelope before deciding whether to throw —
+  // Cloudflare includes it even on 4xx/5xx, and discarding it down to a
+  // bare status code hides the real reason (found live in another module,
+  // 2026-08-11: a 400 with no detail turned out to be a malformed request,
+  // not a permission problem).
+  let body: CloudflareAPIResponse<T> | undefined;
+  try {
+    body = await res.json() as CloudflareAPIResponse<T>;
+  } catch {
+    // Non-JSON error body (rare) — fall through to the generic HTTP-status
+    // error below, which still carries the real status code.
   }
 
-  const body = await res.json() as CloudflareAPIResponse<T>;
-  if (!body.success) {
-    const detail = body.errors.map((e) => `${e.code}: ${e.message}`).join("; ");
-    throw new CloudflareAPIError(`Cloudflare API ${path} reported failure (${detail})`, res.status);
+  if (!res.ok || !body || !body.success) {
+    const detail = body?.errors?.map((e) => `${e.code}: ${e.message}`).join("; ");
+    throw new CloudflareAPIError(
+      `Cloudflare API ${path} returned HTTP ${res.status}${detail ? ` (${detail})` : ""}`,
+      res.status,
+    );
   }
   return body.result;
 }

@@ -34,14 +34,26 @@ async function cfFetch<T>(
     headers: { Authorization: `Bearer ${creds.apiToken}` },
   });
 
-  if (!res.ok) {
-    throw new CloudflareAPIError(`Cloudflare API ${path} returned HTTP ${res.status}`, res.status);
+  // Cloudflare's API returns its {success, errors} envelope as the body
+  // even on 4xx/5xx responses — read it before deciding whether to throw,
+  // so the real reason (e.g. a missing-required-param 400) isn't discarded
+  // down to just a bare status code (found live, 2026-08-11: DNS's
+  // Security Insights call silently failed with only "HTTP 400" visible,
+  // no indication of what was actually wrong with the request).
+  let body: CloudflareAPIResponse<T> | undefined;
+  try {
+    body = await res.json() as CloudflareAPIResponse<T>;
+  } catch {
+    // Non-JSON error body (rare) — fall through to the generic HTTP-status
+    // error below, which still carries the real status code.
   }
 
-  const body = await res.json() as CloudflareAPIResponse<T>;
-  if (!body.success) {
-    const detail = body.errors.map((e) => `${e.code}: ${e.message}`).join("; ");
-    throw new CloudflareAPIError(`Cloudflare API ${path} reported failure (${detail})`, res.status);
+  if (!res.ok || !body || !body.success) {
+    const detail = body?.errors?.map((e) => `${e.code}: ${e.message}`).join("; ");
+    throw new CloudflareAPIError(
+      `Cloudflare API ${path} returned HTTP ${res.status}${detail ? ` (${detail})` : ""}`,
+      res.status,
+    );
   }
   return body.result;
 }
