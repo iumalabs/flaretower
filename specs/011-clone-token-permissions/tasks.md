@@ -204,3 +204,24 @@ permission groups but different resource scoping, confirm that mismatch is surfa
   Cloudflare API read, done once by the implementer out-of-band — not something FlareTower's shipped
   code ever does, and not blocking if that data ends up sourced from Cloudflare's public
   docs/community references instead of a live read.
+
+---
+
+## Phase 6: Convergence
+
+- [ ] T013 Distinguish `effect: "deny"` from `effect: "allow"` in `renderChecklist`
+      (`app/lib/token-permissions.ts`): verified by direct call that a policy with `effect: "deny"`
+      renders its permission group identically to a granted one (same `recognized`/`name`, no
+      indication it is excluded rather than granted), so the checklist can show a permission as
+      granted when the source token actually denies it — misrepresenting "what it grants" per FR-002
+      and spec.md Acceptance Scenario 1. Add a regression unit test in
+      `tests/unit/token-permissions.test.ts` covering a deny-effect policy (Constitution Principle
+      VI, test-first). (contradicts, HIGH)
+- [ ] T014 Account for policy `effect` in `comparePolicies` (`app/lib/token-permissions.ts`):
+      verified by direct call that two payloads differing only in `effect` for the same
+      permission-group id (one `"allow"`, one `"deny"`) are reported as a full match on the
+      `permissionGroups` dimension (`matches: true`, empty `onlyInA`/`onlyInB`) — reintroducing
+      exactly the silent-scope-mismatch risk FR-004 and User Story 2 exist to catch, since two
+      tokens with opposite effective permissions on the same group would be shown as "these tokens
+      match." Add a regression unit test in `tests/unit/token-permissions.test.ts` covering this
+      allow-vs-deny case (Constitution Principle VI, test-first). (contradicts, HIGH)
