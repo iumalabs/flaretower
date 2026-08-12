@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { JSX } from "react";
-import { type ExposureStatus } from "../components/ExposureStatusBadge.tsx";
+import { type ExposureStatus, ExposureStatusBadge } from "../components/ExposureStatusBadge.tsx";
 import {
   FindingsTable,
   type FindingsTableColumn,
@@ -106,11 +106,67 @@ export function ExposureInventory(): JSX.Element {
 
   const rows: FindingsTableRow<FlatFinding>[] | null = data
     ? data.workers.flatMap((w) =>
-      w.hostnames.map((h) => ({
-        id: `${w.worker_name}:${h.kind}:${h.hostname}`,
-        status: h.status,
-        data: { worker_name: w.worker_name, hostname: h.hostname, kind: h.kind, reason: h.reason },
-      }))
+      w.hostnames.map((h) => {
+        // The table flattens every Worker's hostnames into independent
+        // rows (US1: each hostname's status must read on its own, never
+        // merged with siblings) — which means the sibling relationship
+        // itself, real data already present in this same API response, is
+        // otherwise lost. Surfacing "this Worker's other hostnames" in the
+        // row's expandable detail (FR-012) reuses that data instead of
+        // fetching or fabricating anything new; a Worker with only one
+        // hostname legitimately has nothing to reveal, so its row gets no
+        // expand affordance at all (data-model.md: `detail` absent = not
+        // expandable).
+        const siblings = w.hostnames.filter((sib) => sib !== h);
+        return {
+          id: `${w.worker_name}:${h.kind}:${h.hostname}`,
+          status: h.status,
+          data: {
+            worker_name: w.worker_name,
+            hostname: h.hostname,
+            kind: h.kind,
+            reason: h.reason,
+          },
+          detail: siblings.length > 0
+            ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                <div
+                  style={{
+                    fontFamily: "var(--font-mono)",
+                    fontSize: "var(--text-label-size)",
+                    letterSpacing: "var(--text-label-ls)",
+                    color: "var(--fg-faint)",
+                    textTransform: "uppercase",
+                  }}
+                >
+                  Other hostnames on {w.worker_name}
+                </div>
+                {siblings.map((s) => (
+                  <div
+                    key={`${s.kind}:${s.hostname}`}
+                    style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}
+                  >
+                    <ExposureStatusBadge status={s.status} />
+                    <span
+                      style={{
+                        fontFamily: "var(--font-mono)",
+                        fontSize: "var(--text-code-size)",
+                        color: "var(--fg-secondary)",
+                      }}
+                    >
+                      {s.hostname}
+                      <span style={{ color: "var(--fg-faint)" }}>· {s.kind}</span>
+                    </span>
+                    <span style={{ fontSize: "var(--text-body-size)", color: "var(--fg-muted)" }}>
+                      {s.reason}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )
+            : undefined,
+        };
+      })
     )
     : null;
 

@@ -122,6 +122,28 @@ test("US2/AC3 — an alert banner surfaces the most urgent finding above the tab
   await expect(page.getByText("billing-api.acct.workers.dev").first()).toBeVisible();
 });
 
+test("US2/AC4 — expanding a row with sibling hostnames reveals them, collapsing hides them again (FR-012, SC-006)", async ({ page }) => {
+  // billing-api has two hostnames, so each row's detail can surface the
+  // other one — status-page has only one hostname and is intentionally not
+  // used here (nothing to reveal, so it never gets an expand affordance).
+  const target = row(page, "billing-api", "custom_domain", "billing.example.com");
+  const sibling = target.getByText("billing-api.acct.workers.dev");
+  // Click the row's own hostname text specifically — it stays put in the
+  // header regardless of whether the detail panel below has expanded the
+  // row's overall height, unlike clicking the row's bounding-box center.
+  const clickTarget = target.getByText("billing.example.com");
+
+  // Collapsed: the sibling hostname is not part of this row at all yet.
+  await expect(sibling).toHaveCount(0);
+
+  await clickTarget.click();
+  await expect(sibling).toBeVisible();
+  await expect(target.getByText("Other hostnames on billing-api")).toBeVisible();
+
+  await clickTarget.click();
+  await expect(sibling).toHaveCount(0);
+});
+
 test("US2 — filtering to critical narrows the table, no reload", async ({ page }) => {
   await page.getByRole("button", { name: /CRITICAL 1/ }).click();
   await expect(page.getByText("billing-api.acct.workers.dev").first()).toBeVisible();
