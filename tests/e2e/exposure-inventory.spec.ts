@@ -64,8 +64,11 @@ test.beforeEach(async ({ page }) => {
     }));
   // "overview" is now the default page (tasks.md T033) — navigate into
   // Exposure explicitly, matching every other module's spec convention.
+  // Renamed from "Workers & Access" to "Exposure" by specs/012-workers-dashboard's
+  // nav split (a separate "Workers" page now exists for the operational
+  // inventory this page used to be conflated with).
   await page.goto("/");
-  await page.getByRole("button", { name: "Workers & Access" }).click();
+  await page.getByRole("button", { name: "Exposure" }).click();
 });
 
 function row(

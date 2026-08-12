@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { accessAuth, type AccessIdentity } from "./auth/access-jwt.ts";
 import { exposureRoutes, runEvaluation } from "./modules/workers-access-exposure/routes.ts";
+import { workersDashboardRoutes } from "./modules/workers-dashboard/routes.ts";
 import { dnsRoutes, runDnsEvaluation } from "./modules/dns/routes.ts";
 import { runZeroTrustEvaluation, zeroTrustRoutes } from "./modules/zero-trust/routes.ts";
 import { pagesRoutes, runPagesEvaluation } from "./modules/pages/routes.ts";
@@ -24,6 +25,11 @@ const app = new Hono<{ Bindings: Env; Variables: { identity: AccessIdentity } }>
 // Principle II) before it reaches any module's router.
 app.use("/api/*", accessAuth);
 app.route("/api/exposure", exposureRoutes);
+// No evaluate/scheduled entry point (plan.md's Storage decision — this
+// module is a live read on every request, not an evaluate-then-persist
+// module like every module above/below it), so no waitUntil() call in
+// scheduled() below.
+app.route("/api/workers", workersDashboardRoutes);
 app.route("/api/dns", dnsRoutes);
 app.route("/api/zero-trust", zeroTrustRoutes);
 app.route("/api/pages", pagesRoutes);
