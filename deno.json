@@ -23,8 +23,8 @@
   "tasks": {
     "dev": "deno run -A npm:vite",
     "build": "deno run -A npm:vite build",
-    "deploy": "deno run -A npm:wrangler deploy --env production",
-    "deploy:preview": "deno run -A npm:wrangler versions upload --env preview",
+    "deploy": "deno task build && deno run -A npm:wrangler deploy --env production",
+    "deploy:preview": "deno task build && deno run -A npm:wrangler versions upload --env preview",
     "test": "deno test -A tests/unit/",
     "test:e2e": "deno run -A npm:playwright test",
     "test:e2e:install": "deno run -A npm:playwright install --with-deps chromium",
