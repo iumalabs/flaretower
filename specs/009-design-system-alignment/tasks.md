@@ -29,13 +29,17 @@ by this feature), `app/` (SPA, where every task below lands), `tests/`.
 
 **Purpose**: Vendor the static assets every later phase depends on.
 
-- [ ] T001 [P] Vendor self-hosted IBM Plex Sans (weights 400, 600) and IBM
-      Plex Mono (weights 400, 500, 600) `.woff2` files under
-      `app/assets/fonts/`, plus a `LICENSE.txt` noting the SIL Open Font
-      License attribution (research.md §1 — only the weights actually
-      used by the design's `typeScale` are vendored, not the full family).
-- [ ] T002 [P] Create `app/assets/favicon.svg` implementing the design
-      package's simplified single-arc mark (research.md §2).
+- [x] T001 [P] ~~Vendor self-hosted IBM Plex Sans (weights 400, 600) and
+      IBM Plex Mono (weights 400, 500, 600) `.woff2` files under
+      `app/assets/fonts/`~~ — superseded: fonts are pulled in via the
+      `@fontsource/ibm-plex-sans`/`@fontsource/ibm-plex-mono` npm packages
+      (Deno `npm:` specifier in `deno.json`) instead of manually vendored
+      binaries, achieving the identical self-hosted-not-CDN outcome
+      research.md §1 requires with no binary files to maintain by hand.
+- [x] T002 [P] Create `app/public/favicon.svg` implementing the design
+      package's simplified single-arc mark (research.md §2) — lives under
+      `app/public/` per Vite's static-asset convention for this project,
+      not `app/assets/` as originally guessed.
 
 ---
 
@@ -48,26 +52,37 @@ this shell.
 **⚠️ CRITICAL**: No user story work can begin until this phase is
 complete.
 
-- [ ] T003 Fix `app/styles/tokens.css`'s `--surface-2` value from the
+- [x] T003 Fix `app/styles/tokens.css`'s `--surface-2` value from the
       current `#18130f` to the design source's `#181310` (confirmed
       transposed-digit color-drift bug, research.md/spec.md FR-008).
-- [ ] T004 [P] Add the missing `--text-metric` typography token (28px /
+- [x] T004 [P] Add the missing `--text-metric` typography token (28px /
       600 weight / IBM Plex Mono, letter-spacing -0.03em) to
       `app/styles/tokens.css` — present in the design source's
       `typeScale` but not yet extracted into the token file.
-- [ ] T005 Add `@font-face` declarations for the fonts vendored in T001
-      to `app/styles/tokens.css`, and point `--font-sans`/`--font-mono`
-      at them (FR-005).
-- [ ] T006 Add `<link rel="icon" type="image/svg+xml" href="/favicon.svg">`
-      (T002) to `app/index.html`, and confirm the `@font-face` stylesheet
-      (T005) is loaded on every page (FR-006).
-- [ ] T007 [P] Create `app/components/Logo.tsx` implementing the SVG mark
+- [x] T005 Add `app/styles/fonts.css` (`@import`ing the `@fontsource`
+      weight-specific CSS files — T001) and point `--font-sans`/
+      `--font-mono` at them (FR-005; the CSS variable names were already
+      correct, the bug was that nothing loaded the actual font files).
+- [x] T006 Add `<link rel="icon" type="image/svg+xml" href="/favicon.svg">`
+      (T002) and the `fonts.css` import (via `app/main.tsx`) so the font
+      stylesheet loads on every page (FR-006).
+- [x] T007 [P] Create `app/components/Logo.tsx` implementing the SVG mark
       with `lockup`/`mono`/`tile` variants and `dark`/`light` theme props,
       per `contracts/components.md` (FR-001).
-- [ ] T008 Verify the existing static-assets configuration in
-      `wrangler.jsonc` serves `app/assets/*` (fonts, favicon) correctly
-      under the current build output — confirms no config change is
-      needed; if one is, make the minimal fix here.
+- [x] T008 Verified Vite serves `app/public/favicon.svg` at `/favicon.svg`
+      correctly under this project's existing static-asset convention.
+      Also found and fixed a related gap while verifying: `vite.config.ts`
+      had no explicit `server.fs.allow`, and Vite's default (derived from
+      `root: "app"`) excluded the repo-root `node_modules/` — where Deno's
+      npm-compat layer nests `@fontsource`'s actual `.woff2` files
+      (`node_modules/.deno/<pkg>@<version>/node_modules/...`, one level
+      above `app/`). This silently blocked the browser's own font
+      requests in local dev (a 403 masked by `@font-face` still
+      registering the family name in `document.fonts` even when the file
+      itself fails to load — only checking each `FontFace`'s own
+      `.status` catches it, which `tests/e2e/app-shell.spec.ts`'s AC5 test
+      now does). Fixed by adding `server.fs.allow: [".."]` to
+      `vite.config.ts`.
 
 **Checkpoint**: Fonts render, favicon resolves, tokens are correct, and
 `Logo` is available for every later story to consume.
@@ -86,40 +101,66 @@ existing yet (quickstart.md Scenario 1).
 
 ### Tests for User Story 1
 
-- [ ] T009 [US1] Write `tests/e2e/app-shell.spec.ts` covering spec.md's
+- [x] T009 [US1] Write `tests/e2e/app-shell.spec.ts` covering spec.md's
       US1 acceptance scenarios 1–5: favicon link present; sidebar renders
       all 8 destinations with logo and footer; active-state indicator
       moves to the current page on navigation; a module's nav badge shows
       only when its critical count is > 0; computed `font-family` is IBM
-      Plex Sans/Mono, not a fallback. Confirm it fails against the
-      current shell before implementing.
-- [ ] T010 [P] [US1] Write `tests/unit/module-badge-counts.test.ts` for
-      the pure rollup described in data-model.md's `ModuleBadgeCount`:
-      sums `counts.critical` per `module` across a `PostureSummaryEntry[]`
-      fixture, and omits any module whose summed count is 0. Confirm it
-      fails (module doesn't exist yet) before implementing.
+      Plex Sans/Mono, not a fallback, AND (added beyond the original
+      task, per T008's finding above) each `document.fonts` `FontFace`'s
+      own `.status` is `"loaded"`, not just that the family name is
+      registered. Confirmed failing against the pre-migration shell.
+- [x] T010 [P] [US1] Write `tests/unit/module-badge-counts.test.ts` for
+      the pure rollup described in data-model.md's `ModuleBadgeCount`.
+      Typed against a minimal `AuditSummaryModuleEntry` shape matching
+      `GET /api/audit/summary`'s actual (snake_case `has_data`) wire
+      response, not `worker/modules/audit/summary.ts`'s internal
+      camelCase `PostureSummaryEntry` — the two aren't the same shape and
+      the function only ever needs `module`/`counts.critical`, so typing
+      it against the real wire format avoids a frontend/backend type
+      mismatch. Confirmed failing before implementing.
 
 ### Implementation for User Story 1
 
-- [ ] T011 [P] [US1] Create `app/lib/module-badge-counts.ts` implementing
+- [x] T011 [P] [US1] Create `app/lib/module-badge-counts.ts` implementing
       the rollup from T010 (data-model.md's `ModuleBadgeCount`).
-- [ ] T012 [US1] Create `app/components/Sidebar.tsx` per
+- [x] T012 [US1] Create `app/components/Sidebar.tsx` per
       `contracts/components.md`: logo header (via T007's `Logo`), a
       vertical list of `SidebarItem`s (icon + label + optional badge,
       active-state left edge bar + background tint), and an
-      account/version footer block (FR-002, FR-003).
-- [ ] T013 [US1] Define the 8 nav items (icon paths per the design
+      account/version footer block (FR-002, FR-003). Footer shows only
+      `"self-hosted"` (no fake account/version string — this app has no
+      existing source of truth for either, and fabricating one would be
+      worse than a minimal-but-honest footer).
+- [x] T013 [US1] Define the 8 nav items (icon paths per the design
       source's `NAV` array, labels matching the existing `PAGES` array in
-      `app/App.tsx`) as a shared constant in `app/nav-items.ts`.
-- [ ] T014 [US1] Wire `app/App.tsx`: replace the inline `<nav>` with
+      `app/App.tsx`) as a shared constant in `app/nav-items.ts`. The
+      design source's own `NAV` array actually has 9 entries (separate
+      "Workers" and "Exposure" rows); this app's `exposure` module
+      already covers both, so only one icon/row is used for it and the
+      duplicate is intentionally dropped.
+- [x] T014 [US1] Wire `app/App.tsx`: replace the inline `<nav>` with
       `<Sidebar>`; fetch `GET /api/audit/summary` once at the App level;
       compute per-module badges via T011's helper; pass `activeKey`,
-      `items`, and `footer` down (FR-004).
-- [ ] T015 [US1] Remove `ExposureStatusBadge.tsx`'s `borderRadius: 4` —
+      `items`, and `footer` down (FR-004). `"exposure"` stays the
+      default/initial page (unchanged from before this feature) — making
+      `"overview"` the default is explicitly a later task (T033, User
+      Story 3), scoped to once the real `OverviewPage` exists; the new
+      `"overview"` nav item added here (FR-002's "all 8 destinations")
+      renders a placeholder ("Overview coming soon.") if clicked before
+      then.
+- [x] T015 [US1] Remove `ExposureStatusBadge.tsx`'s `borderRadius: 4` —
       the design system uses zero border-radius everywhere (research.md
       §5, FR-007).
-- [ ] T016 [US1] Run quickstart.md Scenario 1 manually against
-      `deno task dev`; fix any drift found before moving to User Story 2.
+- [x] T016 [US1] Ran quickstart.md Scenario 1 manually against a real
+      `deno task dev`-equivalent session (Playwright screenshots,
+      inspected directly) — sidebar, logo, active-state, badge, and
+      typography all render correctly. This is also where T008's
+      Vite `fs.allow` bug was actually caught (the shell rendered
+      visually fine even with fonts failing to load, since the fallback
+      font is visually similar enough not to be obvious by eye alone —
+      only the strengthened `document.fonts` status check in T009's test
+      caught it for certain).
 
 **Checkpoint**: User Story 1 is fully functional and independently
 shippable — every existing page now renders inside the correct shell.

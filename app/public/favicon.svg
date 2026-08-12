@@ -1,0 +1,33 @@
+<!--
+  FlareTower favicon — the design system's simplified single-arc mark
+  (docs/design.zip's FlareTower.dc.html "FAVICON — RENDERED AT SIZE"
+  section: outer signal arc dropped, inner arc thickened — at 16x16 two
+  arcs collapse into a smudge) on the "APP TILE" gradient treatment.
+
+  This is a standalone file loaded by the browser via <link rel="icon">,
+  outside the document's own CSS cascade, so it cannot reference tokens.css's
+  custom properties — colors here are necessarily hardcoded, a documented
+  exception to the "no hardcoded hex outside tokens.css" rule for exactly
+  this reason (the same values are also used, with the same justification,
+  in app/components/Logo.tsx's `tile` variant).
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
+  <defs>
+    <linearGradient id="tile" x1="15%" y1="0%" x2="85%" y2="100%">
+      <stop offset="0%" stop-color="#F6821F" />
+      <stop offset="100%" stop-color="#FBAD41" />
+    </linearGradient>
+  </defs>
+  <rect width="48" height="48" fill="url(#tile)" />
+  <path
+    d="M18.2 10.5 A6 6 0 0 1 29.8 10.5"
+    fill="none"
+    stroke="#1A0F05"
+    stroke-width="3"
+    stroke-linecap="square"
+  />
+  <circle cx="24" cy="12.2" r="3.6" fill="#1A0F05" />
+  <path d="M14 17 H34 L30.5 25 H17.5 Z" fill="#1A0F05" />
+  <path d="M19.5 25 H28.5 L30.5 42 H17.5 Z" fill="#1A0F05" />
+  <path d="M12.5 42 H35.5 V47 H12.5 Z" fill="#1A0F05" />
+</svg>

@@ -5,6 +5,8 @@
     "jsr:@std/internal@^1.0.12": "1.0.14",
     "npm:@cloudflare/vite-plugin@^1.51.0": "1.51.0_vite@8.2.1_wrangler@4.119.0__@cloudflare+workers-types@5.20260804.1_@cloudflare+workers-types@5.20260804.1",
     "npm:@cloudflare/workers-types@^5.20260804.1": "5.20260804.1",
+    "npm:@fontsource/ibm-plex-mono@5": "5.3.0",
+    "npm:@fontsource/ibm-plex-sans@5": "5.3.0",
     "npm:@playwright/test@^1.62.1": "1.62.1",
     "npm:@types/react-dom@^19.2.4": "19.2.4_@types+react@19.2.18",
     "npm:@types/react@^19.2.18": "19.2.18",
@@ -12,6 +14,7 @@
     "npm:hono@^4.13.0": "4.13.0",
     "npm:jose@^6.2.8": "6.2.8",
     "npm:playwright@*": "1.62.1",
+    "npm:playwright@1.62.1": "1.62.1",
     "npm:playwright@^1.62.1": "1.62.1",
     "npm:react-dom@^19.2.8": "19.2.8_react@19.2.8",
     "npm:react@^19.2.8": "19.2.8",
@@ -366,6 +369,12 @@
       "integrity": "sha512-bm4Mowrv+GXMlpWX++EcXw/iLyd1o3+bJkC2DkWXYVvgZCqD/bSj9ctZeAMC3cIxgjRVR2Dufaiu4YPxr5gW1A==",
       "os": ["win32"],
       "cpu": ["x64"]
+    },
+    "@fontsource/ibm-plex-mono@5.3.0": {
+      "integrity": "sha512-eTgnZjZEGk1QtD3ZstF+Vclo2HLAni8YMy34/DxllwZvyz1lR/1RF/xTiAquOBO7MvqBx8D2Ig2WCPMVfdZu7Q=="
+    },
+    "@fontsource/ibm-plex-sans@5.3.0": {
+      "integrity": "sha512-CbE4CbbEEZJX860XyUiRpsksXIQR8Rp2XDva2VO53NJox9tVNtusrysd2x5YkUEY3ErQ66W1IiiQL8/wihhw5w=="
     },
     "@img/colour@1.1.0": {
       "integrity": "sha512-Td76q7j57o/tLVdgS746cYARfSyxk8iEfRxewL9h4OMzYhbW4TAcppl0mT4eyqXddh6L/jwoM75mo7ixa/pCeQ=="
@@ -1182,6 +1191,8 @@
       "jsr:@std/assert@1",
       "npm:@cloudflare/vite-plugin@^1.51.0",
       "npm:@cloudflare/workers-types@^5.20260804.1",
+      "npm:@fontsource/ibm-plex-mono@5",
+      "npm:@fontsource/ibm-plex-sans@5",
       "npm:@playwright/test@^1.62.1",
       "npm:@types/react-dom@^19.2.4",
       "npm:@types/react@^19.2.18",
