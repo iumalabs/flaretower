@@ -373,15 +373,23 @@ documented exceptions, zero non-zero border-radius outside the one documented en
 `deno fmt`/`deno lint`/`deno test -A tests/unit`/`deno task test:e2e` all pass clean, 279/279 and
 49/49 respectively).
 
-- [ ] T040 [US2] Write e2e coverage for the row expand/collapse interaction (click a row with
+- [x] T040 [US2] Write e2e coverage for the row expand/collapse interaction (click a row with
       `detail` content, confirm additional detail is revealed in place; click again, confirm it
       collapses) per SC-006 and US2/AC4; confirm it fails against the current implementation, since
       no module page currently populates any row's `detail` field so no row anywhere has an expand
-      affordance to click (missing)
-- [ ] T041 [US2] Populate real per-row `detail` content on at least one `FindingsTable` instance in
+      affordance to click. Added to `tests/e2e/exposure-inventory.spec.ts`; confirmed failing (the
+      sibling hostname text never appeared) before T041's implementation.
+- [x] T041 [US2] Populate real per-row `detail` content on at least one `FindingsTable` instance in
       a migrated module page (data-model.md's `FindingsTableRow.detail`, e.g.
       `app/pages/ExposureInventory.tsx`'s hostname rows exposing detail already present in that
       page's own API response) so FR-012's row-expand/collapse mechanic — already implemented in
       `app/components/FindingsTable.tsx` but never exercised by any page since T021 — becomes
       reachable by a real operator instead of only structurally present and unused; confirm T040
-      passes (partial)
+      passes. Implemented on `ExposureInventory.tsx`: `GET /api/exposure/inventory` already returns
+      every hostname a Worker has (`data.workers[i].hostnames`), but the page flattens that into one
+      independent row per hostname (US1's requirement that sibling hostnames never merge their
+      status), which discards the grouping itself. Each row's `detail` now lists that Worker's
+      *other* hostnames with their own status badge/kind/reason — real data already in the same
+      response, not a new field or API call. A Worker with only one hostname has nothing to reveal,
+      so its row legitimately gets no expand affordance (data-model.md: `detail` absent = not
+      expandable).
