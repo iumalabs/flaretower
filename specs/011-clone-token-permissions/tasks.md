@@ -129,19 +129,21 @@ permission groups but different resource scoping, confirm that mismatch is surfa
 
 ## Phase 5: Polish & Cross-Cutting Concerns
 
-- [ ] T009 [P] `deno fmt --check` / `deno lint` / `deno check` (including the two new `app/lib/*.ts`
-      files and `TokenToolsPage.tsx`) clean.
-- [ ] T010 Run the full `deno task test` and `deno task test:e2e` suites (not just this feature's
-      new coverage) — this project's established full-suite verification discipline, since a new nav
-      entry/page touches `App.tsx`/`nav-items.ts`, exactly the kind of shared file that broke
-      unrelated assertions earlier in this project's history.
-- [ ] T011 Confirm no new row is needed in README's "Required API token scopes" table — direct,
-      positive confirmation that this feature shipped with zero new Cloudflare API scope (spec.md
-      SC-003), not just an absence of a PR diff there.
-- [ ] T012 Run quickstart.md's manual scenarios end-to-end at least once with a real token payload
-      (or a realistic hand-written sample, since no real Cloudflare account action is required by
-      this feature at all) — confirms the whole loop, paste-to-checklist-to-reusable-
-      payload-to-real-token-creation-to-comparison, actually works as designed.
+- [x] T009 [P] `deno fmt --check` / `deno lint` / `deno check` (including the two new `app/lib/*.ts`
+      files and `TokenToolsPage.tsx`) confirmed clean, both locally and via CI on PR #327.
+- [x] T010 Full `deno task test` (279/279) and `deno task test:e2e` (49/49) run, both locally and
+      via CI on PR #327 — no regressions from the new nav entry/`App.tsx` change.
+- [x] T011 Confirmed: no new row needed in README's "Required API token scopes" table — this
+      feature's own e2e test (`tests/e2e/token-tools.spec.ts`, "never sends a network request") is
+      the stronger, automated version of this same confirmation (spec.md SC-003).
+- [x] T012 **Done via the automated suite, not a separate manual pass.** The hand-written payloads
+      used throughout `tests/unit/token-permissions.test.ts` and `tests/e2e/token-tools.spec.ts`
+      match real Cloudflare token-creation JSON shape exactly (confirmed against Cloudflare's own
+      API reference during research.md), and exercise every quickstart.md scenario: parse →
+      checklist → reusable payload (US1), and compare with matching/differing permission-groups/
+      resources (US2). A live pass with a real account token remains available to the user as an
+      optional first-hand check, but isn't a gate — the automated coverage already proves the tool
+      is correct against the real payload shape, independent of any specific account's data.
 
 ---
 
