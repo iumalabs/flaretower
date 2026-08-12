@@ -142,14 +142,17 @@ Release + `CHANGELOG.md` entry appear. Verifiable with zero changes to deploymen
       no bypass flags and no `|| true` swallowing — a failure there fails the job itself, visible in
       the Actions tab/commit status (spec.md FR-012, contracts/workflows.md's explicit "must fail
       visibly"), consistent with how `ci.yml`/`e2e.yml` failures already surface in this repo.
-- [x] T009b — **One-time manual catch-up, twice**: v1.1.0 (T006) was published before any
-      fast-forward mechanism existed; v1.1.1 was published while the (broken) `release-publish.yml`
-      existed but never fired (T008's v2 bug) — neither ever got `release` advanced automatically.
-      One-time `git push origin <commit>:release` performed for both after T008's v3 fix landed, to
-      catch `release` up to the latest real release. Every release from this point on is handled
-      entirely by `release-please.yml`'s own same-job step — no further manual catch-up expected,
-      and the next real release is the actual live test of that claim (tracked as part of
-      T020/T021).
+- [x] T009b — **One-time manual catch-up, twice, then confirmed unnecessary going forward**: v1.1.0
+      (T006) was published before any fast-forward mechanism existed; v1.1.1 was published while the
+      (broken) `release-publish.yml` existed but never fired (T008's v2 bug) — neither ever got
+      `release` advanced automatically. One-time `git push origin <commit>:release` performed for
+      both after T008's v3 fix landed, to catch `release` up to the latest real release (v1.1.1)
+      just before the live test below. **Live end-to-end confirmation (2026-08-12)**: merged the
+      next standing release PR (v1.1.2, #315) and watched the triggered `release-please.yml` run
+      directly (`gh run watch`) — its `Fast-forward release branch` step ran and succeeded in the
+      _same job_, with zero manual intervention, zero new credentials. `release` now points at the
+      v1.1.2 commit, confirmed via `git log origin/release`. No further manual catch-up needed for
+      any future release.
 
 **Checkpoint**: Merging conventional-commit changes to `main` now produces a standing,
 correctly-versioned release PR; a maintainer merging that PR whenever they choose cuts a real
@@ -251,23 +254,20 @@ feature complete pending T010's manual dashboard step.
       separately) clean on every PR in this feature, confirmed via CI, not just locally.
 - [x] T019 Full `deno task test` (262/262) and `deno task test:e2e` (43/43) run on every PR in this
       feature via CI — no regressions.
-- [x] T020 **Live-verified (2026-08-12), through three real bug-finds**: Scenario 1's "propose and
-      tag a release" half ran for real three times — v1.1.0 (merged by the user via the UI, T006),
-      v1.1.1 (merged by the agent under standing self-merge authorization while testing
-      `release-automerge.yml`), and every subsequent release — always correctly tagged and published
-      as a real GitHub Release with a real `CHANGELOG.md` entry, regardless of which fast-forward
-      bug was live at the time. The fast-forward half of Scenario 1 took three iterations to
-      actually work (T008's v1/v2/v3 history) — none of the three bugs (merge-step-only fast-forward
-      missing the manual-merge path; a `release: published`-triggered workflow that structurally can
-      never fire; the correct same-job-output fix) would have been exposed by a purely-scripted dry
-      run. **Remaining**: confirm the v3 (current) fast-forward fires correctly on the _next_ real
-      release cut after this fix merges — the first fully-live test of the corrected mechanism
-      end-to-end, with no manual catch-up needed afterward.
-- [ ] T021 After T010 (manual dashboard step) is performed by the user, T020's remaining live check
-      passes, and a release has actually shipped since, run quickstart.md Scenarios 2 and 3 live:
-      confirm Workers Builds' deploy history shows a production build triggered by the `release`
-      branch fast-forward, and confirm `flaretower`'s real production footer shows the released
-      version.
+- [x] T020 **Fully live-verified (2026-08-12), through three real bug-finds — Scenario 1 complete**:
+      the "propose and tag a release" half ran for real four times (v1.1.0 through v1.1.2 and the
+      docs-only prefix PR in between), always correctly tagging/publishing a real GitHub Release
+      with a real `CHANGELOG.md` entry regardless of which fast-forward bug was live at the time.
+      The fast-forward half took three iterations to actually work (T008's v1/v2/v3 history — none
+      of the three bugs would have been exposed by a purely-scripted dry run) — **confirmed working
+      end-to-end on v1.1.2 (#315)**: watched the triggered `release-please.yml` run directly
+      (`gh run watch`), its `Fast-forward release branch` step ran and succeeded in the same job,
+      and `release` now points at the v1.1.2 commit with zero manual intervention. Scenario 1 is
+      fully done; only Scenarios 2/3 (T021, gated on T010) remain.
+- [ ] T021 After T010 (manual Cloudflare dashboard step) is performed by the user, run quickstart.md
+      Scenarios 2 and 3 live: confirm Workers Builds' deploy history shows a production build
+      triggered by the `release` branch fast-forward, and confirm `flaretower`'s real production
+      footer shows the released version.
 
 ---
 
