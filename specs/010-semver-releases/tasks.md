@@ -56,20 +56,18 @@ manual Cloudflare dashboard step (T012) makes sense to perform.
       production doesn't silently roll back the moment the branch switch happens" — do this right
       before/as part of merging this feature, not earlier, so it doesn't go stale while this feature
       is still in review).
-- [ ] **T004b — NEW, manual, human-only step, discovered live**: `release-please.yml`'s first real
-      run (triggered by T005-T009's own merge to `main`) confirmed the workflow logic itself works —
-      it correctly found 87 candidate commits, built a release branch/commit — but failed at the
-      final "create PR" API call with
+- [x] **T004b — NEW, manual, human-only step, discovered live, now resolved**:
+      `release-please.yml`'s first real run (triggered by T005-T009's own merge to `main`) confirmed
+      the workflow logic itself works — it correctly found 87 candidate commits, built a release
+      branch/commit — but failed at the final "create PR" API call with
       `GitHub Actions is
-      not permitted to create or approve pull requests`. This is a
-      repository-level setting (**Settings → Actions → General → Workflow permissions → "Allow
-      GitHub Actions to create and approve pull requests"**, unchecked by default), not something
-      `contents: write`/ `pull-requests: write` workflow permissions alone can grant, and not
-      something scriptable via `gh`/the API without already having this permission — it must be
-      enabled by a human with repo admin access. **Blocks the rest of US1's live validation (T006)
-      and everything downstream (US2/US3's live scenarios) until enabled.** This is exactly the kind
-      of "never touch GitHub repository settings" change this project's standing instructions
-      reserve for the user, not the agent.
+      not permitted to create or approve pull requests`. This was an
+      organization-level setting (**Settings → Actions → General → Workflow permissions → "Allow
+      GitHub Actions to create and approve pull requests"**, unchecked by default; the repo-level
+      toggle was greyed out because the org policy overrode it), not something `contents: write`/
+      `pull-requests: write` workflow permissions alone could grant, and not scriptable via `gh`/the
+      API without already having this permission. The user enabled it at the org level; a re-run of
+      the same workflow immediately succeeded (T006).
 
 **Checkpoint**: `release` branch exists and matches `main`. US1 can now be implemented and merged
 independently of US2/US3.
@@ -174,17 +172,27 @@ whether the UI displays a version yet (US3).
 
 ### Implementation for User Story 2
 
-- [ ] T010 [US2] **Manual, human-only step (flag clearly to the user, cannot be scripted/API'd)**:
-      In the Cloudflare dashboard → **Workers & Pages** → `flaretower` → **Settings** → **Build**,
-      change the **Production branch** setting from `main` to `release` (research.md §1 — this
-      single dashboard field is the entire mechanism; nothing else about the existing Workers Builds
-      connection changes). Do this only once T004's `release` branch exists and points at a real,
-      working commit — never flip this setting while `release` is still unset/stale, or production
-      would deploy a stale build on the very next unrelated event.
-- [ ] T011 [US2] Confirm the **Preview deploy command**/branch-control settings in that same
-      dashboard screen are untouched — preview must keep deploying on every push/PR exactly as today
-      (spec.md FR-007, Acceptance Scenario 3). This is a verification-only task (screenshot or
-      written confirmation of the unchanged preview config), not a code change.
+- [x] T010 [US2] **Done (2026-08-12), by the user**. **Manual, human-only step (flag clearly to the
+      user, cannot be scripted/API'd)**: In the Cloudflare dashboard → **Workers & Pages** →
+      `flaretower` → **Settings** → **Build**, change the **Production branch** setting from `main`
+      to `release` (research.md §1 — this single dashboard field is the entire mechanism; nothing
+      else about the existing Workers Builds connection changes). Do this only once T004's `release`
+      branch exists and points at a real, working commit — never flip this setting while `release`
+      is still unset/stale, or production would deploy a stale build on the very next unrelated
+      event.
+- [x] T011 [US2] **Partially verified (2026-08-12), inconclusive on one point**: confirmed T010 only
+      changed the Production branch field, per the user directly (no other Build settings touched).
+      Attempted to confirm preview still deploys per-PR by checking for the PR-comment preview URL
+      README describes — none appeared on any PR opened today (#319, #320, or earlier), before or
+      after T010, so this repo's Workers Builds integration may simply not post PR comments (a
+      README description that may not hold for this repo's actual config, or a separate opt-in not
+      enabled) rather than a regression from T010 — inconclusive either way from this signal alone.
+      Indirect evidence is reassuring: preview version uploads (`wrangler versions list`,
+      `has_preview:
+      true` entries) continued at their normal cadence across the entire
+      session, spanning both before and after T010, with no gap. Recommend the user spot-check once
+      by opening any PR and confirming a preview build still appears in the Cloudflare dashboard,
+      for full first-hand confidence.
 - [x] T012 [US2] Updated `README.md`'s Deployment section: "Production branch" now says `release`
       instead of `main`, plus a new "Releases" section explaining the release-please → maintainer
       merges → fast-forward flow and linking to `specs/010-semver-releases/`. (Also fixed a
@@ -264,10 +272,24 @@ feature complete pending T010's manual dashboard step.
       (`gh run watch`), its `Fast-forward release branch` step ran and succeeded in the same job,
       and `release` now points at the v1.1.2 commit with zero manual intervention. Scenario 1 is
       fully done; only Scenarios 2/3 (T021, gated on T010) remain.
-- [ ] T021 After T010 (manual Cloudflare dashboard step) is performed by the user, run quickstart.md
-      Scenarios 2 and 3 live: confirm Workers Builds' deploy history shows a production build
-      triggered by the `release` branch fast-forward, and confirm `flaretower`'s real production
-      footer shows the released version.
+- [x] T021 **Live-verified (2026-08-12), conclusively**. T010 performed by the user (Cloudflare
+      dashboard → Workers & Pages → `flaretower` → Settings → Build → Production branch →
+      `release`). Confirmed flipping that setting alone does _not_ trigger a rebuild — Workers
+      Builds only reacts to a real push, so nothing new appeared in
+      `wrangler deployments list --name flaretower` until the next actual release. Shipped a real
+      one (v1.1.3, PR #319/#320) specifically to complete this check: immediately after
+      `release-please.yml`'s fast-forward step pushed the new commit to `release`, a fresh
+      deployment appeared at 100% traffic, timestamped seconds after the push. Confirmed it's
+      genuinely the **production** environment, not preview, by checking
+      `wrangler versions view <id>`'s D1 binding directly — it's bound to database ID
+      `9480e87c-...`, which `wrangler.jsonc`'s `env.production.d1_databases` (not
+      `env.preview.d1_databases`, a different ID) confirms is exactly `flaretower-production`. This
+      is unambiguous, not inferred from timing alone. Did not visually confirm the production
+      footer's rendered text directly (Cloudflare Access-protected, no browser session available to
+      the agent) — the version-threading mechanism itself was already confirmed correct via the
+      local build-bundle check in T013–T015's PR, so this is a reasonable-confidence, not full
+      first-hand, confirmation of Scenario 3's footer text; a quick visual glance by the user would
+      close that last gap if desired.
 
 ---
 
