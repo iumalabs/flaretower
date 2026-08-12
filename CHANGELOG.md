@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.1.2](https://github.com/iumalabs/flaretower/compare/v1.1.1...v1.1.2) (2026-08-12)
+
+
+### Bug Fixes
+
+* **release:** drop unattended daily auto-merge, match sibling-project workflow ([#314](https://github.com/iumalabs/flaretower/issues/314)) ([cb58f06](https://github.com/iumalabs/flaretower/commit/cb58f06b0071b14928042c2be64dd63f3855cc4a))
+* **release:** fold fast-forward into release-please.yml's own job outputs ([#317](https://github.com/iumalabs/flaretower/issues/317)) ([d5659f1](https://github.com/iumalabs/flaretower/commit/d5659f1e1ffac79c06268733a4f464c2ab0c20e6))
+
 ## [1.1.1](https://github.com/iumalabs/flaretower/compare/v1.1.0...v1.1.1) (2026-08-12)
 
 
