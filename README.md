@@ -242,13 +242,14 @@ FlareTower uses [semantic versioning](https://semver.org/) and
   every push to `main`, bumping `VERSION` and `CHANGELOG.md` from commit history (`fix:` → patch,
   `feat:` → minor; a MAJOR bump needs a deliberate maintainer action, never inferred automatically).
 - **Ship a release by merging that PR yourself, whenever you're ready** — merging it is what cuts
-  the actual git tag + GitHub Release. `.github/workflows/release-publish.yml` then fast-forwards
-  the `release` branch to match, which is what triggers the production deploy above. There's no
-  separate automated/scheduled merge step: a plain `GITHUB_TOKEN`-authenticated merge from a
-  scheduled job doesn't trigger the downstream workflow that actually cuts the release (a GitHub
-  Actions anti-recursion protection, confirmed live), so this project follows the same "propose,
-  maintainer merges when ready" model as its sibling projects instead of provisioning a separate
-  credential to work around that.
+  the actual git tag + GitHub Release. The same `release-please.yml` run that notices the merge also
+  fast-forwards the `release` branch to match (a follow-up step in the same job, checking
+  release-please-action's own outputs — not a separate workflow), which is what triggers the
+  production deploy above. There's no separate automated/scheduled merge step, and no separate
+  release-triggered workflow either: both were tried and both hit the same GitHub Actions
+  anti-recursion protection (a `GITHUB_TOKEN`-authenticated push/release doesn't trigger other
+  workflows), confirmed live. This project follows the same "propose, maintainer merges when ready"
+  model as its sibling projects instead of provisioning a separate credential to work around that.
 - The currently-running production version is shown in the app's own sidebar footer (baked in at
   build time from `VERSION`; local/preview builds show `self-hosted` with no version, since no real
   release applies there).
