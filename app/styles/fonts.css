@@ -1,0 +1,21 @@
+/*
+ * Self-hosted IBM Plex Sans / IBM Plex Mono, via the @fontsource npm
+ * packages declared in deno.json's import map (constitution Principle IV —
+ * npm packages are fine via Deno's `npm:` specifier, npm-as-a-package-
+ * manager is not). Vite bundles the referenced .woff2 files as build
+ * assets automatically.
+ *
+ * Self-hosting rather than pulling from Google Fonts' CDN at runtime keeps
+ * FlareTower free of a third-party network request on every page load —
+ * see specs/009-design-system-alignment/research.md §1.
+ *
+ * Only the weights the design's type scale actually uses are loaded
+ * (research.md §1, confirmed by reading every `typeScale` entry and every
+ * inline font-weight in docs/design.zip's FlareTower.dc.html): Sans 400/600,
+ * Mono 400/500/600 (Mono's --text-label token is the only 500 usage).
+ */
+@import "@fontsource/ibm-plex-sans/400.css";
+@import "@fontsource/ibm-plex-sans/600.css";
+@import "@fontsource/ibm-plex-mono/400.css";
+@import "@fontsource/ibm-plex-mono/500.css";
+@import "@fontsource/ibm-plex-mono/600.css";
