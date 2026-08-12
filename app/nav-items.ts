@@ -67,4 +67,15 @@ export const NAV_ITEMS: readonly NavItem[] = [
     label: "Audit & Drift",
     icon: "M2 0h8v12H2Zm1.8 2.6h4.4v1.2H3.8Zm0 3h4.4v1.2H3.8Zm0 3h2.6v1.2H3.8Z",
   },
+  {
+    // Not in docs/design.zip's own NAV array (specs/011-clone-token-permissions/
+    // has no equivalent design-source screen) — hand-drawn key silhouette
+    // (solid bow + shaft + two teeth) in the same solid-fill 12x12 style as
+    // every icon above, noted explicitly per the constitution's Design
+    // System section.
+    key: "token-tools",
+    label: "Token Tools",
+    icon:
+      "M3 3.5a2.5 2.5 0 100 5 2.5 2.5 0 000-5Zm2.1 1.8h6.9v1.4H5.1ZM9.4 6.7h1v1.8h-1Zm2 0h.9v1.4h-.9Z",
+  },
 ];

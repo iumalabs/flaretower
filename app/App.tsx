@@ -8,6 +8,7 @@ import { StorageInventory } from "./pages/StorageInventory.tsx";
 import { SecurityPostureInventory } from "./pages/SecurityPostureInventory.tsx";
 import { AuditInventory } from "./pages/AuditInventory.tsx";
 import { OverviewPage } from "./pages/OverviewPage.tsx";
+import { TokenToolsPage } from "./pages/TokenToolsPage.tsx";
 import { Sidebar } from "./components/Sidebar.tsx";
 import { NAV_ITEMS } from "./nav-items.ts";
 import {
@@ -24,6 +25,7 @@ const PAGES = [
   { key: "storage", label: "R2 / KV / D1", render: () => <StorageInventory /> },
   { key: "security", label: "Security Posture", render: () => <SecurityPostureInventory /> },
   { key: "audit", label: "Audit & Drift", render: () => <AuditInventory /> },
+  { key: "token-tools", label: "Token Tools", render: () => <TokenToolsPage /> },
 ] as const;
 
 type PageKey = typeof PAGES[number]["key"];
