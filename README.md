@@ -241,10 +241,14 @@ FlareTower uses [semantic versioning](https://semver.org/) and
 - [`release-please`](https://github.com/googleapis/release-please) proposes a standing release PR on
   every push to `main`, bumping `VERSION` and `CHANGELOG.md` from commit history (`fix:` → patch,
   `feat:` → minor; a MAJOR bump needs a deliberate maintainer action, never inferred automatically).
-- A daily scheduled job (`.github/workflows/release-automerge.yml`) merges that PR if one is open —
-  cutting the actual git tag + GitHub Release — and fast-forwards the `release` branch to match,
-  which is what triggers the production deploy above. A maintainer can also merge the PR by hand at
-  any time to release outside the daily cadence.
+- **Ship a release by merging that PR yourself, whenever you're ready** — merging it is what cuts
+  the actual git tag + GitHub Release. `.github/workflows/release-publish.yml` then fast-forwards
+  the `release` branch to match, which is what triggers the production deploy above. There's no
+  separate automated/scheduled merge step: a plain `GITHUB_TOKEN`-authenticated merge from a
+  scheduled job doesn't trigger the downstream workflow that actually cuts the release (a GitHub
+  Actions anti-recursion protection, confirmed live), so this project follows the same "propose,
+  maintainer merges when ready" model as its sibling projects instead of provisioning a separate
+  credential to work around that.
 - The currently-running production version is shown in the app's own sidebar footer (baked in at
   build time from `VERSION`; local/preview builds show `self-hosted` with no version, since no real
   release applies there).
