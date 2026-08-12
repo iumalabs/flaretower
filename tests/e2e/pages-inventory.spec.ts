@@ -72,39 +72,43 @@ test.beforeEach(async ({ page }) => {
       contentType: "application/json",
       body: JSON.stringify(MOCK_PAGES_INVENTORY),
     }));
+  await page.route("**/api/audit/summary", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ modules: [], unavailable_sources: [] }),
+    }));
   await page.goto("/");
   await page.getByRole("button", { name: "Pages" }).click();
 });
 
 test("US1 — every project and every one of its custom domains appears, none omitted", async ({ page }) => {
-  await expect(page.getByText("marketing-site", { exact: true })).toBeVisible();
-  await expect(page.getByText("empty-project", { exact: true })).toBeVisible();
+  await expect(page.getByText("marketing-site", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText("empty-project", { exact: true }).first()).toBeVisible();
   await expect(page.getByText("example.com", { exact: false }).first()).toBeVisible();
   await expect(page.getByText("staging.example.com", { exact: false }).first()).toBeVisible();
 });
 
 test("US1 — an active domain renders safe, a non-active one renders warning", async ({ page }) => {
-  const activeRow = page.locator("tr", { hasText: "example.com" }).filter({
-    hasNotText: "staging",
-  });
+  const activeRow = page.getByTestId("findings-row-marketing-site:domain:example.com");
   await expect(activeRow.getByText("PROTECTED")).toBeVisible();
 
-  const pendingRow = page.locator("tr", { hasText: "staging.example.com" });
+  const pendingRow = page.getByTestId("findings-row-marketing-site:domain:staging.example.com");
   await expect(pendingRow.getByText("WARNING")).toBeVisible();
 });
 
 test("US2 — a covered pages.dev subdomain renders safe, an uncovered one renders critical", async ({ page }) => {
-  const coveredRow = page.locator("tr", { hasText: "marketing-site.pages.dev" });
+  const coveredRow = page.getByTestId("findings-row-marketing-site:subdomain");
   await expect(coveredRow.getByText("PROTECTED")).toBeVisible();
 
-  const uncoveredRow = page.locator("tr", { hasText: "empty-project.pages.dev" });
+  const uncoveredRow = page.getByTestId("findings-row-empty-project:subdomain");
   await expect(uncoveredRow.getByText("CRITICAL")).toBeVisible();
 });
 
 test("US3 — a successful production deployment renders safe, a missing one renders warning", async ({ page }) => {
-  const successRow = page.locator("tr", { hasText: "dep-1" });
+  const successRow = page.getByTestId("findings-row-marketing-site:deployment");
   await expect(successRow.getByText("PROTECTED")).toBeVisible();
 
-  const missingRow = page.locator("tr", { hasText: "no production deployment" });
+  const missingRow = page.getByTestId("findings-row-empty-project:deployment");
   await expect(missingRow.getByText("WARNING")).toBeVisible();
 });

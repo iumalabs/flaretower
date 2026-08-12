@@ -1,6 +1,12 @@
 import { useEffect, useState } from "react";
 import type { JSX } from "react";
-import { type ExposureStatus, ExposureStatusBadge } from "../components/ExposureStatusBadge.tsx";
+import { type ExposureStatus } from "../components/ExposureStatusBadge.tsx";
+import {
+  FindingsTable,
+  type FindingsTableColumn,
+  type FindingsTableRow,
+} from "../components/FindingsTable.tsx";
+import { AlertBanner } from "../components/AlertBanner.tsx";
 
 interface SubdomainFinding {
   subdomain: string;
@@ -33,6 +39,13 @@ interface PagesInventoryResponse {
   projects: ProjectFinding[];
 }
 
+interface FlatFinding {
+  project_name: string;
+  check: string;
+  label: string;
+  reason: string;
+}
+
 async function fetchPagesInventory(): Promise<PagesInventoryResponse> {
   const res = await fetch("/api/pages/inventory");
   if (!res.ok) {
@@ -41,95 +54,51 @@ async function fetchPagesInventory(): Promise<PagesInventoryResponse> {
   return await res.json();
 }
 
-function Row(
-  { badge, label, meta, reason }: {
-    badge: ExposureStatus;
-    label: string;
-    meta: string;
-    reason: string;
-  },
-): JSX.Element {
-  const critical = badge === "critical";
-  return (
-    <tr
-      style={{
-        borderTop: "1px solid var(--rule-hairline)",
-        borderLeft: critical ? "3px solid var(--status-critical)" : "3px solid transparent",
-        background: critical ? "var(--status-critical-row)" : "transparent",
-      }}
-    >
-      <td style={{ padding: "8px 0 8px 8px", width: 120 }}>
-        <ExposureStatusBadge status={badge} />
-      </td>
-      <td
+const COLUMNS: FindingsTableColumn<FlatFinding>[] = [
+  {
+    key: "project",
+    label: "Project",
+    width: "20%",
+    sortValue: (r) => r.project_name,
+    render: (r) => (
+      <span
         style={{
-          padding: "8px 0",
           fontFamily: "var(--font-mono)",
           fontSize: "var(--text-code-size)",
           color: "var(--fg-secondary)",
         }}
       >
-        {label}
-        <span style={{ color: "var(--fg-faint)" }}>· {meta}</span>
-      </td>
-      <td style={{ padding: "8px 0", fontSize: "var(--text-body-size)", color: "var(--fg-muted)" }}>
-        {reason}
-      </td>
-    </tr>
-  );
-}
-
-function ProjectSection({ project }: { project: ProjectFinding }): JSX.Element {
-  return (
-    <section
-      style={{
-        border: "1px solid var(--border)",
-        borderRadius: 6,
-        padding: 16,
-        marginBottom: 12,
-        background: "var(--surface-1)",
-      }}
-    >
-      <h2
+        {r.project_name}
+      </span>
+    ),
+  },
+  {
+    key: "check",
+    label: "Check",
+    render: (r) => (
+      <span
         style={{
-          fontFamily: "var(--font-sans)",
-          fontSize: "var(--text-title-size)",
-          fontWeight: "var(--text-title-weight)" as unknown as number,
-          margin: "0 0 12px",
+          fontFamily: "var(--font-mono)",
+          fontSize: "var(--text-code-size)",
+          color: "var(--fg-secondary)",
         }}
       >
-        {project.project_name}
-      </h2>
-      <table style={{ width: "100%", borderCollapse: "collapse" }}>
-        <tbody>
-          <Row
-            badge={project.subdomain.status}
-            label={project.subdomain.subdomain}
-            meta="pages.dev exposure"
-            reason={project.subdomain.reason}
-          />
-          {project.deployment && (
-            <Row
-              badge={project.deployment.status}
-              label={project.deployment.deployment_id ?? "no production deployment"}
-              meta="production deployment"
-              reason={project.deployment.reason}
-            />
-          )}
-          {project.domains.map((d) => (
-            <Row
-              key={d.domain_name}
-              badge={d.status}
-              label={d.domain_name}
-              meta="custom domain"
-              reason={d.reason}
-            />
-          ))}
-        </tbody>
-      </table>
-    </section>
-  );
-}
+        {r.label}
+        <span style={{ color: "var(--fg-faint)" }}>· {r.check}</span>
+      </span>
+    ),
+  },
+  {
+    key: "reason",
+    label: "Reason",
+    width: "34%",
+    render: (r) => (
+      <span style={{ fontSize: "var(--text-body-size)", color: "var(--fg-muted)" }}>
+        {r.reason}
+      </span>
+    ),
+  },
+];
 
 export function PagesInventory(): JSX.Element {
   const [data, setData] = useState<PagesInventoryResponse | null>(null);
@@ -147,17 +116,49 @@ export function PagesInventory(): JSX.Element {
     return <p style={{ color: "var(--status-critical-fg)" }}>{error}</p>;
   }
 
-  if (!data) {
-    return <p style={{ color: "var(--fg-muted)" }}>Loading Pages inventory…</p>;
-  }
+  const rows: FindingsTableRow<FlatFinding>[] | null = data
+    ? data.projects.flatMap((project) => {
+      const out: FindingsTableRow<FlatFinding>[] = [
+        {
+          id: `${project.project_name}:subdomain`,
+          status: project.subdomain.status,
+          data: {
+            project_name: project.project_name,
+            check: "pages.dev exposure",
+            label: project.subdomain.subdomain,
+            reason: project.subdomain.reason,
+          },
+        },
+      ];
+      if (project.deployment) {
+        out.push({
+          id: `${project.project_name}:deployment`,
+          status: project.deployment.status,
+          data: {
+            project_name: project.project_name,
+            check: "production deployment",
+            label: project.deployment.deployment_id ?? "no production deployment",
+            reason: project.deployment.reason,
+          },
+        });
+      }
+      for (const d of project.domains) {
+        out.push({
+          id: `${project.project_name}:domain:${d.domain_name}`,
+          status: d.status,
+          data: {
+            project_name: project.project_name,
+            check: "custom domain",
+            label: d.domain_name,
+            reason: d.reason,
+          },
+        });
+      }
+      return out;
+    })
+    : null;
 
-  if (data.projects.length === 0) {
-    return (
-      <p style={{ color: "var(--fg-muted)" }}>
-        No evaluation runs yet. Trigger one via <code>POST /api/pages/evaluate</code>.
-      </p>
-    );
-  }
+  const criticalRow = rows?.find((r) => r.status === "critical");
 
   return (
     <div>
@@ -172,13 +173,33 @@ export function PagesInventory(): JSX.Element {
       >
         Pages inventory
       </h1>
-      <p style={{ color: "var(--fg-faint)", fontSize: "var(--text-meta-size)", marginTop: 0 }}>
-        Last evaluated {data.evaluated_at} · run {data.run_id}
-      </p>
+      {data && (
+        <p style={{ color: "var(--fg-faint)", fontSize: "var(--text-meta-size)", marginTop: 0 }}>
+          Last evaluated {data.evaluated_at} · run {data.run_id}
+        </p>
+      )}
 
-      {data.projects.map((project) => (
-        <ProjectSection key={project.project_name} project={project} />
-      ))}
+      {criticalRow && (
+        <AlertBanner
+          scope="module"
+          finding={{
+            severity: "critical",
+            title: "A Pages project is publicly reachable with no Access policy",
+            target: `${criticalRow.data.project_name} · ${criticalRow.data.label}`,
+            description: criticalRow.data.reason,
+          }}
+        />
+      )}
+
+      <FindingsTable
+        columns={COLUMNS}
+        rows={rows}
+        loadingLabel="Loading Pages inventory…"
+        emptyState={{
+          heading: "No Pages projects in this account",
+          description: "No evaluation runs yet. Trigger one via POST /api/pages/evaluate.",
+        }}
+      />
     </div>
   );
 }
