@@ -14,6 +14,12 @@ const MOCK_STORAGE_INVENTORY = {
       status: "safe",
       reason: "no r2.dev domain and no enabled custom domains",
     },
+    {
+      bucket_name: "loosely-covered-assets",
+      status: "warning",
+      reason:
+        "enabled custom domain(s) covered by an Access application that does not meaningfully restrict access: assets.example.com",
+    },
   ],
   kv_namespaces: [
     {
@@ -87,6 +93,8 @@ test.beforeEach(async ({ page }) => {
 
 test("US1 — every bucket, namespace, and database appears, none omitted", async ({ page }) => {
   await expect(page.getByTestId("findings-row-public-uploads")).toBeVisible();
+  await expect(page.getByTestId("findings-row-private-backups")).toBeVisible();
+  await expect(page.getByTestId("findings-row-loosely-covered-assets")).toBeVisible();
   await expect(page.getByTestId("findings-row-kv-used")).toBeVisible();
   await expect(page.getByTestId("findings-row-kv-unused")).toBeVisible();
   await expect(page.getByTestId("findings-row-db-1")).toBeVisible();
@@ -98,6 +106,17 @@ test("US2 — an r2.dev-exposed bucket renders critical, a private bucket render
 
   const privateRow = page.getByTestId("findings-row-private-backups");
   await expect(privateRow.getByText("PROTECTED")).toBeVisible();
+});
+
+test("US2/T012 — a bucket with a custom domain covered by an open Access policy renders warning, distinct from critical/safe", async ({ page }) => {
+  const exposedRow = page.getByTestId("findings-row-public-uploads");
+  await expect(exposedRow.getByText("CRITICAL")).toBeVisible();
+
+  const privateRow = page.getByTestId("findings-row-private-backups");
+  await expect(privateRow.getByText("PROTECTED")).toBeVisible();
+
+  const looselyCoveredRow = page.getByTestId("findings-row-loosely-covered-assets");
+  await expect(looselyCoveredRow.getByText("WARNING")).toBeVisible();
 });
 
 test("US3 — a namespace referenced by a Worker renders safe, an unreferenced one renders warning", async ({ page }) => {

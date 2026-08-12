@@ -207,7 +207,22 @@ alerts; a run following an actual state change produces exactly one new alert.
 - [ ] T028 [P] [US4] Integration test in `tests/e2e/scheduled-audit.spec.ts` hitting the local
       `/cdn-cgi/handler/scheduled` endpoint (per quickstart.md Scenario 4): confirms
       `exposure_alerts` rows appear/don't appear as expected across two consecutive local scheduled
-      runs.
+      runs. **Investigated live (2026-08-12), genuinely blocked, not just unattempted**: the local
+      dev server Playwright's e2e suite actually runs against (the Cloudflare Vite plugin,
+      `playwright.config.ts`'s `webServer`) does not expose `/cdn-cgi/handler/scheduled` at all —
+      confirmed via a live `curl` against a running instance (`404`; its own local "Explorer API"
+      route list has no scheduled/cron trigger endpoint). That endpoint is specific to
+      `wrangler dev
+      --test-scheduled`, a different local server than this project's e2e
+      infrastructure uses. Beyond that, even a standalone test using `wrangler dev --test-scheduled`
+      couldn't verify the result via `GET /api/exposure/alerts` the way every other e2e test does —
+      this project has no dev-mode Access bypass (confirmed elsewhere in this project's history), so
+      an HTTP-level integration test would hit a real, un-mockable 403 from `accessAuth`, unlike
+      Playwright's own tests which mock at the browser's `page.route()` layer before requests ever
+      reach the real Worker. The only way to actually verify this would be querying the local D1
+      sqlite file directly (bypassing the HTTP API layer entirely), which needs new test
+      infrastructure — a real decision to make, not a small addition, so left undone pending that
+      decision rather than building it under an assumption of scope.
 
 ### Implementation for User Story 4
 
