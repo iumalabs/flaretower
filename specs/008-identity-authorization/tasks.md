@@ -20,7 +20,7 @@ anywhere — this feature adds no tables (research.md §1).
 
 ## Phase 1: Foundational (Blocking Prerequisite)
 
-- [ ] T001 Mount `/api/identity/*` in `worker/index.ts`'s Hono app, gated by the existing
+- [x] T001 Mount `/api/identity/*` in `worker/index.ts`'s Hono app, gated by the existing
       `accessAuth` middleware. Stub router until US2.
 
 **Checkpoint**: Routing mount point exists.
@@ -37,7 +37,7 @@ request's identity context carries that operator's current `role`.
 
 ### Tests for User Story 1
 
-- [ ] T002 [P] [US1] Unit test in `tests/unit/identity-users.test.ts` (mocked `D1Database`): a
+- [x] T002 [P] [US1] Unit test in `tests/unit/identity-users.test.ts` (mocked `D1Database`): a
       never-seen `sub` creates a new row with `created_at === last_seen_at`; a known `sub` updates
       `last_seen_at`/`email` without creating a duplicate row; the very first operator ever gets
       `role: "admin"`, every operator after that gets `role: "member"`; a failing/malformed
@@ -45,15 +45,15 @@ request's identity context carries that operator's current `role`.
 
 ### Implementation for User Story 1
 
-- [ ] T003 [US1] Implement `worker/modules/identity/users.ts`:
+- [x] T003 [US1] Implement `worker/modules/identity/users.ts`:
       `upsertOperator(db, {sub, email},
       fetchIdp)` — the two-step select-then-insert/update
       logic (research.md §3), decoupled from the auth middleware for testability.
-- [ ] T004 [P] [US1] Implement a best-effort `fetchIdentityProvider(teamDomain, jwt)` helper: calls
+- [x] T004 [P] [US1] Implement a best-effort `fetchIdentityProvider(teamDomain, jwt)` helper: calls
       `GET {teamDomain}/cdn-cgi/access/get-identity` with `Cookie: CF_Authorization={jwt}`, returns
       `.idp.type` on success, `"unknown"` on any failure (non-200, network error, unexpected shape)
       — never throws (research.md §2).
-- [ ] T005 [US1] Wire `worker/auth/access-jwt.ts`'s `accessAuth` to call `upsertOperator()` (using
+- [x] T005 [US1] Wire `worker/auth/access-jwt.ts`'s `accessAuth` to call `upsertOperator()` (using
       T004's helper only on the new-operator path) after JWT validation succeeds; extend
       `AccessIdentity` to `{ sub, email, role }` and attach the resolved role to the request context
       (data-model.md's Identity Context). Depends on T003, T004.
@@ -72,28 +72,28 @@ operator roster, and can promote/demote other operators.
 
 ### Tests for User Story 2
 
-- [ ] T006 [P] [US2] Unit test in `tests/unit/identity-routes.test.ts` (mocked `D1Database`):
+- [x] T006 [P] [US2] Unit test in `tests/unit/identity-routes.test.ts` (mocked `D1Database`):
       `GET /users` returns the roster for an `admin` caller; `POST /users/:sub/role` returns `400`
       for an invalid `role` value, `404` for an unknown `sub`, and `200` with the updated role
       otherwise.
-- [ ] T007 [P] [US2] Playwright e2e test in `tests/e2e/acknowledge-authorization.spec.ts` (mocked
+- [x] T007 [P] [US2] Playwright e2e test in `tests/e2e/acknowledge-authorization.spec.ts` (mocked
       identity/role and acknowledge endpoints): a `member`-role operator's acknowledge action is
       rejected and the UI reflects the alert as still outstanding; an `admin`-role operator's
       acknowledge action succeeds exactly as it does today.
 
 ### Implementation for User Story 2
 
-- [ ] T008 [US2] Implement a `requireRole("admin")` Hono middleware (research.md §4): reads
+- [x] T008 [US2] Implement a `requireRole("admin")` Hono middleware (research.md §4): reads
       `c.get("identity").role` (already resolved by `accessAuth`, no new D1 call) and returns `403`
       if it doesn't match.
-- [ ] T009 [P] [US2] Add `listOperators(db)` and `setOperatorRole(db, sub, role)` to
+- [x] T009 [P] [US2] Add `listOperators(db)` and `setOperatorRole(db, sub, role)` to
       `worker/modules/identity/users.ts`. Depends on T003 (same file).
-- [ ] T010 [US2] Implement `GET /api/identity/users` and `POST /api/identity/users/:sub/role` in
+- [x] T010 [US2] Implement `GET /api/identity/users` and `POST /api/identity/users/:sub/role` in
       `worker/modules/identity/routes.ts`, both gated by `requireRole("admin")`. Depends on T008,
       T009.
-- [ ] T011 [US2] Wire `worker/modules/identity/routes.ts` into the `/api/identity` mount from T001.
+- [x] T011 [US2] Wire `worker/modules/identity/routes.ts` into the `/api/identity` mount from T001.
       Depends on T010.
-- [ ] T012 [US2] Apply `requireRole("admin")` to all 7 existing `POST .../alerts/.../acknowledge`
+- [x] T012 [US2] Apply `requireRole("admin")` to all 7 existing `POST .../alerts/.../acknowledge`
       endpoints —
       `worker/modules/{workers-access-exposure,dns,
       zero-trust,pages,storage,security,audit}/routes.ts`
@@ -112,10 +112,10 @@ future Cloudflare-account-mutating module to include in its own `db.batch()`. No
 yet; no demonstrable end-to-end flow exists (spec.md Assumptions), so this phase has no `[US#]`
 label and no e2e test.
 
-- [ ] T013 [P] Unit test in `tests/unit/audit-log.test.ts` (mocked `D1Database`):
+- [x] T013 [P] Unit test in `tests/unit/audit-log.test.ts` (mocked `D1Database`):
       `writeAuditEntry(db, {actorSub, action, beforeJson, afterJson})` returns a
       `D1PreparedStatement` whose bound values match the given arguments.
-- [ ] T014 Implement `worker/audit-log.ts`: `writeAuditEntry()` per research.md §6 — builds and
+- [x] T014 Implement `worker/audit-log.ts`: `writeAuditEntry()` per research.md §6 — builds and
       returns the prepared statement, does not execute it (the caller includes it in their own
       `db.batch()`).
 
@@ -130,12 +130,12 @@ label and no e2e test.
       authenticated identities available (real-environment dependency, same as every prior module's
       equivalent task — here the requirement is real Access identities, not Cloudflare API
       credentials, since this feature calls no Cloudflare account API).
-- [ ] T016 [P] Add a short "Identity & Roles" note to the README: the first operator to ever
+- [x] T016 [P] Add a short "Identity & Roles" note to the README: the first operator to ever
       authenticate becomes `admin` automatically; promoting others is via
       `POST /api/identity/users/:sub/role` (no UI yet — FR-006/FR-011). **No new token-scope table
       changes** — this feature requests no new Cloudflare API scopes (research.md §8) — note that
       explicitly in the commit rather than silently adding nothing.
-- [ ] T017 [P] `deno fmt` + `deno lint` pass across `worker/modules/identity/`,
+- [x] T017 [P] `deno fmt` + `deno lint` pass across `worker/modules/identity/`,
       `worker/auth/access-jwt.ts`, `worker/audit-log.ts`, and the 7 modified acknowledge routes.
 
 ---
