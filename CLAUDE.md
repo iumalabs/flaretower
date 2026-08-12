@@ -30,6 +30,14 @@ Everything else in the product's full scope is documented in the
 constitution as future work — it gets its own spec, on its own branch, when
 its turn comes. Do not jump ahead and build later modules early.
 
+When `/speckit-taskstoissues` converts `tasks.md` tasks into GitHub issues,
+title them `FT-001: <description>` (not the skill's own default `T001:
+<description>`) — `FT-` (FlareTower) makes the ID identifiable out of
+context (commit messages, cross-repo references), not just within this
+one repo's `tasks.md`. Task IDs inside `tasks.md` itself (`T001`, `T002`,
+...) stay in the standard Spec Kit format — only the GitHub issue title
+gets the `FT-` prefix.
+
 ## Definition of done
 
 A feature is done when: it complies with every constitution principle, has
