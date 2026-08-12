@@ -58,8 +58,13 @@ repo root (not `package.json` or any file resembling a package manifest).
 Pair it with a second, small scheduled workflow
 (`release-automerge.yml`, cron roughly-daily) that checks whether
 release-please's standing release PR is open and, if so, merges it —
-which is what actually cuts the tag/GitHub Release and (via §1's
-mechanism) triggers the production deploy.
+which is what actually cuts the tag/GitHub Release. A third workflow,
+`release-publish.yml`, triggered on GitHub's own `release: published`
+event (fired identically whether `release-automerge.yml` or a maintainer
+merging the PR by hand caused it — see contracts/workflows.md's
+implementation-time correction, found live), advances the `release`
+branch to that tag's commit, which is what triggers the production
+deploy via §1's mechanism.
 
 **Rationale**:
 - `release-please-action` already implements exactly FR-001/FR-002/FR-003
