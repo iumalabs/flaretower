@@ -209,7 +209,7 @@ permission groups but different resource scoping, confirm that mismatch is surfa
 
 ## Phase 6: Convergence
 
-- [ ] T013 Distinguish `effect: "deny"` from `effect: "allow"` in `renderChecklist`
+- [x] T013 Distinguish `effect: "deny"` from `effect: "allow"` in `renderChecklist`
       (`app/lib/token-permissions.ts`): verified by direct call that a policy with `effect: "deny"`
       renders its permission group identically to a granted one (same `recognized`/`name`, no
       indication it is excluded rather than granted), so the checklist can show a permission as
@@ -217,7 +217,7 @@ permission groups but different resource scoping, confirm that mismatch is surfa
       and spec.md Acceptance Scenario 1. Add a regression unit test in
       `tests/unit/token-permissions.test.ts` covering a deny-effect policy (Constitution Principle
       VI, test-first). (contradicts, HIGH)
-- [ ] T014 Account for policy `effect` in `comparePolicies` (`app/lib/token-permissions.ts`):
+- [x] T014 Account for policy `effect` in `comparePolicies` (`app/lib/token-permissions.ts`):
       verified by direct call that two payloads differing only in `effect` for the same
       permission-group id (one `"allow"`, one `"deny"`) are reported as a full match on the
       `permissionGroups` dimension (`matches: true`, empty `onlyInA`/`onlyInB`) — reintroducing
