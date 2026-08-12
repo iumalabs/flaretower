@@ -68,7 +68,13 @@ test.beforeEach(async ({ page }) => {
     route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({ alerts: [MOCK_ALERT] }),
+      // unavailable_sources is required here — AuditInventory.tsx renders
+      // <UnavailableSourcesNotice sources={data.unavailable_sources} />
+      // unconditionally (added by the T025 per-source-availability fix,
+      // #299), which crashed on this mock predating that field. Pre-
+      // existing gap, unrelated to this feature — found and fixed while
+      // running the full e2e suite for this PR.
+      body: JSON.stringify({ alerts: [MOCK_ALERT], unavailable_sources: [] }),
     }));
   await page.route("**/api/audit/changes", (route) =>
     route.fulfill({
@@ -78,13 +84,14 @@ test.beforeEach(async ({ page }) => {
         since: "2026-08-10T06:00:00Z",
         until: "2026-08-11T06:00:00Z",
         changes: [],
+        unavailable_sources: [],
       }),
     }));
   await page.route("**/api/audit/summary", (route) =>
     route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({ modules: [] }),
+      body: JSON.stringify({ modules: [], unavailable_sources: [] }),
     }));
   await page.goto("/");
   await page.getByRole("button", { name: "Audit & Drift" }).click();
