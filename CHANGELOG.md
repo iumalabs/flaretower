@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.3](https://github.com/iumalabs/flaretower/compare/v1.1.2...v1.1.3) (2026-08-12)
+
+
+### Bug Fixes
+
+* **ci:** bring vite.config.ts, README.md, CLAUDE.md into fmt/lint/typecheck scope ([#319](https://github.com/iumalabs/flaretower/issues/319)) ([e9a97f4](https://github.com/iumalabs/flaretower/commit/e9a97f44257a60ad9cbeb57380502b0889a53459))
+
 ## [1.1.2](https://github.com/iumalabs/flaretower/compare/v1.1.1...v1.1.2) (2026-08-12)
 
 
