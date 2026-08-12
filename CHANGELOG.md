@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.4.0](https://github.com/iumalabs/flaretower/compare/v1.3.0...v1.4.0) (2026-08-12)
+
+
+### Features
+
+* **workers-dashboard:** add Workers operational dashboard (spec 012) ([#346](https://github.com/iumalabs/flaretower/issues/346)) ([79eccac](https://github.com/iumalabs/flaretower/commit/79eccac52dcb6944e092b23c6887687289d4f7b6))
+
+
+### Bug Fixes
+
+* **deploy:** make deploy tasks self-sufficient, don't rely on Workers Builds' Build command ([#347](https://github.com/iumalabs/flaretower/issues/347)) ([5c36d4e](https://github.com/iumalabs/flaretower/commit/5c36d4e4cb7d0a00d639976a0a4c9040f42de106))
+
 ## [1.3.0](https://github.com/iumalabs/flaretower/compare/v1.2.0...v1.3.0) (2026-08-12)
 
 
