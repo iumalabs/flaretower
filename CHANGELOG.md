@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.0](https://github.com/iumalabs/flaretower/compare/v1.1.4...v1.2.0) (2026-08-12)
+
+
+### Features
+
+* **token-tools:** add Clone API Token Permissions page (T001-T008) ([#327](https://github.com/iumalabs/flaretower/issues/327)) ([e8fc795](https://github.com/iumalabs/flaretower/commit/e8fc7954d46ab604aa485d08aa4d25242a7ab9a1))
+
 ## [1.1.4](https://github.com/iumalabs/flaretower/compare/v1.1.3...v1.1.4) (2026-08-12)
 
 
