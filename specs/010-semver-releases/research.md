@@ -131,19 +131,28 @@ directly (no runtime fetch, no new `/api/*` endpoint) and passes it into `Sideba
 `footer.version` field — e.g. `"v1.0.3 · self-hosted"` — only when the constant is actually a real
 version string; falls back to today's `"self-hosted"`-only text (spec.md FR-010) otherwise.
 
-**Implementation-time correction (superseding the original plan)**: `VERSION` is a real, committed
-file that exists identically on every branch — `main`, feature branches, and PR preview branches all
-carry whatever the last release wrote to it. Reading it unconditionally would therefore inject a
-version into **every** build, including preview deploys and local dev, not just production —
-directly violating spec.md FR-010/US3's Acceptance Scenario 2 ("running locally or viewing a preview
-deployment ... they do not see a fabricated or misleading production version number"), since a
-preview build can be arbitrarily far ahead of the last cut release. The fix: `readAppVersion()` in
-`vite.config.ts` first checks the currently checked-out git branch
-(`git rev-parse --abbrev-ref HEAD`) and only reads `VERSION` when it's exactly `release` — the one
-branch that only ever advances via `release-publish.yml`'s fast-forward after a real cut
-(research.md §1). Every other build (any branch name, or a failure to resolve one at all, e.g. a
-shallow/detached checkout) falls back to `""`. This needs no new Cloudflare-side configuration —
-Workers Builds already checks out the exact branch it's configured to build for each deploy.
+**Implementation-time corrections (superseding the original plan, found in two passes)**:
+
+1. `VERSION` is a real, committed file that exists identically on every branch — `main`, feature
+   branches, and PR preview branches all carry whatever the last release wrote to it. Reading it
+   unconditionally would therefore inject a version into **every** build, including preview deploys
+   and local dev, not just production — directly violating spec.md FR-010/US3's Acceptance Scenario 2
+   ("running locally or viewing a preview deployment ... they do not see a fabricated or misleading
+   production version number"), since a preview build can be arbitrarily far ahead of the last cut
+   release. First fix: `readAppVersion()` in `vite.config.ts` checked the currently checked-out git
+   branch (`git rev-parse --abbrev-ref HEAD`) and only read `VERSION` when it was exactly `release`.
+2. **Confirmed live in production (2026-08-12) that this git-based check was itself broken**: after
+   the first real production deploy from `release` (v1.1.3), the live footer at
+   `flaretower.iuma.dev` showed only `"self-hosted"` — no version at all — proving
+   `readAppVersion()` returned `""` even on a genuine `release`-branch build. Cloudflare Workers
+   Builds' checkout leaves `HEAD` detached (or otherwise unresolvable to a branch name via git
+   alone), so `git rev-parse --abbrev-ref HEAD` never matched `"release"`, in production or
+   anywhere else. Fixed by reading Cloudflare's own `WORKERS_CI_BRANCH` environment variable
+   instead (confirmed via Cloudflare's build-configuration docs: injected with the branch name from
+   the triggering push event, for every Workers Builds run) — `Deno.env.get("WORKERS_CI_BRANCH") ===
+   "release"`. Unset in local dev, so the fallback behavior is unchanged there; set correctly by
+   Cloudflare itself for every real build (production or preview), so this sidesteps the git-checkout
+   -state question entirely rather than depending on it.
 
 **Rationale**: This is the simplest mechanism that satisfies FR-008/ FR-009 — no new backend
 endpoint, no runtime network call, and the version is baked into the exact build artifact that gets

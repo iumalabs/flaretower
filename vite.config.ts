@@ -7,22 +7,24 @@ import { cloudflare } from "@cloudflare/vite-plugin";
 // every branch, including main/feature branches and PR previews, so
 // reading it unconditionally would show a version on preview/dev builds
 // too — misleading, since those can be arbitrarily far ahead of the last
-// real release (spec.md FR-010, US3 Acceptance Scenario 2). Cloudflare
-// Workers Builds checks out the exact branch it's configured to deploy
-// from, so gating on the checked-out branch actually being `release` is a
+// real release (spec.md FR-010, US3 Acceptance Scenario 2).
+//
+// Gate on Cloudflare Workers Builds' own WORKERS_CI_BRANCH env var (the
+// branch name from the triggering push event — confirmed via Cloudflare's
+// build-configuration docs), not `git rev-parse --abbrev-ref HEAD`: found
+// live in production that Workers Builds' checkout leaves HEAD detached
+// (or otherwise unresolvable to a branch name), so the git-based check
+// always fell through to "" even on real `release`-branch builds — the
+// production footer shipped with no version at all until this fix.
+// WORKERS_CI_BRANCH is unset in local dev and set to the actual branch
+// name for every Workers Builds run (production or preview), so this is a
 // reliable per-build signal with no extra Cloudflare-side configuration:
-// only a production build (built from `release`, which only ever advances
-// when release-automerge.yml fast-forwards it after a real cut) resolves
-// to a non-empty version; every other build — local dev, feature branches,
-// preview deploys — falls back to "".
+// only a production build (from `release`) resolves to a non-empty
+// version; every other build — local dev, feature branches, preview
+// deploys — falls back to "".
 function readAppVersion(): string {
   try {
-    const branch = new Deno.Command("git", {
-      args: ["rev-parse", "--abbrev-ref", "HEAD"],
-      stdout: "piped",
-      stderr: "null",
-    }).outputSync();
-    if (!branch.success || new TextDecoder().decode(branch.stdout).trim() !== "release") {
+    if (Deno.env.get("WORKERS_CI_BRANCH") !== "release") {
       return "";
     }
     return Deno.readTextFileSync(new URL("./VERSION", import.meta.url)).trim();
