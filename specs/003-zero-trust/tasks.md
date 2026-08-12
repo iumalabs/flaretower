@@ -18,10 +18,10 @@ phase — reuses Modules 1/2's tooling entirely.
 
 ## Phase 1: Foundational (Blocking Prerequisites)
 
-- [ ] T001 [P] Create D1 migration `worker/db/migrations/0004_zero_trust_findings.sql`
+- [x] T001 [P] Create D1 migration `worker/db/migrations/0004_zero_trust_findings.sql`
       for `zt_app_findings`, `zt_app_alerts`, `zt_token_findings`,
       `zt_token_alerts` per data-model.md.
-- [ ] T002 Mount `/api/zero-trust/*` in `worker/index.ts`'s Hono app,
+- [x] T002 Mount `/api/zero-trust/*` in `worker/index.ts`'s Hono app,
       gated by the existing `accessAuth` middleware. Stub router until
       US1.
 
@@ -38,33 +38,33 @@ independent of Module 1's Worker-hostname scoping.
 
 ### Tests for User Story 1
 
-- [ ] T003 [P] [US1] Unit test in `tests/unit/zero-trust-inventory.test.ts`
+- [x] T003 [P] [US1] Unit test in `tests/unit/zero-trust-inventory.test.ts`
       (mocked `fetch`): applications and service tokens are correctly
       enumerated, including zero-policy applications and tokens with no
       `expires_at`.
-- [ ] T004 [P] [US1] Playwright e2e test in
+- [x] T004 [P] [US1] Playwright e2e test in
       `tests/e2e/zero-trust-inventory.spec.ts` (mocked
       `GET /api/zero-trust/inventory`): every application and token
       renders, none omitted.
 
 ### Implementation for User Story 1
 
-- [ ] T005 [P] [US1] Implement `worker/modules/zero-trust/types.ts` and
+- [x] T005 [P] [US1] Implement `worker/modules/zero-trust/types.ts` and
       `inventory.ts`: list Access applications (account-wide, with
       embedded policies), list service tokens.
-- [ ] T006 [US1] Implement basic `evaluateApplication()` and
+- [x] T006 [US1] Implement basic `evaluateApplication()` and
       `evaluateServiceToken()` in `worker/modules/zero-trust/evaluate.ts`:
       returns `not_evaluated` on an evaluationError, `safe` otherwise for
       now (US2/US3 extend the real branches). Depends on T005's types.
-- [ ] T007 [US1] Implement `GET /api/zero-trust/inventory` in
+- [x] T007 [US1] Implement `GET /api/zero-trust/inventory` in
       `worker/modules/zero-trust/routes.ts`. Depends on T005, T006.
-- [ ] T008 [US1] Implement `POST /api/zero-trust/evaluate`: runs
+- [x] T008 [US1] Implement `POST /api/zero-trust/evaluate`: runs
       inventory + evaluate, persists to `zt_app_findings` and
       `zt_token_findings`. Depends on T001, T006.
-- [ ] T009 [P] [US1] Build `app/pages/ZeroTrustInventory.tsx`, reusing
+- [x] T009 [P] [US1] Build `app/pages/ZeroTrustInventory.tsx`, reusing
       `ExposureStatusBadge` unchanged. Add a third nav entry to
       `app/App.tsx`.
-- [ ] T010 [US1] Wire `routes.ts` into the `/api/zero-trust` mount from
+- [x] T010 [US1] Wire `routes.ts` into the `/api/zero-trust` mount from
       T002.
 
 **Checkpoint**: User Story 1 fully functional and independently testable.
@@ -80,16 +80,16 @@ policies) is flagged `warning`.
 
 ### Tests for User Story 2
 
-- [ ] T011 [P] [US2] Unit test: Allow-Everyone policy → warning; Bypass
+- [x] T011 [P] [US2] Unit test: Allow-Everyone policy → warning; Bypass
       policy → warning; zero policies → warning; Deny-Everyone → safe
       (decision matters, not just the selector — same distinction Module
       1 already established); scoped policy → safe.
-- [ ] T012 [P] [US2] Playwright e2e test: the warning badge renders for a
+- [x] T012 [P] [US2] Playwright e2e test: the warning badge renders for a
       mocked open-policy application.
 
 ### Implementation for User Story 2
 
-- [ ] T013 [US2] Implement the policy-openness decision logic in
+- [x] T013 [US2] Implement the policy-openness decision logic in
       `evaluate.ts` (research.md §2 — local re-implementation, not
       imported from Module 1) and wire it into `evaluateApplication()`.
 
@@ -106,16 +106,16 @@ never-expiring tokens → warning; healthy tokens → safe.
 
 ### Tests for User Story 3
 
-- [ ] T014 [P] [US3] Unit test: past `expires_at` → critical; `expires_at`
+- [x] T014 [P] [US3] Unit test: past `expires_at` → critical; `expires_at`
       within 14 days → warning; no `expires_at` at all → warning
       (research.md §3's defensive branch); far-future `expires_at` →
       safe.
-- [ ] T015 [P] [US3] Playwright e2e test: critical/warning/safe token
+- [x] T015 [P] [US3] Playwright e2e test: critical/warning/safe token
       badges render distinctly.
 
 ### Implementation for User Story 3
 
-- [ ] T016 [US3] Implement the expiry evaluation branch in
+- [x] T016 [US3] Implement the expiry evaluation branch in
       `evaluateServiceToken()` per research.md §3.
 
 **Checkpoint**: All three status-detection stories independently
@@ -132,24 +132,24 @@ on new open-policy or token-expiry findings, no repeats.
 
 ### Tests for User Story 4
 
-- [ ] T017 [P] [US4] Unit test in `tests/unit/zero-trust-alerts.test.ts`:
+- [x] T017 [P] [US4] Unit test in `tests/unit/zero-trust-alerts.test.ts`:
       first-run alerting, no-repeat on unchanged state, transitions, for
       both the application-alert diff and the token-alert diff functions
       (two separate diff functions per data-model.md's two-table design).
 
 ### Implementation for User Story 4
 
-- [ ] T018 [US4] Implement `worker/modules/zero-trust/alerts.ts` — two
+- [x] T018 [US4] Implement `worker/modules/zero-trust/alerts.ts` — two
       diff functions (`diffForAppAlerts`, `diffForTokenAlerts`), same
       new-vs-repeat semantics as every prior module.
-- [ ] T019 [US4] **Integration point** (plan.md's Constitution Check):
+- [x] T019 [US4] **Integration point** (plan.md's Constitution Check):
       add this module's evaluation + alert-diffing to the *existing*
       `scheduled` handler in `worker/index.ts`, as a third independent
       `waitUntil` call alongside Modules 1 and 2's. Depends on T008, T018.
-- [ ] T020 [US4] Implement `GET /api/zero-trust/alerts` (merges both
+- [x] T020 [US4] Implement `GET /api/zero-trust/alerts` (merges both
       alert tables with a `kind` discriminator per contracts/api.md).
       Depends on T018.
-- [ ] T021 [US4] Implement
+- [x] T021 [US4] Implement
       `POST /api/zero-trust/alerts/:kind/:id/acknowledge` (routes to the
       matching table based on `:kind`). Depends on T018.
 
@@ -163,10 +163,10 @@ feature-complete per spec.md.
 - [ ] T022 [P] Run all 6 quickstart.md scenarios end-to-end against a real
       scratch Cloudflare test account (real-account dependency, same as
       every prior module's equivalent task).
-- [ ] T023 [P] Add this module's required token scopes
+- [x] T023 [P] Add this module's required token scopes
       (`Access: Apps and Policies Read` — already documented for Module 1
       — and `Access: Service Tokens Read`, new) to the README.
-- [ ] T024 [P] `deno fmt` + `deno lint` pass across the new
+- [x] T024 [P] `deno fmt` + `deno lint` pass across the new
       `worker/modules/zero-trust/` and `ZeroTrustInventory.tsx` files.
 
 ---
