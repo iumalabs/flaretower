@@ -15,11 +15,11 @@ jobs:
       # release-please-action itself talks to the GitHub API directly and
       # doesn't need a working tree, but the fast-forward step below does
       # (it needs the tagged commit object available locally to push it).
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
-      - uses: googleapis/release-please-action@v4
+      - uses: googleapis/release-please-action@v5
         id: release
         with:
           config-file: release-please-config.json
