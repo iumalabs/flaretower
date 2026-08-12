@@ -24,17 +24,20 @@ describe: releases must exist (US1) before production can be gated by them
 required config, with no behavior yet — nothing here changes what deploys
 or what the app displays.
 
-- [ ] T001 Create repo-root `VERSION` file containing `1.0.0` (no `v` prefix,
+- [x] T001 Create repo-root `VERSION` file containing `1.0.0` (no `v` prefix,
       no trailing newline beyond what a normal text file has — data-model.md's
       `VERSION` file format) — the starting point for release-please's first
       release, matching spec.md FR-001/Edge Case 1 ("first release, no prior
       version to compare against ... MUST establish v1.0.0").
-- [ ] T002 [P] Create `release-please-config.json` at repo root:
-      `release-type: "simple"`, package path `"."`, a generic `extra-files`
-      entry targeting `VERSION` (plain-text, whole-file replace — no regex
-      needed since the file contains nothing but the version string), and
-      `changelog-path: "CHANGELOG.md"` (research.md §2).
-- [ ] T003 [P] Create `.release-please-manifest.json` at repo root:
+- [x] T002 [P] Create `release-please-config.json` at repo root:
+      `{ "packages": { ".": { "release-type": "simple", "version-file":
+      "VERSION" } } }` — confirmed against release-please's actual source
+      (`DefaultUpdater`/`schemas/config.json`) that `version-file` is the
+      correct, minimal way to point the `simple` strategy's built-in
+      whole-file version updater at a non-default filename; no
+      `extra-files`/`type: "generic"`/regex marker needed for this
+      whole-file-is-just-the-version case (research.md §2).
+- [x] T003 [P] Create `.release-please-manifest.json` at repo root:
       `{ ".": "1.0.0" }`, matching T001's starting `VERSION` value —
       release-please's own manifest-mode requirement so it knows the current
       version without re-deriving it from git tags on its very first run.
@@ -85,49 +88,45 @@ changes to deployment or the UI.
 
 ### Implementation for User Story 1
 
-- [ ] T005 [US1] Create `.github/workflows/release-please.yml`: trigger
+- [x] T005 [US1] Create `.github/workflows/release-please.yml`: trigger
       `push: branches: [main]`; `permissions: contents: write, pull-requests:
       write` (release-please needs to create/update PRs and push tags — this
       is the one workflow in the repo needing more than `ci.yml`/`e2e.yml`'s
       read-only `contents: read`); single job running
       `googleapis/release-please-action@v4` with
-      `release-type: simple`,
       `config-file: release-please-config.json`,
       `manifest-file: .release-please-manifest.json`. Matches
       contracts/workflows.md's `release-please.yml` contract exactly
       (proposes/updates only, never merges, never touches `release`).
-- [ ] T006 [US1] Confirm (via release-please's own `dry-run: true` input, run
-      once locally-triggered via `workflow_dispatch` against a throwaway
-      test, or by reading its action output on the first real push) that the
-      generic `extra-files` updater in T002's config actually rewrites
-      `VERSION`'s contents correctly — plan.md's Testing section flags this
-      as the one piece of this feature worth a real dry-run rather than
-      trusting the config file alone.
-- [ ] T007 [US1] Create `.github/workflows/release-automerge.yml`:
-      triggers `schedule` (daily cron, e.g. `0 9 * * *` — matches spec.md's
+- [ ] T006 [US1] Confirm on the first real push to `main` after this feature
+      merges that release-please's PR correctly proposes bumping `VERSION`
+      via the `version-file` setting (T002) — the one piece of this feature
+      that can only be verified live, not locally (plan.md's Testing
+      section).
+- [x] T007 [US1] Create `.github/workflows/release-automerge.yml`:
+      triggers `schedule` (daily cron `0 9 * * *` — matches spec.md's
       "roughly daily") + `workflow_dispatch` (FR-004's manual-trigger path);
       `permissions: contents: write, pull-requests: write`; steps: find the
       open release-please PR via `gh pr list --label "autorelease: pending"`
-      (release-please's own standard label), if none found exit 0
-      (no-op — spec.md Acceptance Scenario 2/FR-002), otherwise
+      (release-please's own standard label), if none found every later step
+      is skipped (no-op — spec.md Acceptance Scenario 2/FR-002), otherwise
       `gh pr merge --squash` it. Matches contracts/workflows.md's
       `release-automerge.yml` PR-merge half of its contract.
-- [ ] T008 [US1] Extend `release-automerge.yml` (same file as T007) with a
+- [x] T008 [US1] Extend `release-automerge.yml` (same file as T007) with a
       final step, run only after a successful merge: fast-forward `release`
       to the new `main` HEAD (`git fetch origin main && git push origin
       origin/main:release`) — idempotent per contracts/workflows.md (a
       fast-forward to a commit `release` is already at is a no-op, so a
       re-run after a prior success or a run with nothing to merge doesn't
       error). Depends on T004 (the `release` branch must already exist).
-- [ ] T009 [US1] Ensure every step in `release-automerge.yml` that can fail
-      (PR-merge conflict, fast-forward rejection because `release` diverged)
-      causes the workflow run itself to fail/exit non-zero rather than being
-      swallowed by `|| true` or similar — spec.md FR-012, contracts/
-      workflows.md's explicit "must fail visibly." A failed GitHub Actions
-      run is itself the visible signal (shows red in the Actions tab /
-      commit status) — no additional notification channel needed beyond
-      that, consistent with how `ci.yml`/`e2e.yml` failures are already
-      surfaced in this repo.
+- [x] T009 [US1] Every step in `release-automerge.yml` that can fail
+      (PR-merge conflict/blocked by branch protection, fast-forward
+      rejection because `release` diverged) runs under `set -euo pipefail`
+      with no `--admin` bypass and no `|| true` swallowing — a failure there
+      fails the job itself, visible in the Actions tab/commit status
+      (spec.md FR-012, contracts/workflows.md's explicit "must fail
+      visibly"), consistent with how `ci.yml`/`e2e.yml` failures already
+      surface in this repo.
 
 **Checkpoint**: Merging conventional-commit changes to `main` now produces a
 standing, correctly-versioned release PR; merging that PR (by hand or via the
@@ -194,27 +193,27 @@ current deploy; run `deno task dev` locally, confirm the footer shows
 
 ### Implementation for User Story 3
 
-- [ ] T013 [US3] Add `server: { define: ... }`-equivalent build-time
-      constant to `vite.config.ts`: read the repo-root `VERSION` file's
-      contents at config-evaluation time (Node/Deno `readFileSync`-style
-      read, trimmed) and inject via Vite's `define: { __APP_VERSION__:
-      JSON.stringify(versionOrEmptyString) }` — falls back to an empty
-      string if `VERSION` is missing/unreadable (keeps local dev/any
-      unusual build safe by construction, not just by convention;
-      data-model.md/FR-010).
-- [ ] T014 [P] [US3] Add the ambient type declaration for the injected
-      constant (e.g. in `app/vite-env.d.ts`, creating it if it doesn't exist
-      yet): `declare const __APP_VERSION__: string;` — matches plan.md's
+- [x] T013 [US3] Add a build-time constant to `vite.config.ts`: `define: {
+      __APP_VERSION__: JSON.stringify(readAppVersion()) }`, where
+      `readAppVersion()` first checks the checked-out git branch
+      (`git rev-parse --abbrev-ref HEAD`) and only reads/trims the
+      repo-root `VERSION` file when it's exactly `release` — otherwise (or
+      on any failure) returns `""`. Branch-gated rather than a plain file
+      read, since `VERSION` exists identically on every branch and an
+      unconditional read would leak a version into preview/dev builds too
+      (research.md §3's implementation-time correction; FR-010).
+- [x] T014 [P] [US3] Add the ambient type declaration for the injected
+      constant in `app/vite-env.d.ts` (new file):
+      `declare const __APP_VERSION__: string;` — matches plan.md's
       Project Structure entry, needed for `deno check`/strict TS
       (Constitution Principle VI) to accept the reference in T015.
-- [ ] T015 [US3] In `app/App.tsx`, compute the footer version string from
+- [x] T015 [US3] In `app/App.tsx`, compute the footer version string from
       `__APP_VERSION__` and pass it as `footer={{ version: ... }}` (the
       existing `Sidebar` prop — no `Sidebar.tsx` change needed, per
       contracts/workflows.md's corrected contract): when `__APP_VERSION__`
       is non-empty, `` `v${__APP_VERSION__} · self-hosted` ``; when empty,
-      exactly today's literal `"self-hosted"`. Replaces the current
-      hardcoded `footer={{ version: "self-hosted" }}` at
-      `app/App.tsx:76`.
+      exactly today's literal `"self-hosted"`. Replaces the previous
+      hardcoded `footer={{ version: "self-hosted" }}` at `app/App.tsx:76`.
 - [ ] T016 [US3] Extend `tests/e2e/app-shell.spec.ts`'s existing footer
       assertion (currently `page.getByText("self-hosted")` at line ~113) to
       cover both states: the existing test build (no real `VERSION`-derived

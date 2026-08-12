@@ -73,7 +73,7 @@ export function App(): JSX.Element {
         activeKey={page}
         onSelect={(key) => setPage(key as PageKey)}
         badges={badges}
-        footer={{ version: "self-hosted" }}
+        footer={{ version: __APP_VERSION__ ? `v${__APP_VERSION__} · self-hosted` : "self-hosted" }}
       />
       <div style={{ flex: 1, minWidth: 0 }}>
         {active.render()}
