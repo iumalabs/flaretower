@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.3.0](https://github.com/iumalabs/flaretower/compare/v1.2.0...v1.3.0) (2026-08-12)
+
+
+### Features
+
+* **design-system:** populate FindingsTable row detail on Exposure, add expand/collapse e2e coverage (T040/T041) ([#335](https://github.com/iumalabs/flaretower/issues/335)) ([b86940e](https://github.com/iumalabs/flaretower/commit/b86940e00a13db233d9d58789af6356773a4d538))
+
+
+### Bug Fixes
+
+* **dns:** guard total zone-list failure, add not_evaluated e2e coverage (T028/T029) ([#332](https://github.com/iumalabs/flaretower/issues/332)) ([0fb569b](https://github.com/iumalabs/flaretower/commit/0fb569b8eeeee4a9fc9d4a4b26f2f189d9f127c4))
+* **token-tools:** distinguish deny from allow in checklist and comparison (T013/T014) ([#336](https://github.com/iumalabs/flaretower/issues/336)) ([cf4c0b2](https://github.com/iumalabs/flaretower/commit/cf4c0b230034c8e78396ed96fb35bf2f0b5d00a5))
+
 ## [1.2.0](https://github.com/iumalabs/flaretower/compare/v1.1.4...v1.2.0) (2026-08-12)
 
 
