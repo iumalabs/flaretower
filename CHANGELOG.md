@@ -1,0 +1,58 @@
+# Changelog
+
+## [1.1.0](https://github.com/iumalabs/flaretower/compare/v1.0.0...v1.1.0) (2026-08-12)
+
+
+### Features
+
+* Audit & Drift Foundational phase — routing mount (T001) ([#251](https://github.com/iumalabs/flaretower/issues/251)) ([fdc70f6](https://github.com/iumalabs/flaretower/commit/fdc70f6bd689c741ee65386ab9ffd1c17a5cf5b9))
+* Audit & Drift User Story 1 — unified alerts inbox (T002-T008) ([#252](https://github.com/iumalabs/flaretower/issues/252)) ([07ea367](https://github.com/iumalabs/flaretower/commit/07ea36768c3dc2717846d9c2ed4f5be37d93e55c))
+* cross-module Overview page (Design System US3) ([#303](https://github.com/iumalabs/flaretower/issues/303)) ([0dfdeda](https://github.com/iumalabs/flaretower/commit/0dfdeda9915246ac4b620456e8c653770de1e9e4))
+* DNS Foundational phase — D1 schema, routing mount (T001-T002) ([#87](https://github.com/iumalabs/flaretower/issues/87)) ([173de44](https://github.com/iumalabs/flaretower/commit/173de442b3ab7815ccd59454060a15e898d87108))
+* DNS User Story 1 — full DNS inventory (T003-T010) ([#88](https://github.com/iumalabs/flaretower/issues/88)) ([9ea241f](https://github.com/iumalabs/flaretower/commit/9ea241fbc97cac099dd052a4c3be2fc27dbbcba8))
+* DNS User Story 2 — dangling record critical flag (T011-T014) ([#89](https://github.com/iumalabs/flaretower/issues/89)) ([6543246](https://github.com/iumalabs/flaretower/commit/65432463cf517bb01d8839d4d49ce3c6bf5a9879))
+* DNS User Story 3 — DNS-only exposure warning (T015-T017) ([#90](https://github.com/iumalabs/flaretower/issues/90)) ([6a1c551](https://github.com/iumalabs/flaretower/commit/6a1c551344ac8a1292a1707caa67b490a8a65485))
+* DNS User Story 4 — scheduled drift alerting (T018-T022) ([#91](https://github.com/iumalabs/flaretower/issues/91)) ([a75bcd1](https://github.com/iumalabs/flaretower/commit/a75bcd11b93af9889a999c5eabf0ed770d8ce6b6))
+* Foundational phase — Access JWT auth, D1 schema, routing skeleton (T005-T010) ([#50](https://github.com/iumalabs/flaretower/issues/50)) ([e77eab1](https://github.com/iumalabs/flaretower/commit/e77eab1e4d1aac9b89e0209a29887838cce43bc0))
+* Identity & Authorization Foundational phase — routing mount (T001) ([#275](https://github.com/iumalabs/flaretower/issues/275)) ([56688ad](https://github.com/iumalabs/flaretower/commit/56688ad8cb63065e4c8e93a489dac60d6cf527be)), closes [#257](https://github.com/iumalabs/flaretower/issues/257)
+* on-brand app shell — fonts, favicon, sidebar nav (Design System US1) ([#301](https://github.com/iumalabs/flaretower/issues/301)) ([c81c3e2](https://github.com/iumalabs/flaretower/commit/c81c3e2c3307ac16ac44d4faae7737a0c5ec0e41))
+* Pages Foundational phase — D1 schema, routing mount (T001-T002) ([#156](https://github.com/iumalabs/flaretower/issues/156)) ([f8a0aa3](https://github.com/iumalabs/flaretower/commit/f8a0aa39c29f7786513f7aab75175618e128c9af))
+* Pages User Story 1 — full inventory, custom domain status (T003-T010) ([#157](https://github.com/iumalabs/flaretower/issues/157)) ([733f445](https://github.com/iumalabs/flaretower/commit/733f4453d3a4968b55546a67c678b9e778f64a81))
+* Pages User Story 2 — pages.dev exposure flag (T011-T014) ([#158](https://github.com/iumalabs/flaretower/issues/158)) ([1da8466](https://github.com/iumalabs/flaretower/commit/1da8466019af7bc75479b40d68b2c2d13757e621))
+* Pages User Story 3 — production deployment health (T015-T018) ([#159](https://github.com/iumalabs/flaretower/issues/159)) ([af7658e](https://github.com/iumalabs/flaretower/commit/af7658e7a06546f718f2aeaeb92a498ff7de5df9))
+* Pages User Story 4 — scheduled drift alerting (T019-T023) ([#160](https://github.com/iumalabs/flaretower/issues/160)) ([9175ec2](https://github.com/iumalabs/flaretower/commit/9175ec2cc0a48738629c1a9714302559edf8df3c))
+* **release:** automated release-please versioning (T001-T003, T005-T009, T013-T015) ([#308](https://github.com/iumalabs/flaretower/issues/308)) ([f81c56b](https://github.com/iumalabs/flaretower/commit/f81c56b78ef03b8d603081e37ca6c672444ae54d))
+* Security Posture Foundational phase — D1 schema, routing mount (T001-T002) ([#220](https://github.com/iumalabs/flaretower/issues/220)) ([b2ee62b](https://github.com/iumalabs/flaretower/commit/b2ee62baabadd63517bffaf7acf1bdc1f499e76a))
+* Security Posture User Story 1 — full inventory (T003-T010) ([#221](https://github.com/iumalabs/flaretower/issues/221)) ([54d35f1](https://github.com/iumalabs/flaretower/commit/54d35f14675132246291afab060fe3ca9ef1bce9))
+* Security Posture User Story 2 — SSL/TLS mode flag (T011-T013) ([#222](https://github.com/iumalabs/flaretower/issues/222)) ([41951f6](https://github.com/iumalabs/flaretower/commit/41951f62728d57065783436f8e3046cbc4803534))
+* Security Posture User Story 3 — DNSSEC/WAF/rate-limiting gap flags (T014-T016) ([#223](https://github.com/iumalabs/flaretower/issues/223)) ([6684ffc](https://github.com/iumalabs/flaretower/commit/6684ffc90a614f14c7c8c57822b771730cdc97f9))
+* Security Posture User Story 4 — scheduled drift alerting (T017-T021) ([#224](https://github.com/iumalabs/flaretower/issues/224)) ([692c719](https://github.com/iumalabs/flaretower/commit/692c7194c80937b34cc7588f69e57d6baba3b255))
+* Storage Foundational phase — D1 schema, routing mount (T001-T002) ([#189](https://github.com/iumalabs/flaretower/issues/189)) ([864215b](https://github.com/iumalabs/flaretower/commit/864215b0116916c2ee3f40b3fc42b4b1963ad302))
+* Storage User Story 1 — full inventory (T003-T010) ([#190](https://github.com/iumalabs/flaretower/issues/190)) ([2771940](https://github.com/iumalabs/flaretower/commit/2771940a724032a371c0c3fd90f9ec5eaa184570))
+* Storage User Story 2 — R2 bucket exposure flag (T011-T014) ([#191](https://github.com/iumalabs/flaretower/issues/191)) ([9d6b569](https://github.com/iumalabs/flaretower/commit/9d6b56961b28784c4b62f946730915e38da0d1cc))
+* Storage User Story 3 — KV/D1 unused-resource flag (T015-T018) ([#192](https://github.com/iumalabs/flaretower/issues/192)) ([6238aba](https://github.com/iumalabs/flaretower/commit/6238abab6b30a04a680d215a9c80f6caacae03e2))
+* Storage User Story 4 — scheduled drift alerting (T019-T023) ([#193](https://github.com/iumalabs/flaretower/issues/193)) ([3ee9ec3](https://github.com/iumalabs/flaretower/commit/3ee9ec3fd1bede7754b671948940bf23ab6a3d0b))
+* unified findings table across all 7 modules (Design System US2) ([#302](https://github.com/iumalabs/flaretower/issues/302)) ([264f2d6](https://github.com/iumalabs/flaretower/commit/264f2d61860123ac2f51fa21ee9e0b5a7ead8097))
+* User Story 1 — full exposure inventory (T011-T018) ([#51](https://github.com/iumalabs/flaretower/issues/51)) ([4d5b10d](https://github.com/iumalabs/flaretower/commit/4d5b10d82e63e5e9882d9db948d41eb68a7f725c))
+* User Story 2 — critical flag hardening + e2e coverage (T019-T022) ([#52](https://github.com/iumalabs/flaretower/issues/52)) ([a6ab9cc](https://github.com/iumalabs/flaretower/commit/a6ab9cc8f5bb7a1bc3f6dee2465afcaf0b47c010))
+* User Story 3 — effectively-open Access policy warning (T023-T026) ([#53](https://github.com/iumalabs/flaretower/issues/53)) ([d1c10cf](https://github.com/iumalabs/flaretower/commit/d1c10cf453730ce3ebc0950f3f48aeeb7d250d1d))
+* User Story 4 — scheduled drift alerting (T027-T032) ([#54](https://github.com/iumalabs/flaretower/issues/54)) ([878c42d](https://github.com/iumalabs/flaretower/commit/878c42d45583cbf58ff6e72cf892f8245b00b7dc))
+* Zero Trust Foundational phase — D1 schema, routing mount (T001-T002) ([#123](https://github.com/iumalabs/flaretower/issues/123)) ([2cdfb57](https://github.com/iumalabs/flaretower/commit/2cdfb57265bc1eaa5f1e5297102a72bf55486aea))
+* Zero Trust User Story 1 — full account-wide inventory (T003-T010) ([#124](https://github.com/iumalabs/flaretower/issues/124)) ([04c325e](https://github.com/iumalabs/flaretower/commit/04c325e645f3d465d2d2945f986de47a405e7a3b))
+* Zero Trust User Story 2 — open policy flag account-wide (T011-T013) ([#125](https://github.com/iumalabs/flaretower/issues/125)) ([25edf3d](https://github.com/iumalabs/flaretower/commit/25edf3da413a15e88bc11691a1edb379477c6b47))
+* Zero Trust User Story 3 — service token expiry (T014-T016) ([#126](https://github.com/iumalabs/flaretower/issues/126)) ([fed2096](https://github.com/iumalabs/flaretower/commit/fed2096f65053a8ebd42038fad20557d5f65f104))
+* Zero Trust User Story 4 — scheduled drift alerting (T017-T021) ([#127](https://github.com/iumalabs/flaretower/issues/127)) ([9968a70](https://github.com/iumalabs/flaretower/commit/9968a707876b047a0be666157562aeef21a18357))
+
+
+### Bug Fixes
+
+* **audit:** distinguish a per-source D1 read failure from zero data (T025) ([#299](https://github.com/iumalabs/flaretower/issues/299)) ([6b45a1b](https://github.com/iumalabs/flaretower/commit/6b45a1b8c4af481ad67d68c056db9eff7260888b))
+* collapse env.production/env.preview back to one Worker resource ([#284](https://github.com/iumalabs/flaretower/issues/284)) ([b700077](https://github.com/iumalabs/flaretower/commit/b700077c8578c171128c59ec33c6a8b66744b7a9))
+* correct Security Insights endpoint path (missing security-center segment) ([#290](https://github.com/iumalabs/flaretower/issues/290)) ([32b4d71](https://github.com/iumalabs/flaretower/commit/32b4d718a10c6fc188eb5d49b886aa374c6df36c))
+* decouple Zero Trust inventory from zt_app_findings, add run-completion marker ([#297](https://github.com/iumalabs/flaretower/issues/297)) ([83e1504](https://github.com/iumalabs/flaretower/commit/83e1504a50840d34562af0cbe96cc2fc2bdac253))
+* don't silently omit zero-record zones from GET /dns/inventory ([#295](https://github.com/iumalabs/flaretower/issues/295)) ([113277b](https://github.com/iumalabs/flaretower/commit/113277b1bdb09a02a12f3d5249970a77e514153c))
+* **exposure:** degrade buildWorkerInventory to sentinel findings on API failure (T037-T039) ([#296](https://github.com/iumalabs/flaretower/issues/296)) ([5e18161](https://github.com/iumalabs/flaretower/commit/5e181617d7b6f631fd9a0723799f19e2b64c4f65))
+* R2 buckets list API returns {buckets: [...]}, not a bare array ([#287](https://github.com/iumalabs/flaretower/issues/287)) ([d52c29f](https://github.com/iumalabs/flaretower/commit/d52c29f49de2c6fc7648129588c8c14ddaa29bb0))
+* Security Insights response shape and insight-to-record matching ([#291](https://github.com/iumalabs/flaretower/issues/291)) ([1d6ce83](https://github.com/iumalabs/flaretower/commit/1d6ce832b75a9347755b222fb015ed6a97d5c67a))
+* **security:** preserve Turnstile not-evaluated signal, fix empty-state check (T025, T026) ([#298](https://github.com/iumalabs/flaretower/issues/298)) ([38612bf](https://github.com/iumalabs/flaretower/commit/38612bf5757b65b0d122ca5b5bcac7efcc8bf530))
+* surface Cloudflare's own error detail on API failures, all modules ([#289](https://github.com/iumalabs/flaretower/issues/289)) ([d6ce6c8](https://github.com/iumalabs/flaretower/commit/d6ce6c8d1e1133aa5f72c1b1abae948ae8204a7c))
