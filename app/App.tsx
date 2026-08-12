@@ -7,6 +7,7 @@ import { PagesInventory } from "./pages/PagesInventory.tsx";
 import { StorageInventory } from "./pages/StorageInventory.tsx";
 import { SecurityPostureInventory } from "./pages/SecurityPostureInventory.tsx";
 import { AuditInventory } from "./pages/AuditInventory.tsx";
+import { OverviewPage } from "./pages/OverviewPage.tsx";
 import { Sidebar } from "./components/Sidebar.tsx";
 import { NAV_ITEMS } from "./nav-items.ts";
 import {
@@ -14,20 +15,8 @@ import {
   computeModuleBadgeCounts,
 } from "./lib/module-badge-counts.ts";
 
-// "Overview" (User Story 3 of specs/009-design-system-alignment) doesn't
-// exist yet — its nav item does (FR-002: all 8 destinations), but selecting
-// it for now renders this placeholder rather than crashing. Replace with
-// the real OverviewPage when that story lands.
-function OverviewPlaceholder(): JSX.Element {
-  return (
-    <p style={{ color: "var(--fg-muted)", padding: 24 }}>
-      Overview coming soon.
-    </p>
-  );
-}
-
 const PAGES = [
-  { key: "overview", label: "Overview", render: () => <OverviewPlaceholder /> },
+  { key: "overview", label: "Overview", render: () => <OverviewPage /> },
   { key: "exposure", label: "Workers & Access", render: () => <ExposureInventory /> },
   { key: "dns", label: "DNS", render: () => <DnsInventory /> },
   { key: "zero-trust", label: "Zero Trust", render: () => <ZeroTrustInventory /> },
@@ -53,13 +42,9 @@ async function fetchModuleBadges(): Promise<AuditSummaryModuleEntry[]> {
 // that a real router earns its keep; constitution Principle IV/V's
 // minimal-dependency spirit applies to the frontend too).
 export function App(): JSX.Element {
-  // "exposure" stays the default/initial page for now, matching this
-  // app's pre-existing behavior (and every pre-existing e2e spec's
-  // assumption that `/` lands directly on it) — making "overview" the
-  // default is explicitly a later task (tasks.md T033, User Story 3),
-  // scoped to once the real OverviewPage exists, not this round's
-  // placeholder.
-  const [page, setPage] = useState<PageKey>("exposure");
+  // "overview" is the default/initial page (tasks.md T033, User Story 3) —
+  // "is anything wrong right now" answered before navigating anywhere.
+  const [page, setPage] = useState<PageKey>("overview");
   const [badges, setBadges] = useState<{ key: string; count: number }[]>([]);
   const active = PAGES.find((p) => p.key === page) ?? PAGES[0];
 
