@@ -18,12 +18,12 @@ phase — reuses Modules 1-5's tooling entirely.
 
 ## Phase 1: Foundational (Blocking Prerequisites)
 
-- [ ] T001 [P] Create D1 migration `worker/db/migrations/0007_security_findings.sql`
+- [x] T001 [P] Create D1 migration `worker/db/migrations/0007_security_findings.sql`
       for `ssl_tls_findings`, `ssl_tls_alerts`, `dnssec_findings`,
       `dnssec_alerts`, `waf_findings`, `waf_alerts`,
       `rate_limiting_findings`, `rate_limiting_alerts` per
       data-model.md.
-- [ ] T002 Mount `/api/security/*` in `worker/index.ts`'s Hono app,
+- [x] T002 Mount `/api/security/*` in `worker/index.ts`'s Hono app,
       gated by the existing `accessAuth` middleware. Stub router until
       US1.
 
@@ -41,40 +41,40 @@ omitted.
 
 ### Tests for User Story 1
 
-- [ ] T003 [P] [US1] Unit test in `tests/unit/security-inventory.test.ts`
+- [x] T003 [P] [US1] Unit test in `tests/unit/security-inventory.test.ts`
       (mocked `fetch`): zones and their four raw settings are correctly
       enumerated, including a zone with no WAF/rate-limiting ruleset
       deployed (404 handled as "none," not an error) and the Turnstile
       widgets list.
-- [ ] T004 [P] [US1] Playwright e2e test in
+- [x] T004 [P] [US1] Playwright e2e test in
       `tests/e2e/security-inventory.spec.ts` (mocked
       `GET /api/security/inventory`): every zone's four checks and every
       Turnstile widget render, none omitted.
 
 ### Implementation for User Story 1
 
-- [ ] T005 [P] [US1] Implement `worker/modules/security/types.ts` and
+- [x] T005 [P] [US1] Implement `worker/modules/security/types.ts` and
       `inventory.ts`: list zones, fetch each zone's SSL/TLS setting
       value and DNSSEC status, fetch each zone's WAF and rate-limiting
       ruleset entrypoints (404 → "none deployed," not an error), and
       list account Turnstile widgets, per research.md §1-§6.
-- [ ] T006 [US1] Implement basic `evaluateSslTlsMode()`,
+- [x] T006 [US1] Implement basic `evaluateSslTlsMode()`,
       `evaluateDnssec()`, `evaluateWaf()`, `evaluateRateLimiting()` in
       `worker/modules/security/evaluate.ts`: returns `not_evaluated` on
       an evaluationError, `safe` otherwise for now (US2/US3 extend the
       real branches). Depends on T005's types.
-- [ ] T007 [US1] Implement `GET /api/security/inventory` in
+- [x] T007 [US1] Implement `GET /api/security/inventory` in
       `worker/modules/security/routes.ts`, including the live (never
       persisted) Turnstile widgets list per contracts/api.md. Depends on
       T005, T006.
-- [ ] T008 [US1] Implement `POST /api/security/evaluate`: runs inventory
+- [x] T008 [US1] Implement `POST /api/security/evaluate`: runs inventory
       + evaluate, persists to `ssl_tls_findings`, `dnssec_findings`,
       `waf_findings`, `rate_limiting_findings`. Depends on T001, T006.
-- [ ] T009 [P] [US1] Build `app/pages/SecurityPostureInventory.tsx`,
+- [x] T009 [P] [US1] Build `app/pages/SecurityPostureInventory.tsx`,
       reusing `ExposureStatusBadge` unchanged, with a per-zone row group
       (four checks) plus a Turnstile widgets section. Add a sixth nav
       entry to `app/App.tsx`.
-- [ ] T010 [US1] Wire `routes.ts` into the `/api/security` mount from
+- [x] T010 [US1] Wire `routes.ts` into the `/api/security` mount from
       T002.
 
 **Checkpoint**: User Story 1 fully functional and independently testable.
@@ -90,14 +90,14 @@ the Enterprise-only strict-origin-pull variant) → safe.
 
 ### Tests for User Story 2
 
-- [ ] T011 [P] [US2] Unit test: `"off"`/`"flexible"` → critical;
+- [x] T011 [P] [US2] Unit test: `"off"`/`"flexible"` → critical;
       `"full"` → warning; `"strict"`/`"origin_pull"` → safe.
-- [ ] T012 [P] [US2] Playwright e2e test: the critical, warning, and
+- [x] T012 [P] [US2] Playwright e2e test: the critical, warning, and
       safe SSL/TLS badges render distinctly for mocked zones.
 
 ### Implementation for User Story 2
 
-- [ ] T013 [US2] Implement the real SSL/TLS mode decision logic in
+- [x] T013 [US2] Implement the real SSL/TLS mode decision logic in
       `evaluate.ts` (research.md §2) and wire it into
       `evaluateSslTlsMode()`, replacing US1's stub. Persist real values
       in `POST /api/security/evaluate` (T008) and surface them in
@@ -117,18 +117,18 @@ safe, error → not_evaluated. WAF/rate-limiting absent or fully-disabled
 
 ### Tests for User Story 3
 
-- [ ] T014 [P] [US3] Unit test: DNSSEC `"active"` → safe;
+- [x] T014 [P] [US3] Unit test: DNSSEC `"active"` → safe;
       `"disabled"`/`"pending"`/`"pending-disabled"` → warning; `"error"`
       → not_evaluated. WAF/rate-limiting: no ruleset → warning; ruleset
       with zero enabled rules → warning; ruleset with at least one
       enabled rule → safe (shared `hasEnabledManagedRule()` helper,
       tested against both phases).
-- [ ] T015 [P] [US3] Playwright e2e test: DNSSEC, WAF, and
+- [x] T015 [P] [US3] Playwright e2e test: DNSSEC, WAF, and
       rate-limiting badges render distinctly for mocked zones.
 
 ### Implementation for User Story 3
 
-- [ ] T016 [US3] Implement `hasEnabledManagedRule()` and the real
+- [x] T016 [US3] Implement `hasEnabledManagedRule()` and the real
       decision logic for `evaluateDnssec()`, `evaluateWaf()`,
       `evaluateRateLimiting()` in `evaluate.ts` (research.md §3-§5),
       replacing US1's stubs. Persist real values in
@@ -149,7 +149,7 @@ on new SSL/TLS, DNSSEC, WAF, or rate-limiting findings, no repeats.
 
 ### Tests for User Story 4
 
-- [ ] T017 [P] [US4] Unit test in `tests/unit/security-alerts.test.ts`:
+- [x] T017 [P] [US4] Unit test in `tests/unit/security-alerts.test.ts`:
       first-run alerting, no-repeat on unchanged state, transitions, for
       all four diff functions (SSL/TLS, DNSSEC, WAF, rate-limiting —
       four separate diff functions per data-model.md's four-table
@@ -157,19 +157,19 @@ on new SSL/TLS, DNSSEC, WAF, or rate-limiting findings, no repeats.
 
 ### Implementation for User Story 4
 
-- [ ] T018 [US4] Implement `worker/modules/security/alerts.ts` — four
+- [x] T018 [US4] Implement `worker/modules/security/alerts.ts` — four
       diff functions (`diffForSslTlsAlerts`, `diffForDnssecAlerts`,
       `diffForWafAlerts`, `diffForRateLimitingAlerts`), same
       new-vs-repeat semantics as every prior module.
-- [ ] T019 [US4] **Integration point** (plan.md's Constitution Check):
+- [x] T019 [US4] **Integration point** (plan.md's Constitution Check):
       add this module's evaluation + alert-diffing to the *existing*
       `scheduled` handler in `worker/index.ts`, as a sixth independent
       `waitUntil` call alongside Modules 1-5's. Depends on T008, T013,
       T016, T018.
-- [ ] T020 [US4] Implement `GET /api/security/alerts` (merges all four
+- [x] T020 [US4] Implement `GET /api/security/alerts` (merges all four
       alert tables with a `kind` discriminator per contracts/api.md).
       Depends on T018.
-- [ ] T021 [US4] Implement
+- [x] T021 [US4] Implement
       `POST /api/security/alerts/:kind/:id/acknowledge` (routes to the
       matching table based on `:kind`). Depends on T018.
 
@@ -180,16 +180,16 @@ feature-complete per spec.md.
 
 ## Final Phase: Polish & Cross-Cutting Concerns
 
-- [ ] T022 [P] Run all 6 quickstart.md scenarios end-to-end against a
+- [x] T022 [P] Run all 6 quickstart.md scenarios end-to-end against a
       real scratch Cloudflare test account (real-account dependency,
       same as every prior module's equivalent task) — also confirm the
       exact zone-ruleset permission scope name(s) flagged as an open
       item in research.md §8.
-- [ ] T023 [P] Add this module's required token scopes (`Zone Settings
+- [x] T023 [P] Add this module's required token scopes (`Zone Settings
       Read`, `Zone WAF Read`/`Zone Rulesets Read`, `Turnstile Read` —
       all new, pending T022's live-account confirmation; `Zone Read` is
       already documented) to the README.
-- [ ] T024 [P] `deno fmt` + `deno lint` pass across the new
+- [x] T024 [P] `deno fmt` + `deno lint` pass across the new
       `worker/modules/security/` and `SecurityPostureInventory.tsx`
       files.
 
