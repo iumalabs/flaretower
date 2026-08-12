@@ -1,6 +1,12 @@
 import { useEffect, useState } from "react";
 import type { JSX } from "react";
-import { type ExposureStatus, ExposureStatusBadge } from "../components/ExposureStatusBadge.tsx";
+import { type ExposureStatus } from "../components/ExposureStatusBadge.tsx";
+import {
+  FindingsTable,
+  type FindingsTableColumn,
+  type FindingsTableRow,
+} from "../components/FindingsTable.tsx";
+import { AlertBanner } from "../components/AlertBanner.tsx";
 
 interface BucketFinding {
   bucket_name: string;
@@ -38,69 +44,58 @@ async function fetchStorageInventory(): Promise<StorageInventoryResponse> {
   return await res.json();
 }
 
-function Row(
-  { badge, label, meta, reason }: {
-    badge: ExposureStatus;
-    label: string;
-    meta: string;
-    reason: string;
-  },
-): JSX.Element {
-  const critical = badge === "critical";
-  return (
-    <tr
-      style={{
-        borderTop: "1px solid var(--rule-hairline)",
-        borderLeft: critical ? "3px solid var(--status-critical)" : "3px solid transparent",
-        background: critical ? "var(--status-critical-row)" : "transparent",
-      }}
-    >
-      <td style={{ padding: "8px 0 8px 8px", width: 120 }}>
-        <ExposureStatusBadge status={badge} />
-      </td>
-      <td
-        style={{
-          padding: "8px 0",
-          fontFamily: "var(--font-mono)",
-          fontSize: "var(--text-code-size)",
-          color: "var(--fg-secondary)",
-        }}
-      >
-        {label}
-        <span style={{ color: "var(--fg-faint)" }}>· {meta}</span>
-      </td>
-      <td style={{ padding: "8px 0", fontSize: "var(--text-body-size)", color: "var(--fg-muted)" }}>
-        {reason}
-      </td>
-    </tr>
-  );
+function nameColumn<Row extends { reason: string }>(
+  label: string,
+  getName: (r: Row) => string,
+  getMeta: (r: Row) => string,
+): FindingsTableColumn<Row>[] {
+  return [
+    {
+      key: "name",
+      label,
+      sortValue: getName,
+      render: (r) => (
+        <span
+          style={{
+            fontFamily: "var(--font-mono)",
+            fontSize: "var(--text-code-size)",
+            color: "var(--fg-secondary)",
+          }}
+        >
+          {getName(r)}
+          <span style={{ color: "var(--fg-faint)" }}>· {getMeta(r)}</span>
+        </span>
+      ),
+    },
+    {
+      key: "reason",
+      label: "Reason",
+      width: "40%",
+      render: (r) => (
+        <span style={{ fontSize: "var(--text-body-size)", color: "var(--fg-muted)" }}>
+          {r.reason}
+        </span>
+      ),
+    },
+  ];
 }
 
-function Section({ title, children }: { title: string; children: JSX.Element[] }): JSX.Element {
+const BUCKET_COLUMNS = nameColumn<BucketFinding>("Bucket", (r) => r.bucket_name, () => "bucket");
+const KV_COLUMNS = nameColumn<KvFinding>("Namespace", (r) => r.title, (r) => r.namespace_id);
+const D1_COLUMNS = nameColumn<D1Finding>("Database", (r) => r.name, (r) => r.database_uuid);
+
+function SectionHeading({ children }: { children: string }): JSX.Element {
   return (
-    <section
+    <h2
       style={{
-        border: "1px solid var(--border)",
-        borderRadius: 6,
-        padding: 16,
-        marginBottom: 12,
-        background: "var(--surface-1)",
+        fontFamily: "var(--font-sans)",
+        fontSize: "var(--text-section-size)",
+        fontWeight: "var(--text-section-weight)" as unknown as number,
+        margin: "24px 0 12px",
       }}
     >
-      <h2
-        style={{
-          fontFamily: "var(--font-sans)",
-          fontSize: "var(--text-title-size)",
-          fontWeight: "var(--text-title-weight)" as unknown as number,
-          margin: "0 0 12px",
-        }}
-      >
-        {title}
-      </h2>
-      <table style={{ width: "100%", borderCollapse: "collapse" }}>
-        <tbody>{children}</tbody>
-      </table>
-    </section>
+      {children}
+    </h2>
   );
 }
 
@@ -120,19 +115,41 @@ export function StorageInventory(): JSX.Element {
     return <p style={{ color: "var(--status-critical-fg)" }}>{error}</p>;
   }
 
-  if (!data) {
-    return <p style={{ color: "var(--fg-muted)" }}>Loading storage inventory…</p>;
-  }
+  const bucketRows: FindingsTableRow<BucketFinding>[] | null = data
+    ? data.buckets.map((b) => ({ id: b.bucket_name, status: b.status, data: b }))
+    : null;
+  const kvRows: FindingsTableRow<KvFinding>[] | null = data
+    ? data.kv_namespaces.map((k) => ({ id: k.namespace_id, status: k.status, data: k }))
+    : null;
+  const d1Rows: FindingsTableRow<D1Finding>[] | null = data
+    ? data.d1_databases.map((d) => ({ id: d.database_uuid, status: d.status, data: d }))
+    : null;
 
-  if (
-    data.buckets.length === 0 && data.kv_namespaces.length === 0 && data.d1_databases.length === 0
-  ) {
-    return (
-      <p style={{ color: "var(--fg-muted)" }}>
-        No evaluation runs yet. Trigger one via <code>POST /api/storage/evaluate</code>.
-      </p>
-    );
-  }
+  // The single most urgent finding across all three sections (FR-013) —
+  // a publicly exposed bucket is the highest-severity class this module
+  // detects, checked first.
+  const criticalBucket = bucketRows?.find((r) => r.status === "critical");
+  const criticalKv = kvRows?.find((r) => r.status === "critical");
+  const criticalD1 = d1Rows?.find((r) => r.status === "critical");
+  const criticalFinding = criticalBucket
+    ? {
+      title: "An R2 bucket is publicly exposed",
+      target: criticalBucket.data.bucket_name,
+      reason: criticalBucket.data.reason,
+    }
+    : criticalKv
+    ? {
+      title: "A KV namespace needs attention",
+      target: criticalKv.data.title,
+      reason: criticalKv.data.reason,
+    }
+    : criticalD1
+    ? {
+      title: "A D1 database needs attention",
+      target: criticalD1.data.name,
+      reason: criticalD1.data.reason,
+    }
+    : null;
 
   return (
     <div>
@@ -147,45 +164,53 @@ export function StorageInventory(): JSX.Element {
       >
         Storage inventory
       </h1>
-      <p style={{ color: "var(--fg-faint)", fontSize: "var(--text-meta-size)", marginTop: 0 }}>
-        Last evaluated {data.evaluated_at} · run {data.run_id}
-      </p>
+      {data && (
+        <p style={{ color: "var(--fg-faint)", fontSize: "var(--text-meta-size)", marginTop: 0 }}>
+          Last evaluated {data.evaluated_at} · run {data.run_id}
+        </p>
+      )}
 
-      <Section title="R2 buckets">
-        {data.buckets.map((b) => (
-          <Row
-            key={b.bucket_name}
-            badge={b.status}
-            label={b.bucket_name}
-            meta="bucket"
-            reason={b.reason}
-          />
-        ))}
-      </Section>
+      {criticalFinding && (
+        <AlertBanner
+          scope="module"
+          finding={{
+            severity: "critical",
+            title: criticalFinding.title,
+            target: criticalFinding.target,
+            description: criticalFinding.reason,
+          }}
+        />
+      )}
 
-      <Section title="KV namespaces">
-        {data.kv_namespaces.map((k) => (
-          <Row
-            key={k.namespace_id}
-            badge={k.status}
-            label={k.title}
-            meta={k.namespace_id}
-            reason={k.reason}
-          />
-        ))}
-      </Section>
+      <SectionHeading>R2 buckets</SectionHeading>
+      <FindingsTable
+        columns={BUCKET_COLUMNS}
+        rows={bucketRows}
+        loadingLabel="Loading R2 buckets…"
+        emptyState={{ heading: "No R2 buckets", description: "This account has no R2 buckets." }}
+      />
 
-      <Section title="D1 databases">
-        {data.d1_databases.map((d) => (
-          <Row
-            key={d.database_uuid}
-            badge={d.status}
-            label={d.name}
-            meta={d.database_uuid}
-            reason={d.reason}
-          />
-        ))}
-      </Section>
+      <SectionHeading>KV namespaces</SectionHeading>
+      <FindingsTable
+        columns={KV_COLUMNS}
+        rows={kvRows}
+        loadingLabel="Loading KV namespaces…"
+        emptyState={{
+          heading: "No KV namespaces",
+          description: "This account has no KV namespaces.",
+        }}
+      />
+
+      <SectionHeading>D1 databases</SectionHeading>
+      <FindingsTable
+        columns={D1_COLUMNS}
+        rows={d1Rows}
+        loadingLabel="Loading D1 databases…"
+        emptyState={{
+          heading: "No D1 databases",
+          description: "This account has no D1 databases.",
+        }}
+      />
     </div>
   );
 }
