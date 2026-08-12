@@ -250,7 +250,15 @@ Connect **once**: Cloudflare dashboard → **Workers & Pages** → `flaretower` 
   versions upload --env preview`) — Workers Builds posts each PR's own preview URL as a
   PR comment automatically.
 
-Build command for both: `deno task build`.
+Build command for both: `deno task build`. **Also set, defensively**: both `deno task deploy` and
+`deno task deploy:preview` run `deno task build` themselves before invoking `wrangler` — discovered
+live (2026-08-12) that Workers Builds' configured Build command does not reliably run before the
+**Version command** field specifically (used for the preview/non-production-branch flow); every
+preview build failed with `wrangler`'s "assets.directory does not exist" error as a result,
+silently, since Workers Builds also doesn't post the documented PR-comment preview link when its own
+deploy step fails this way. The Deploy command field (production, via the `release` branch) was not
+observed to have this problem, but both tasks now build themselves regardless, so neither depends on
+Workers Builds' own step-sequencing being correct.
 
 ## Releases
 
