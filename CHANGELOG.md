@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.4](https://github.com/iumalabs/flaretower/compare/v1.1.3...v1.1.4) (2026-08-12)
+
+
+### Bug Fixes
+
+* **app:** use WORKERS_CI_BRANCH instead of git for release-build detection ([#322](https://github.com/iumalabs/flaretower/issues/322)) ([323ecf1](https://github.com/iumalabs/flaretower/commit/323ecf1f8dc9d965cb888e9d433a72ab13a01e29))
+
 ## [1.1.3](https://github.com/iumalabs/flaretower/compare/v1.1.2...v1.1.3) (2026-08-12)
 
 
