@@ -24,9 +24,9 @@ No Setup phase — this module reuses Module 1's already-validated tooling, `den
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete.
 
-- [ ] T001 [P] Create D1 migration `worker/db/migrations/0003_dns_findings.sql` for `dns_findings`
+- [x] T001 [P] Create D1 migration `worker/db/migrations/0003_dns_findings.sql` for `dns_findings`
       and `dns_alerts` per data-model.md.
-- [ ] T002 Mount `/api/dns/*` in `worker/index.ts`'s Hono app, gated by the existing `accessAuth`
+- [x] T002 Mount `/api/dns/*` in `worker/index.ts`'s Hono app, gated by the existing `accessAuth`
       middleware (already applied to all of `/api/*` — this task is wiring the new sub-router in,
       not adding new auth logic). Depends on T001 existing conceptually but not on its migration
       having run; can proceed in parallel with T001 in practice.
@@ -43,29 +43,29 @@ No Setup phase — this module reuses Module 1's already-validated tooling, `den
 
 ### Tests for User Story 1
 
-- [ ] T003 [P] [US1] Unit test in `tests/unit/dns-inventory.test.ts` (mocked `fetch`, same pattern
+- [x] T003 [P] [US1] Unit test in `tests/unit/dns-inventory.test.ts` (mocked `fetch`, same pattern
       as Module 1's `inventory.test.ts`): zones and their records are correctly enumerated and
       grouped.
-- [ ] T004 [P] [US1] Playwright e2e test in `tests/e2e/dns-inventory.spec.ts` (mocked
+- [x] T004 [P] [US1] Playwright e2e test in `tests/e2e/dns-inventory.spec.ts` (mocked
       `GET /api/dns/inventory` response, same pattern as Module 1's `exposure-inventory.spec.ts`):
       every zone and record renders, none omitted.
 
 ### Implementation for User Story 1
 
-- [ ] T005 [P] [US1] Implement `worker/modules/dns/types.ts` (DnsRecord, DnsFinding, etc. per
+- [x] T005 [P] [US1] Implement `worker/modules/dns/types.ts` (DnsRecord, DnsFinding, etc. per
       data-model.md) and `inventory.ts`: list zones (`GET /accounts/{id}/zones`), list records per
       zone (`GET /zones/{zone_id}/dns_records`).
-- [ ] T006 [US1] Implement the basic `evaluateRecord()` in `worker/modules/dns/evaluate.ts`: passes
+- [x] T006 [US1] Implement the basic `evaluateRecord()` in `worker/modules/dns/evaluate.ts`: passes
       through `proxied` status, returns `not_evaluated` on a zone/record-level `evaluationError`.
       Dangling-detection (US2) and DNS-only-of-note (US3) branches land in their own phases. Depends
       on T005's types.
-- [ ] T007 [US1] Implement `GET /api/dns/inventory` in `worker/modules/dns/routes.ts` per
+- [x] T007 [US1] Implement `GET /api/dns/inventory` in `worker/modules/dns/routes.ts` per
       contracts/api.md. Depends on T005, T006.
-- [ ] T008 [US1] Implement `POST /api/dns/evaluate` in the same routes.ts: runs inventory +
+- [x] T008 [US1] Implement `POST /api/dns/evaluate` in the same routes.ts: runs inventory +
       evaluate, persists to `dns_findings`. Depends on T001, T006.
-- [ ] T009 [P] [US1] Build `app/pages/DnsInventory.tsx`, reusing `ExposureStatusBadge` unchanged
+- [x] T009 [P] [US1] Build `app/pages/DnsInventory.tsx`, reusing `ExposureStatusBadge` unchanged
       (plan.md's Structure Decision — same status semantics, shared component).
-- [ ] T010 [US1] Wire `routes.ts` into the `/api/dns` mount from T002.
+- [x] T010 [US1] Wire `routes.ts` into the `/api/dns` mount from T002.
 
 **Checkpoint**: User Story 1 fully functional and independently testable.
 
@@ -80,19 +80,19 @@ critical.
 
 ### Tests for User Story 2
 
-- [ ] T011 [P] [US2] Unit test in `tests/unit/dns-evaluate.test.ts`: a record matching a Security
+- [x] T011 [P] [US2] Unit test in `tests/unit/dns-evaluate.test.ts`: a record matching a Security
       Insights dangling finding evaluates to `critical`; a record with no matching insight evaluates
       to `safe` (pending US3's refinement of what "safe" fully means).
-- [ ] T012 [P] [US2] Playwright e2e test: the critical badge renders for a mocked dangling-record
+- [x] T012 [P] [US2] Playwright e2e test: the critical badge renders for a mocked dangling-record
       response, using the same visual assertions as Module 1's US2 test (shape + color + row tint).
 
 ### Implementation for User Story 2
 
-- [ ] T013 [US2] Extend `inventory.ts` (T005) to fetch Security Insights findings
+- [x] T013 [US2] Extend `inventory.ts` (T005) to fetch Security Insights findings
       (`GET /accounts/{id}/insights`, filtered to the dangling A/AAAA/CNAME issue types —
       research.md §2; exact query parameters pinned against the live API here, not guessed further
       in advance). Requires the `Zone Security Center Insights` read token scope.
-- [ ] T014 [US2] Extend `evaluateRecord()` (T006) with the dangling-match branch: a record whose
+- [x] T014 [US2] Extend `evaluateRecord()` (T006) with the dangling-match branch: a record whose
       (zone, name, type) matches a fetched insight → `critical`, reason naming the dangling target.
       Depends on T013.
 
@@ -109,15 +109,15 @@ non-proxy-capable record types read as not-applicable, not DNS-only.
 
 ### Tests for User Story 3
 
-- [ ] T015 [P] [US3] Unit test: an `A`/`AAAA`/`CNAME` record with `proxied: false` evaluates to
+- [x] T015 [P] [US3] Unit test: an `A`/`AAAA`/`CNAME` record with `proxied: false` evaluates to
       `warning`; the same with `proxied: true` evaluates to `safe`; an `MX`/`TXT`/`NS` record
       evaluates with `proxy_capable: false` and is never flagged DNS-only.
-- [ ] T016 [P] [US3] Playwright e2e test: the warning badge renders for a mocked DNS-only record,
+- [x] T016 [P] [US3] Playwright e2e test: the warning badge renders for a mocked DNS-only record,
       distinct from both critical and safe.
 
 ### Implementation for User Story 3
 
-- [ ] T017 [US3] Extend `evaluateRecord()` (T006/T014) with the DNS-only-of-note branch, per
+- [x] T017 [US3] Extend `evaluateRecord()` (T006/T014) with the DNS-only-of-note branch, per
       research.md §3 — a direct field read on `proxy_capable`/`proxied`, evaluated only when the
       dangling check (T014) didn't already mark the record critical.
 
@@ -134,7 +134,7 @@ joining Module 1's existing scheduled run rather than adding a second one.
 
 ### Tests for User Story 4
 
-- [ ] T018 [P] [US4] Unit test in `tests/unit/dns-alerts.test.ts` (same cases as Module 1's
+- [x] T018 [P] [US4] Unit test in `tests/unit/dns-alerts.test.ts` (same cases as Module 1's
       `alerts.test.ts`, adapted): first-run alerting, no-repeat on unchanged state, transitions,
       not_evaluated never alert-worthy. Record identity for diffing is
       `zone_name + record_name + record_type + content` (data-model.md's note — round-robin `A`
@@ -142,14 +142,14 @@ joining Module 1's existing scheduled run rather than adding a second one.
 
 ### Implementation for User Story 4
 
-- [ ] T019 [US4] Implement `worker/modules/dns/alerts.ts` — same new-vs-repeat diff shape as Module
+- [x] T019 [US4] Implement `worker/modules/dns/alerts.ts` — same new-vs-repeat diff shape as Module
       1's `alerts.ts`, DNS record identity per T018.
-- [ ] T020 [US4] **Integration point flagged in plan.md's Constitution Check**: add this module's
+- [x] T020 [US4] **Integration point flagged in plan.md's Constitution Check**: add this module's
       evaluation + alert-diffing to the _existing_ `scheduled` handler in `worker/index.ts`
       (alongside Module 1's `runEvaluation` call) — constitution Principle III, one shared Cron
       Trigger entry point, not a second one. Depends on T008, T019.
-- [ ] T021 [US4] Implement `GET /api/dns/alerts` in routes.ts per contracts/api.md. Depends on T019.
-- [ ] T022 [US4] Implement `POST /api/dns/alerts/:id/acknowledge` in routes.ts. Depends on T019.
+- [x] T021 [US4] Implement `GET /api/dns/alerts` in routes.ts per contracts/api.md. Depends on T019.
+- [x] T022 [US4] Implement `POST /api/dns/alerts/:id/acknowledge` in routes.ts. Depends on T019.
 
 **Checkpoint**: All 4 user stories independently functional — Module 2 is feature-complete per
 spec.md.
@@ -161,9 +161,9 @@ spec.md.
 - [ ] T023 [P] Run all 6 quickstart.md scenarios end-to-end against a real scratch Cloudflare test
       account (same real-account dependency as Module 1's T033 — requires actual Zero Trust
       credentials).
-- [ ] T024 [P] Add this module's required token scopes (`Zone Read`, `DNS Read`,
+- [x] T024 [P] Add this module's required token scopes (`Zone Read`, `DNS Read`,
       `Zone Security Center Insights` read) to the README's token-scope table, alongside Module 1's.
-- [ ] T025 [P] `deno fmt` + `deno lint` pass across the new `worker/modules/dns/` and
+- [x] T025 [P] `deno fmt` + `deno lint` pass across the new `worker/modules/dns/` and
       `app/pages/DnsInventory.tsx` files.
 
 ---
