@@ -48,7 +48,6 @@ export function ExposureStatusBadge({ status }: { status: ExposureStatus }): JSX
         alignItems: "center",
         gap: 6,
         padding: "3px 8px",
-        borderRadius: 4,
         background: BG_VAR[status],
         border: `1px solid ${BORDER_VAR[status]}`,
         color: COLOR_VAR[status],
