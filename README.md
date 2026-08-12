@@ -38,6 +38,17 @@ recognition, FlareTower-native `member`/`admin` roles gating the in-app acknowle
 write-capable `audit_log` mechanism ready for the first future Cloudflare-mutating module). See
 [Identity & Roles](#identity--roles) below. No new Cloudflare API token scopes.
 
+Also cross-cutting: [**Design System & App Shell Alignment**](specs/009-design-system-alignment/) —
+aligns the whole app shell (sidebar, typography, tokens, shared `FindingsTable`/`AlertBanner`
+components, a cross-module Overview page) to `docs/design.zip`'s visual language; and
+[**Semantic Versioning & Version-Gated Production Releases**](specs/010-semver-releases/) — the
+release process this milestone is named after (see [Releases](#releases) below). Both no new
+Cloudflare API token scopes.
+
+With Modules 1–7 plus both cross-cutting features above complete, this is FlareTower's v1.0
+milestone. Everything past this point is genuinely new scope, not a remaining item from the original
+roadmap.
+
 ## Prerequisites
 
 - [Deno](https://deno.com) 2.9+. This project's only local toolchain — no `package.json`, no

@@ -24,9 +24,12 @@ through, in order:
 8. `/speckit-converge` — reconcile the codebase against spec/plan/tasks and append any remaining
    work as new tasks
 
-Only the first module (Workers & Access exposure) is specified so far. Everything else in the
-product's full scope is documented in the constitution as future work — it gets its own spec, on its
-own branch, when its turn comes. Do not jump ahead and build later modules early.
+All 7 constitution-scoped modules (Workers & Access exposure, DNS, Zero Trust/Access, Pages,
+R2/KV/D1, Security Posture, Audit & Drift) are specified and built, alongside three cross-cutting
+features (Identity/Authorization/Audit, Design System & App Shell Alignment, Semantic Versioning &
+Version-Gated Releases) — see README's Status section for links. This is FlareTower's v1.0. Anything
+past this point (e.g. issue #283) is new scope, not a remaining item from the original roadmap — it
+still gets its own spec, on its own branch, via this same workflow.
 
 When `/speckit-taskstoissues` converts `tasks.md` tasks into GitHub issues, title them
 `FT-001: <description>` (not the skill's own default `T001:
