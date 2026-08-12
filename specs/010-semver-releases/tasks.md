@@ -219,17 +219,19 @@ the footer shows `"self-hosted"` only, no fabricated version.
 
 - [x] T013 [US3] **Revised after a second live bug find.** Add a build-time constant to
       `vite.config.ts`: `define: { __APP_VERSION__: JSON.stringify(readAppVersion()) }`, where
-      `readAppVersion()` checks Cloudflare's own `WORKERS_CI_BRANCH` env var and only reads/trims the
-      repo-root `VERSION` file when it's exactly `release` — otherwise (or on any failure) returns
-      `""`. Branch-gated rather than a plain file read, since `VERSION` exists identically on every
-      branch and an unconditional read would leak a version into preview/dev builds too (research.md
-      §3's first implementation-time correction; FR-010). **First version used `git rev-parse
-      --abbrev-ref HEAD` instead — confirmed live in production (2026-08-12) that this was broken**:
-      the real production build from `release` (v1.1.3) shipped a footer with no version at all,
-      because Workers Builds' checkout doesn't resolve to a branch name via plain git. Fixed by
-      reading `WORKERS_CI_BRANCH` (confirmed via Cloudflare's build-configuration docs — the branch
-      name from the triggering push event, injected for every Workers Builds run) instead of asking
-      git — sidesteps the checkout-state question entirely (research.md §3's second correction).
+      `readAppVersion()` checks Cloudflare's own `WORKERS_CI_BRANCH` env var and only reads/trims
+      the repo-root `VERSION` file when it's exactly `release` — otherwise (or on any failure)
+      returns `""`. Branch-gated rather than a plain file read, since `VERSION` exists identically
+      on every branch and an unconditional read would leak a version into preview/dev builds too
+      (research.md §3's first implementation-time correction; FR-010). **First version used
+      `git rev-parse
+      --abbrev-ref HEAD` instead — confirmed live in production (2026-08-12)
+      that this was broken**: the real production build from `release` (v1.1.3) shipped a footer
+      with no version at all, because Workers Builds' checkout doesn't resolve to a branch name via
+      plain git. Fixed by reading `WORKERS_CI_BRANCH` (confirmed via Cloudflare's
+      build-configuration docs — the branch name from the triggering push event, injected for every
+      Workers Builds run) instead of asking git — sidesteps the checkout-state question entirely
+      (research.md §3's second correction).
 - [x] T014 [P] [US3] Add the ambient type declaration for the injected constant in
       `app/vite-env.d.ts` (new file): `declare const __APP_VERSION__: string;` — matches plan.md's
       Project Structure entry, needed for `deno check`/strict TS (Constitution Principle VI) to
@@ -277,24 +279,23 @@ feature complete pending T010's manual dashboard step.
       (`gh run watch`), its `Fast-forward release branch` step ran and succeeded in the same job,
       and `release` now points at the v1.1.2 commit with zero manual intervention. Scenario 1 is
       fully done; only Scenarios 2/3 (T021, gated on T010) remain.
-- [x] T021 **Live-verified (2026-08-12), conclusively**. T010 performed by the user (Cloudflare
-      dashboard → Workers & Pages → `flaretower` → Settings → Build → Production branch →
-      `release`). Confirmed flipping that setting alone does _not_ trigger a rebuild — Workers
-      Builds only reacts to a real push, so nothing new appeared in
-      `wrangler deployments list --name flaretower` until the next actual release. Shipped a real
-      one (v1.1.3, PR #319/#320) specifically to complete this check: immediately after
-      `release-please.yml`'s fast-forward step pushed the new commit to `release`, a fresh
-      deployment appeared at 100% traffic, timestamped seconds after the push. Confirmed it's
-      genuinely the **production** environment, not preview, by checking
-      `wrangler versions view <id>`'s D1 binding directly — it's bound to database ID
-      `9480e87c-...`, which `wrangler.jsonc`'s `env.production.d1_databases` (not
-      `env.preview.d1_databases`, a different ID) confirms is exactly `flaretower-production`. This
-      is unambiguous, not inferred from timing alone. Did not visually confirm the production
-      footer's rendered text directly (Cloudflare Access-protected, no browser session available to
-      the agent) — the version-threading mechanism itself was already confirmed correct via the
-      local build-bundle check in T013–T015's PR, so this is a reasonable-confidence, not full
-      first-hand, confirmation of Scenario 3's footer text; a quick visual glance by the user would
-      close that last gap if desired.
+- [x] T021 **Live-verified (2026-08-12), fully, and caught a real bug along the way**. T010
+      performed by the user (Cloudflare dashboard → Workers & Pages → `flaretower` → Settings →
+      Build → Production branch → `release`). Confirmed flipping that setting alone does _not_
+      trigger a rebuild — Workers Builds only reacts to a real push. Shipped a real release (v1.1.3,
+      PR #319/#320) to complete this check: immediately after `release-please.yml`'s fast-forward
+      step pushed the new commit to `release`, a fresh deployment appeared at 100% traffic,
+      confirmed genuinely **production** (not preview) via `wrangler versions view <id>`'s D1
+      binding matching `flaretower-production`'s exact database ID from `wrangler.jsonc`. **Then
+      fetched the actual production bundle directly** (`curl` against `flaretower.iuma.dev`,
+      authenticated transparently via this environment's existing Cloudflare WARP enrollment — no
+      credentials handled) **and found the footer shipped with only `"self-hosted"`, no version at
+      all** — a real bug in T013's git-branch-detection mechanism (see T013's own updated note and
+      research.md §3's second correction: Cloudflare Workers Builds' checkout doesn't resolve to a
+      branch name via git; fixed by reading Cloudflare's own `WORKERS_CI_BRANCH` env var instead).
+      Shipped that fix as v1.1.4 and re-confirmed the exact same way: the live production bundle at
+      `flaretower.iuma.dev` now contains `"v1.1.4 · self-hosted"` — direct, first-hand confirmation
+      of Scenario 3, not inferred.
 
 ---
 
