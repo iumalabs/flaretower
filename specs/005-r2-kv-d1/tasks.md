@@ -18,11 +18,11 @@ phase — reuses Modules 1-4's tooling entirely.
 
 ## Phase 1: Foundational (Blocking Prerequisites)
 
-- [ ] T001 [P] Create D1 migration `worker/db/migrations/0006_storage_findings.sql`
+- [x] T001 [P] Create D1 migration `worker/db/migrations/0006_storage_findings.sql`
       for `r2_bucket_findings`, `r2_bucket_alerts`,
       `kv_namespace_findings`, `kv_namespace_alerts`,
       `d1_database_findings`, `d1_database_alerts` per data-model.md.
-- [ ] T002 Mount `/api/storage/*` in `worker/index.ts`'s Hono app, gated
+- [x] T002 Mount `/api/storage/*` in `worker/index.ts`'s Hono app, gated
       by the existing `accessAuth` middleware. Stub router until US1.
 
 **Checkpoint**: D1 schema and routing mount point exist.
@@ -38,38 +38,38 @@ by type, none omitted.
 
 ### Tests for User Story 1
 
-- [ ] T003 [P] [US1] Unit test in `tests/unit/storage-inventory.test.ts`
+- [x] T003 [P] [US1] Unit test in `tests/unit/storage-inventory.test.ts`
       (mocked `fetch`): buckets, namespaces, and databases are correctly
       enumerated, including a total failure of any one list surfacing a
       sentinel entry rather than an empty (confirmed-zero) list.
-- [ ] T004 [P] [US1] Playwright e2e test in
+- [x] T004 [P] [US1] Playwright e2e test in
       `tests/e2e/storage-inventory.spec.ts` (mocked
       `GET /api/storage/inventory`): every bucket, namespace, and
       database renders, none omitted.
 
 ### Implementation for User Story 1
 
-- [ ] T005 [P] [US1] Implement `worker/modules/storage/types.ts` and
+- [x] T005 [P] [US1] Implement `worker/modules/storage/types.ts` and
       `inventory.ts`: list R2 buckets
       (`GET /accounts/{account_id}/r2/buckets`), list KV namespaces
       (`GET /accounts/{account_id}/storage/kv/namespaces`), list D1
       databases (`GET /accounts/{account_id}/d1/database`) per
       research.md §1-§2.
-- [ ] T006 [US1] Implement basic `evaluateBucketExposure()`,
+- [x] T006 [US1] Implement basic `evaluateBucketExposure()`,
       `evaluateKvNamespaceUsage()`, `evaluateD1DatabaseUsage()` in
       `worker/modules/storage/evaluate.ts`: returns `not_evaluated` on an
       evaluationError, `safe` otherwise for now (US2/US3 extend the real
       branches). Depends on T005's types.
-- [ ] T007 [US1] Implement `GET /api/storage/inventory` in
+- [x] T007 [US1] Implement `GET /api/storage/inventory` in
       `worker/modules/storage/routes.ts`. Depends on T005, T006.
-- [ ] T008 [US1] Implement `POST /api/storage/evaluate`: runs inventory +
+- [x] T008 [US1] Implement `POST /api/storage/evaluate`: runs inventory +
       evaluate, persists to `r2_bucket_findings`,
       `kv_namespace_findings`, `d1_database_findings`. Depends on T001,
       T006.
-- [ ] T009 [P] [US1] Build `app/pages/StorageInventory.tsx`, reusing
+- [x] T009 [P] [US1] Build `app/pages/StorageInventory.tsx`, reusing
       `ExposureStatusBadge` unchanged, with three sections (buckets,
       namespaces, databases). Add a fifth nav entry to `app/App.tsx`.
-- [ ] T010 [US1] Wire `routes.ts` into the `/api/storage` mount from
+- [x] T010 [US1] Wire `routes.ts` into the `/api/storage` mount from
       T002.
 
 **Checkpoint**: User Story 1 fully functional and independently testable.
@@ -85,7 +85,7 @@ domain not covered (or covered by an open policy), is flagged.
 
 ### Tests for User Story 2
 
-- [ ] T011 [P] [US2] Unit test: `r2.dev` enabled → critical; enabled
+- [x] T011 [P] [US2] Unit test: `r2.dev` enabled → critical; enabled
       custom domain uncovered by any Access application → critical;
       covered by an Allow-Everyone/Bypass/zero-policy application →
       warning; covered by a scoped-policy application, or no public
@@ -96,11 +96,11 @@ domain not covered (or covered by an open policy), is flagged.
 
 ### Implementation for User Story 2
 
-- [ ] T013 [US2] Extend `worker/modules/storage/inventory.ts` to fetch,
+- [x] T013 [US2] Extend `worker/modules/storage/inventory.ts` to fetch,
       per bucket, its managed (`r2.dev`) and custom domain configuration
       (research.md §1), and to independently fetch Access applications
       (`GET /accounts/{account_id}/access/apps`) per research.md §4.
-- [ ] T014 [US2] Implement the hostname-coverage and policy-openness
+- [x] T014 [US2] Implement the hostname-coverage and policy-openness
       decision logic in `evaluate.ts` (research.md §4 — local
       re-implementation, not imported from Module 1 or Module 4) and
       wire it into `evaluateBucketExposure()`, replacing US1's stub.
@@ -120,24 +120,24 @@ Worker's bindings is flagged; one that is referenced is safe.
 
 ### Tests for User Story 3
 
-- [ ] T015 [P] [US3] Unit test: a namespace/database id present in some
+- [x] T015 [P] [US3] Unit test: a namespace/database id present in some
       script's bindings → safe; absent from every successfully-checked
       script's bindings → warning; absent AND at least one script's
       bindings call failed (so absence can't be fully confirmed) →
       not_evaluated (research.md §3's partial-failure rule).
-- [ ] T016 [P] [US3] Playwright e2e test: the safe and warning
+- [x] T016 [P] [US3] Playwright e2e test: the safe and warning
       usage badges render distinctly for mocked namespaces/databases.
 
 ### Implementation for User Story 3
 
-- [ ] T017 [US3] Extend `worker/modules/storage/inventory.ts` to list
+- [x] T017 [US3] Extend `worker/modules/storage/inventory.ts` to list
       Worker scripts (`GET /accounts/{account_id}/workers/scripts`) and
       each script's bindings
       (`GET /accounts/{account_id}/workers/scripts/{name}/bindings`),
       building the referenced-KV-namespace-id and
       referenced-D1-database-id sets plus the set of scripts whose
       bindings call failed, per research.md §3.
-- [ ] T018 [US3] Implement the real usage-check branch in
+- [x] T018 [US3] Implement the real usage-check branch in
       `evaluateKvNamespaceUsage()`/`evaluateD1DatabaseUsage()`, replacing
       US1's stubs. Persist real values in `POST /api/storage/evaluate`
       (T008) and surface them in `GET /api/storage/inventory` (T007).
@@ -156,7 +156,7 @@ on new bucket-exposure or namespace/database-usage findings, no repeats.
 
 ### Tests for User Story 4
 
-- [ ] T019 [P] [US4] Unit test in `tests/unit/storage-alerts.test.ts`:
+- [x] T019 [P] [US4] Unit test in `tests/unit/storage-alerts.test.ts`:
       first-run alerting, no-repeat on unchanged state, transitions, for
       all three diff functions (buckets, KV namespaces, D1 databases —
       three separate diff functions per data-model.md's three-table
@@ -164,19 +164,19 @@ on new bucket-exposure or namespace/database-usage findings, no repeats.
 
 ### Implementation for User Story 4
 
-- [ ] T020 [US4] Implement `worker/modules/storage/alerts.ts` — three
+- [x] T020 [US4] Implement `worker/modules/storage/alerts.ts` — three
       diff functions (`diffForBucketAlerts`, `diffForKvNamespaceAlerts`,
       `diffForD1DatabaseAlerts`), same new-vs-repeat semantics as every
       prior module.
-- [ ] T021 [US4] **Integration point** (plan.md's Constitution Check):
+- [x] T021 [US4] **Integration point** (plan.md's Constitution Check):
       add this module's evaluation + alert-diffing to the *existing*
       `scheduled` handler in `worker/index.ts`, as a fifth independent
       `waitUntil` call alongside Modules 1-4's. Depends on T008, T014,
       T018, T020.
-- [ ] T022 [US4] Implement `GET /api/storage/alerts` (merges all three
+- [x] T022 [US4] Implement `GET /api/storage/alerts` (merges all three
       alert tables with a `kind` discriminator per contracts/api.md).
       Depends on T020.
-- [ ] T023 [US4] Implement
+- [x] T023 [US4] Implement
       `POST /api/storage/alerts/:kind/:id/acknowledge` (routes to the
       matching table based on `:kind`). Depends on T020.
 
@@ -190,11 +190,11 @@ feature-complete per spec.md.
 - [ ] T024 [P] Run all 6 quickstart.md scenarios end-to-end against a real
       scratch Cloudflare test account (real-account dependency, same as
       every prior module's equivalent task).
-- [ ] T025 [P] Add this module's required token scopes (`Workers R2
+- [x] T025 [P] Add this module's required token scopes (`Workers R2
       Storage Read`, `Workers KV Storage Read`, `D1 Read` — all new;
       `Workers Scripts Read` and `Access: Apps and Policies Read` are
       already documented) to the README.
-- [ ] T026 [P] `deno fmt` + `deno lint` pass across the new
+- [x] T026 [P] `deno fmt` + `deno lint` pass across the new
       `worker/modules/storage/` and `StorageInventory.tsx` files.
 
 ---
