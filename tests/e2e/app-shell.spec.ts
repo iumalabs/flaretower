@@ -20,6 +20,22 @@ const MOCK_SUMMARY = {
 
 const EMPTY_INVENTORY = { run_id: null, evaluated_at: null, workers: [] };
 
+const EMPTY_WORKERS_DASHBOARD = {
+  generated_at: "2026-08-13T12:00:00Z",
+  summary: {
+    deployed_count: 0,
+    deployed_by_environment: { production: 0, preview: 0 },
+    requests_24h_total: null,
+    requests_24h_change_pct: null,
+    error_rate_pct: null,
+    errors_24h_total: null,
+    cpu_p99_ms: null,
+  },
+  workers: [],
+  recent_changes: [],
+  unavailable: [],
+};
+
 test.beforeEach(async ({ page }) => {
   await page.route("**/api/audit/summary", (route) =>
     route.fulfill({
@@ -37,6 +53,17 @@ test.beforeEach(async ({ page }) => {
         status: 200,
         contentType: "application/json",
         body: JSON.stringify(EMPTY_INVENTORY),
+      }),
+  );
+  // App.tsx fetches this on every mount, for the Workers nav badge
+  // (deployed count) — specs/012-workers-dashboard.
+  await page.route(
+    "**/api/workers/dashboard",
+    (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(EMPTY_WORKERS_DASHBOARD),
       }),
   );
   // "overview" is the default page (tasks.md T033) — it fetches these too.
@@ -60,12 +87,13 @@ test("US1/AC1 — favicon link is present", async ({ page }) => {
   await expect(favicon).toHaveAttribute("href", "/favicon.svg");
 });
 
-test("US1/AC2 — sidebar renders the logo and all 8 destinations", async ({ page }) => {
+test("US1/AC2 — sidebar renders the logo and all 9 destinations", async ({ page }) => {
   await expect(page.getByText("FlareTower")).toBeVisible();
   for (
     const label of [
       "Overview",
-      "Workers & Access",
+      "Workers",
+      "Exposure",
       "DNS",
       "Zero Trust",
       "Pages",
@@ -80,7 +108,7 @@ test("US1/AC2 — sidebar renders the logo and all 8 destinations", async ({ pag
 
 test("US1/AC3 — the active-state indicator moves to whichever page is current", async ({ page }) => {
   const overviewButton = page.getByRole("button", { name: "Overview" });
-  const exposureButton = page.getByRole("button", { name: "Workers & Access" });
+  const exposureButton = page.getByRole("button", { name: "Exposure" });
 
   // "overview" is the app's default/initial page (tasks.md T033, User
   // Story 3).
@@ -94,13 +122,45 @@ test("US1/AC3 — the active-state indicator moves to whichever page is current"
 });
 
 test("US1/AC4 — a module's nav badge shows only when its critical count is > 0", async ({ page }) => {
-  const exposureButton = page.getByRole("button", { name: "Workers & Access" });
+  const exposureButton = page.getByRole("button", { name: "Exposure" });
   const dnsButton = page.getByRole("button", { name: "DNS" });
 
   // exposure has 1 critical finding in MOCK_SUMMARY -> badge "1" visible.
   await expect(exposureButton.getByText("1", { exact: true })).toBeVisible();
   // dns has 0 critical findings -> no badge text at all inside its button.
   await expect(dnsButton.locator("span").filter({ hasText: /^\d+$/ })).toHaveCount(0);
+});
+
+test("specs/012 — the Workers nav badge is a deployed count, rendered in a neutral (non-critical) tone", async ({ page }) => {
+  await page.unroute("**/api/workers/dashboard");
+  await page.route(
+    "**/api/workers/dashboard",
+    (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          ...EMPTY_WORKERS_DASHBOARD,
+          summary: { ...EMPTY_WORKERS_DASHBOARD.summary, deployed_count: 5 },
+        }),
+      }),
+  );
+  await page.goto("/");
+
+  const workersButton = page.getByRole("button", { name: "Workers" });
+  const exposureButton = page.getByRole("button", { name: "Exposure" });
+
+  const workersBadge = workersButton.getByText("5", { exact: true });
+  const exposureBadge = exposureButton.getByText("1", { exact: true });
+  await expect(workersBadge).toBeVisible();
+  await expect(exposureBadge).toBeVisible();
+
+  const workersColor = await workersBadge.evaluate((el) => getComputedStyle(el).color);
+  const exposureColor = await exposureBadge.evaluate((el) => getComputedStyle(el).color);
+  // A deployed-Worker count is not a problem count — it must not render in
+  // the same critical-red the Exposure badge (a real critical-finding
+  // count) uses, or an operator would misread "5 deployed" as "5 critical."
+  expect(workersColor).not.toEqual(exposureColor);
 });
 
 test("US1/AC5 — rendered text uses IBM Plex Sans/Mono, not a fallback font", async ({ page }) => {

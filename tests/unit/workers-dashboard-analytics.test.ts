@@ -1,0 +1,73 @@
+import { assertEquals, assertRejects } from "@std/assert";
+import { fetchWorkersAnalytics } from "../../worker/modules/workers-dashboard/analytics.ts";
+
+const creds = { accountId: "acct-1", apiToken: "fake-token" };
+const now = new Date("2026-08-13T12:00:00Z");
+
+function graphqlResponse(
+  groups: Array<{ scriptName: string; requests: number; errors: number; p50: number; p99: number }>,
+) {
+  return new Response(
+    JSON.stringify({
+      data: {
+        viewer: {
+          accounts: [{
+            workersInvocationsAdaptive: groups.map((g) => ({
+              dimensions: { scriptName: g.scriptName },
+              sum: { requests: g.requests, errors: g.errors },
+              quantiles: { cpuTimeP50: g.p50, cpuTimeP99: g.p99 },
+            })),
+          }],
+        },
+      },
+    }),
+    { status: 200, headers: { "Content-Type": "application/json" } },
+  );
+}
+
+Deno.test("fetchWorkersAnalytics - maps current and previous windows independently", async () => {
+  let call = 0;
+  const fetchImpl = ((_input: RequestInfo | URL, _init?: RequestInit) => {
+    call++;
+    // First call is the current (trailing-24h) window per fetchWorkersAnalytics's own ordering.
+    if (call === 1) {
+      return Promise.resolve(
+        graphqlResponse([{ scriptName: "api-gateway", requests: 100, errors: 5, p50: 6, p99: 18 }]),
+      );
+    }
+    return Promise.resolve(
+      graphqlResponse([{ scriptName: "api-gateway", requests: 80, errors: 2, p50: 5, p99: 15 }]),
+    );
+  }) as typeof fetch;
+
+  const result = await fetchWorkersAnalytics(creds, now, fetchImpl);
+  assertEquals(result.current.perScript, [
+    { scriptName: "api-gateway", requests: 100, errors: 5, cpuTimeP50Ms: 6 },
+  ]);
+  assertEquals(result.current.cpuTimeP99Ms, 18);
+  assertEquals(result.previous.perScript[0].requests, 80);
+  assertEquals(call, 2);
+});
+
+Deno.test("fetchWorkersAnalytics - zero groups -> empty perScript, null P99", async () => {
+  const fetchImpl = (() => Promise.resolve(graphqlResponse([]))) as typeof fetch;
+  const result = await fetchWorkersAnalytics(creds, now, fetchImpl);
+  assertEquals(result.current.perScript, []);
+  assertEquals(result.current.cpuTimeP99Ms, null);
+});
+
+Deno.test("fetchWorkersAnalytics - HTTP failure throws (caller degrades, not this function)", async () => {
+  const fetchImpl = (() => Promise.resolve(new Response("nope", { status: 500 }))) as typeof fetch;
+  await assertRejects(() => fetchWorkersAnalytics(creds, now, fetchImpl));
+});
+
+Deno.test("fetchWorkersAnalytics - GraphQL-level error throws", async () => {
+  const fetchImpl = (() =>
+    Promise.resolve(
+      new Response(JSON.stringify({ errors: [{ message: "bad query" }] }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    )) as typeof fetch;
+  await assertRejects(() => fetchWorkersAnalytics(creds, now, fetchImpl));
+});

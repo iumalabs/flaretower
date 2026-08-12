@@ -94,7 +94,9 @@ export function Sidebar(
                   style={{
                     fontFamily: "var(--font-mono)",
                     fontSize: 10,
-                    color: "var(--status-critical)",
+                    color: item.badgeTone === "neutral"
+                      ? "var(--fg-faint)"
+                      : "var(--status-critical)",
                   }}
                 >
                   {badgeCount}

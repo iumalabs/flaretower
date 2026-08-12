@@ -1,27 +1,36 @@
-// The 8 sidebar destinations (Overview + the 7 existing modules), icon
-// path data sourced directly from docs/design.zip's FlareTower.dc.html
-// `NAV` array (12x12 viewBox shapes, script block ~line 802).
+// The 9 sidebar destinations (Overview + Workers + the 7 existing
+// modules), icon path data sourced from FlareTower's design source's own
+// NAV array (12x12 viewBox shapes).
 //
 // Label text intentionally does NOT copy the design source's own labels
-// verbatim — this app's existing app/App.tsx PAGES array already has
-// established, slightly more specific labels for two of the modules
-// ("Workers" -> "Workers & Access", "Access" -> "Zero Trust"), and this
-// task keeps that existing text (per tasks.md T013) rather than
-// rewriting it to match the design mockup's shorter placeholder labels.
-// The design source's own NAV array actually lists 9 entries (it has a
-// separate "Workers" and "Exposure" row) because its mockup imagines a
-// finer module split than this app currently implements — this app's
-// "exposure" module covers both, so only the "Workers" icon/row is used
-// here and the design's separate "Exposure" row is intentionally dropped.
+// verbatim for one remaining module — "Access" -> "Zero Trust" (specs/003's
+// own established, more specific label kept per tasks.md T013).
 //
-// "overview" is new (spec.md User Story 1, FR-002) — the Overview page
-// itself doesn't exist yet (User Story 3, a later phase of this same
-// feature), so its `key` renders a placeholder page for now; see
+// UPDATE (specs/012-workers-dashboard): the design source was updated with
+// a full new "Workers" inventory-page mockup (§08), distinct from the
+// existing "Exposure" mockup (§05/§06's flagship table) — a prior version
+// of this file merged both into one "exposure" nav entry with the
+// "Workers & Access" label, on the reasoning that the design only showed
+// one combined row at the time. That reasoning no longer holds now that
+// the design shows them as two separate rows with two separate icons and
+// two separately-meaningful badge counts (Workers: deployed-Worker count,
+// neutral tone; Exposure: critical-finding count, critical-red tone) — see
+// specs/012-workers-dashboard/spec.md's own nav-split requirement. This nav
+// item split reverses that prior merge decision.
+//
+// "overview" is new (spec.md User Story 1, FR-002 of specs/009) — the
+// Overview page itself doesn't exist yet (User Story 3, a later phase of
+// that same feature), so its `key` renders a placeholder page for now; see
 // app/App.tsx.
 export interface NavItem {
   key: string;
   label: string;
   icon: string; // SVG path `d` attribute, 12x12 viewBox
+  // "critical" (default, every existing module's problem-count badge,
+  // rendered in --status-critical red) vs "neutral" (a plain count that
+  // isn't itself a problem — specs/012-workers-dashboard's Workers
+  // deployed-count badge is the first of this kind).
+  badgeTone?: "critical" | "neutral";
 }
 
 export const NAV_ITEMS: readonly NavItem[] = [
@@ -31,9 +40,15 @@ export const NAV_ITEMS: readonly NavItem[] = [
     icon: "M1 1h4v4H1Zm6 0h4v4H7ZM1 7h4v4H1Zm6 0h4v4H7Z",
   },
   {
-    key: "exposure",
-    label: "Workers & Access",
+    key: "workers",
+    label: "Workers",
     icon: "M6 0 11.5 3v6L6 12 0.5 9V3Z",
+    badgeTone: "neutral",
+  },
+  {
+    key: "exposure",
+    label: "Exposure",
+    icon: "M6 0.4 11.7 11.2 0.3 11.2Z",
   },
   {
     key: "dns",
