@@ -123,3 +123,34 @@ test("an admin operator's acknowledge attempt succeeds and the alert leaves the 
 
   await expect(page.getByTestId("findings-row-a1")).not.toBeVisible();
 });
+
+test("a member operator promoted to admin has their subsequent acknowledge attempt succeed", async ({ page }) => {
+  await page.route("**/api/identity/users/operator-2/role", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ sub: "operator-2", role: "admin" }),
+    }));
+  await page.route("**/api/audit/alerts/security/ssl_tls/a1/acknowledge", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ id: "a1", acknowledged_at: "2026-08-11T09:00:00Z" }),
+    }));
+
+  const promotion = await page.evaluate(async () => {
+    const res = await fetch("/api/identity/users/operator-2/role", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ role: "admin" }),
+    });
+    return { status: res.status, body: await res.json() };
+  });
+  expect(promotion.status).toBe(200);
+  expect(promotion.body).toEqual({ sub: "operator-2", role: "admin" });
+
+  const row = page.getByTestId("findings-row-a1");
+  await row.getByRole("button", { name: "Acknowledge" }).click();
+
+  await expect(page.getByTestId("findings-row-a1")).not.toBeVisible();
+});

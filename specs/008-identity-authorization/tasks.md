@@ -187,7 +187,7 @@ behavior changes.
 
 ## Phase 5: Convergence
 
-- [ ] T018 Add a Playwright e2e scenario to `tests/e2e/acknowledge-authorization.spec.ts` in which a
+- [x] T018 Add a Playwright e2e scenario to `tests/e2e/acknowledge-authorization.spec.ts` in which a
       `member` operator is promoted to `admin` (mocked `POST /api/identity/users/:sub/role`) and
       their subsequent acknowledge action succeeds, per US2/AC3 ("that operator can subsequently
       perform mutating actions themselves") and plan.md's own Project Structure entry for this file
