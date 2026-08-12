@@ -45,11 +45,11 @@ in isolation if needed, but has no user-visible effect until Phase 2/US1 land.
 
 **Purpose**: The `release` branch itself must exist before either US1's release workflow or US2's
 re-pointed Workers Builds setting can do anything meaningful — release-please needs `main` in place
-(already true) and the fast-forward target branch must exist before the first automerge run tries to
-fast-forward it.
+(already true) and the fast-forward target branch must exist before `release-publish.yml`'s first
+real run tries to fast-forward it.
 
-**⚠️ CRITICAL**: T004 must be done before any part of US1's automerge job (T008) can succeed, and
-before US2's manual Cloudflare dashboard step (T012) makes sense to perform.
+**⚠️ CRITICAL**: T004 must be done before any part of US1's `release-publish.yml` (T008) can
+succeed, and before US2's manual Cloudflare dashboard step (T012) makes sense to perform.
 
 - [x] T004 Create the `release` branch, pushed to `origin`, pointed at the same commit as current
       `origin/main` at the moment this feature's own work is ready to ship (research.md §1's "so
@@ -76,17 +76,16 @@ independently of US2/US3.
 
 ---
 
-## Phase 3: User Story 1 - New work is automatically packaged into a versioned release (Priority: P1) 🎯 MVP
+## Phase 3: User Story 1 - New work is kept ready to release, with zero manual versioning work (Priority: P1) 🎯 MVP
 
-**Goal**: Merges to `main` are automatically proposed as a release (via a standing PR), and that PR
-can be merged — manually anytime, or by a daily scheduled job — to actually cut a version +
-changelog, entirely independent of whether production deploys differently yet (US2) or the UI shows
-anything (US3).
+**Goal**: Merges to `main` are automatically proposed as a release (via a standing PR); a maintainer
+ships it by merging that PR whenever they choose — immediately, or after letting several changes
+accumulate — with zero manual versioning/changelog work, entirely independent of whether production
+deploys differently yet (US2) or the UI shows anything (US3).
 
 **Independent Test**: Per spec.md — merge a `fix:`/`feat:`-prefixed change to `main`, confirm a
-release PR appears/updates with the correct version bump; merge that PR (or run the automerge
-workflow manually), confirm a git tag + GitHub Release + `CHANGELOG.md` entry appear. Verifiable
-with zero changes to deployment or the UI.
+release PR appears/updates with the correct version bump; merge that PR, confirm a git tag + GitHub
+Release + `CHANGELOG.md` entry appear. Verifiable with zero changes to deployment or the UI.
 
 ### Implementation for User Story 1
 
@@ -107,39 +106,39 @@ with zero changes to deployment or the UI.
       `feat:`-prefixed commits had already landed on `main` since the `1.0.0` manifest baseline —
       correct minor-bump classification, not a bug. Merged by the user directly; see T008's note for
       the real fast-forward bug that merge path exposed.
-- [x] T007 [US1] Create `.github/workflows/release-automerge.yml`: triggers `schedule` (daily cron
-      `0 9 * * *` — matches spec.md's "roughly daily") + `workflow_dispatch` (FR-004's
-      manual-trigger path); `permissions: contents: write, pull-requests: write`; steps: find the
-      open release-please PR via `gh pr list --label "autorelease: pending"` (release-please's own
-      standard label), if none found every later step is skipped (no-op — spec.md Acceptance
-      Scenario 2/FR-002), otherwise `gh pr merge --squash` it. Matches contracts/workflows.md's
-      `release-automerge.yml` PR-merge contract.
-- [x] T008 [US1] **Revised after a live bug find (see below)**: create
-      `.github/workflows/release-publish.yml`, triggered on GitHub's `release: types: [published]`
-      event, which checks out the exact published tag and fast-forwards `release` to that commit —
-      idempotent per contracts/workflows.md. Originally this was a step inside
-      `release-automerge.yml` itself, run only after that job's own merge; **confirmed live
-      (2026-08-12) that a maintainer merging the standing release PR by hand (FR-004's own supported
-      path) bypassed it entirely — the release still cut correctly (tag/GitHub Release/CHANGELOG/
-      VERSION are release-please's own reaction to the PR merging, any way it merges), but `release`
-      silently never advanced.** Moved to a `release: published`-triggered workflow, which fires
-      identically regardless of which of the two merge paths produced the release — closes the gap
-      structurally. Depends on T004 (the `release` branch must already exist).
-- [x] T009 [US1] Every step in `release-automerge.yml` and `release-publish.yml` that can fail
-      (PR-merge conflict/blocked by branch protection, fast-forward rejection because `release`
-      diverged) runs under `set -euo pipefail` with no `--admin` bypass and no `|| true` swallowing
-      — a failure there fails the job itself, visible in the Actions tab/commit status (spec.md
-      FR-012, contracts/workflows.md's explicit "must fail visibly"), consistent with how
+- [x] ~~T007~~ — **REMOVED (2026-08-12), see below.** Originally: a `release-automerge.yml` daily
+      scheduled job auto-merging the standing PR, to satisfy the original request's literal
+      "unattended daily" framing. **Live-tested via `workflow_dispatch` and confirmed broken**: its
+      `gh pr merge`, authenticated with the default `GITHUB_TOKEN`, merged the PR (`VERSION`/
+      `CHANGELOG.md` landed on `main` correctly, since those are just part of the merged diff) but
+      never triggered a second `release-please.yml` run — GitHub Actions deliberately does not let a
+      `GITHUB_TOKEN`-authored push trigger downstream workflows (anti-recursion protection, not a
+      permission that can be granted) — so the tag/GitHub Release never got cut, and
+      `release-publish.yml` (T008) never fired. The maintainer confirmed sibling projects
+      (`odograph`, `typstreak`) already work without any such job — they merge the standing PR
+      themselves whenever ready — and preferred that over provisioning a new PAT/GitHub App just to
+      route around the platform restriction. Deleted `release-automerge.yml` entirely; see spec.md's
+      User Story 1 Scope note, research.md §2, contracts/workflows.md.
+- [x] T008 [US1] Create `.github/workflows/release-publish.yml`, triggered on GitHub's
+      `release: types: [published]` event, which checks out the exact published tag and
+      fast-forwards `release` to that commit — idempotent per contracts/workflows.md. Fires
+      identically no matter how the release-please PR got merged (now always a maintainer merging it
+      by hand, T007 having been removed). Depends on T004 (the `release` branch must already exist).
+- [x] T009 [US1] Every step in `release-publish.yml` that can fail (fast-forward rejection because
+      `release` diverged) runs under `set -euo pipefail` with no bypass flags and no `|| true`
+      swallowing — a failure there fails the job itself, visible in the Actions tab/commit status
+      (spec.md FR-012, contracts/workflows.md's explicit "must fail visibly"), consistent with how
       `ci.yml`/`e2e.yml` failures already surface in this repo.
-- [x] T009b — **NEW, one-time manual catch-up**: the v1.1.0 release that exposed T008's bug was
-      already published before `release-publish.yml` existed, so it never got a chance to
-      fast-forward `release` for that specific release. One-time
-      `git push origin <v1.1.0 commit>:release` to catch `release` up to where it should already be
-      — every release from this point on is handled by `release-publish.yml` itself, no further
-      manual catch-up needed.
+- [x] T009b — **One-time manual catch-up**: the v1.1.0 release (T006) was published before
+      `release-publish.yml` existed, so it never got a chance to fast-forward `release`. One-time
+      `git push origin <v1.1.0 commit>:release` to catch `release` up. **Live end-to-end
+      re-verification (2026-08-12)**: after removing `release-automerge.yml`, merged the next
+      standing release PR (v1.1.1) directly — `release-publish.yml` fired correctly on the resulting
+      `release: published` event and fast-forwarded `release` to the v1.1.1 commit with no manual
+      step, confirming the corrected (maintainer-merges) flow works end-to-end.
 
 **Checkpoint**: Merging conventional-commit changes to `main` now produces a standing,
-correctly-versioned release PR; merging that PR (by hand or via the daily job) cuts a real
+correctly-versioned release PR; a maintainer merging that PR whenever they choose cuts a real
 tag/GitHub Release/changelog entry and fast-forwards `release`. Fully testable per quickstart.md
 Scenario 1, independent of US2/US3.
 
@@ -148,13 +147,13 @@ Scenario 1, independent of US2/US3.
 ## Phase 4: User Story 2 - Production only updates when a release ships, not on every merge (Priority: P2)
 
 **Goal**: Cloudflare Workers Builds deploys production from the `release` branch (which only moves
-when US1's automerge job fast-forwards it) instead of from every push to `main`; preview stays
-completely unaffected.
+when US1's `release-publish.yml` fast-forwards it, in reaction to a maintainer shipping a release)
+instead of from every push to `main`; preview stays completely unaffected.
 
 **Independent Test**: Per spec.md — merge an ordinary change to `main` without merging the release
-PR, confirm production doesn't change; merge/ automerge the release PR, confirm production updates
-as a direct consequence of `release` advancing (via Workers Builds' own deploy history) —
-independently of whether the UI displays a version yet (US3).
+PR, confirm production doesn't change; merge the release PR, confirm production updates as a direct
+consequence of `release` advancing (via Workers Builds' own deploy history) — independently of
+whether the UI displays a version yet (US3).
 
 ### Implementation for User Story 2
 
@@ -170,10 +169,10 @@ independently of whether the UI displays a version yet (US3).
       (spec.md FR-007, Acceptance Scenario 3). This is a verification-only task (screenshot or
       written confirmation of the unchanged preview config), not a code change.
 - [x] T012 [US2] Updated `README.md`'s Deployment section: "Production branch" now says `release`
-      instead of `main`, plus a new "Releases" section explaining the release-please → automerge →
-      fast-forward flow and linking to `specs/010-semver-releases/`. (Also fixed a pre-existing
-      unrelated duplicate "Build command for both" line noticed while editing this section — not
-      new-feature scope, a one-line drive-by fix.)
+      instead of `main`, plus a new "Releases" section explaining the release-please → maintainer
+      merges → fast-forward flow and linking to `specs/010-semver-releases/`. (Also fixed a
+      pre-existing unrelated duplicate "Build command for both" line noticed while editing this
+      section — not new-feature scope, a one-line drive-by fix.)
 
 **Checkpoint**: Production deploys are now gated by real releases (once T010 is performed by the
 user); preview is confirmed unaffected. Fully testable per quickstart.md Scenario 2, independent of
@@ -230,21 +229,23 @@ feature complete pending T010's manual dashboard step.
 
 **Purpose**: Repo-wide consistency and final validation once all three stories are in.
 
-- [x] T017 [P] All three workflow YAML files (`release-please.yml`, `release-automerge.yml`,
-      `release-publish.yml`) validated the strongest possible way — real live runs on the real repo
-      (T006/T020), not just syntax checking. No `actionlint` step added separately since live
-      validation already happened and is stronger evidence.
+- [x] T017 [P] Both workflow YAML files (`release-please.yml`, `release-publish.yml`) validated the
+      strongest possible way — real live runs on the real repo (T006/T009b/T020), not just syntax
+      checking. No `actionlint` step added separately since live validation already happened and is
+      stronger evidence.
 - [x] T018 `deno fmt --check` / `deno lint` / `deno check` (app+worker+tests plus `vite.config.ts`
-      separately) clean on every PR in this feature (#308, #309, #311), confirmed via CI, not just
-      locally.
+      separately) clean on every PR in this feature, confirmed via CI, not just locally.
 - [x] T019 Full `deno task test` (262/262) and `deno task test:e2e` (43/43) run on every PR in this
       feature via CI — no regressions.
-- [x] T020 **Live-verified (2026-08-12), and then some**: Scenario 1 ran for real — release-please
-      proposed PR #310 correctly (T006), it was merged, v1.1.0 was tagged and published as a real
-      GitHub Release with a real `CHANGELOG.md` entry. This also caught and led to fixing a real bug
-      in the fast-forward mechanism (T008) that a purely-scripted dry run would not have exposed,
-      since it only manifested via a human merging the PR directly rather than via
-      `release-automerge.yml`.
+- [x] T020 **Live-verified (2026-08-12), and then some**: Scenario 1 ran for real, twice — v1.1.0
+      (merged by the user via the UI, T006) and v1.1.1 (merged by the agent under standing
+      self-merge authorization, T009b) both correctly tagged and published as real GitHub Releases
+      with real `CHANGELOG.md` entries. The first pass also caught and led to fixing a real bug in
+      the fast-forward mechanism (T008), and a follow-up live test (deliberately triggering the
+      then-still-present `release-automerge.yml` via `workflow_dispatch`) caught the deeper
+      `GITHUB_TOKEN`-doesn't-trigger-workflows issue that led to removing it entirely (T007) —
+      neither bug would have been exposed by a purely-scripted dry run or by only ever testing the
+      manual-UI-merge path.
 - [ ] T021 After T010 (manual dashboard step) is performed by the user and T020's release has
       shipped, run quickstart.md Scenarios 2 and 3 live: confirm Workers Builds' deploy history
       shows a production build triggered by the `release` branch fast-forward, and confirm
@@ -264,7 +265,7 @@ feature complete pending T010's manual dashboard step.
   `release-please-action` to run correctly). T008 additionally depends on T004.
 - **US2 (Phase 4)**: Depends on US1 being merged and having cut at least one real release (T010 only
   makes sense once `release` is a real, advancing branch — i.e. after T004 and at least one
-  successful T007–T009 run).
+  successful T008/T009 run).
 - **US3 (Phase 5)**: Depends on Setup (Phase 1: T001's `VERSION` file must exist for T013 to read).
   Does NOT depend on US2 being live — the footer code is correct and testable (T016) the moment
   `VERSION`/the Vite `define` exist, even before Workers Builds is repointed.

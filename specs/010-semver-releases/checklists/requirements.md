@@ -1,8 +1,7 @@
 # Specification Quality Checklist: Semantic Versioning & Version-Gated Production Releases
 
 **Purpose**: Validate specification completeness and quality before proceeding to planning
-**Created**: 2026-08-12
-**Feature**: [spec.md](../spec.md)
+**Created**: 2026-08-12 **Feature**: [spec.md](../spec.md)
 
 ## Content Quality
 
@@ -31,11 +30,10 @@
 
 ## Notes
 
-- Two candidate ambiguities (automatic version-bump classification, and
-  whether releases auto-deploy vs. require a separate promote step) were
-  resolved as Assumptions rather than [NEEDS CLARIFICATION] markers: the
-  first has a strong, low-risk default given this project already
-  mandates Conventional Commits (constitution Principle X); the second
-  follows directly from the original request's own framing ("deploy by
-  version instead of by push to main"). Neither blocks planning.
+- Two candidate ambiguities (automatic version-bump classification, and whether releases auto-deploy
+  vs. require a separate promote step) were resolved as Assumptions rather than [NEEDS
+  CLARIFICATION] markers: the first has a strong, low-risk default given this project already
+  mandates Conventional Commits (constitution Principle X); the second follows directly from the
+  original request's own framing ("deploy by version instead of by push to main"). Neither blocks
+  planning.
 - All items pass on first draft; no spec revision iterations were needed.
