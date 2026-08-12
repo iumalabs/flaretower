@@ -6,9 +6,11 @@ pure-frontend feature can, since its whole point is real release/deploy behavior
 
 ## Prerequisites
 
-- `release-please.yml`/`release-publish.yml` merged to `main`. (An earlier `release-automerge.yml`
-  was removed 2026-08-12 — see research.md §2 — release shipping is now always a maintainer merging
-  the standing PR themselves, at whatever cadence they choose.)
+- `release-please.yml` merged to `main`, with its same-job fast-forward step. (Two earlier
+  approaches — a daily `release-automerge.yml`, then a separate `release-publish.yml` triggered on
+  `release: published` — were each built, live-tested, and removed 2026-08-12; see research.md §2.
+  Release shipping is always a maintainer merging the standing PR themselves, at whatever cadence
+  they choose.)
 - The one-time Cloudflare dashboard change made: Workers Builds' production branch re-pointed from
   `main` to `release` (Settings → Build → Branch control).
 - `release` branch exists and currently points at the same commit `main` was at when this feature's
@@ -31,10 +33,10 @@ pure-frontend feature can, since its whole point is real release/deploy behavior
 1. Merge a change to `main` without merging the release PR yet. **Expect**: `flaretower.iuma.dev`
    does not change (confirm via the footer version, once Scenario 3 is also validated, or via
    Workers Builds' own deploy history showing no new production build).
-2. Merge the standing release PR. **Expect**: `release-publish.yml` fires (triggered by the
-   resulting `release: published` event) and fast-forwards the `release` branch to the new tag's
-   commit; Workers Builds' deploy history shows a new production build/deploy triggered by that
-   push.
+2. Merge the standing release PR. **Expect**: the same `release-please.yml` run that notices the
+   merge and cuts the tag/GitHub Release also fast-forwards the `release` branch to that commit (a
+   follow-up step in the same job, not a separate triggered workflow); Workers Builds' deploy
+   history shows a new production build/deploy triggered by that push.
 3. Push to `main` again (any ordinary PR merge) without cutting another release. **Expect**: preview
    environment deploys as it always has (per-branch/PR preview URL) — unaffected; production does
    not change.
@@ -54,5 +56,5 @@ pure-frontend feature can, since its whole point is real release/deploy behavior
       version-present and version-absent states (both mockable — inject `__APP_VERSION__` via Vite's
       `define` differently per test build, or structure the component to accept the value as a prop
       from `App.tsx` so the e2e test can control it without a real release).
-- [ ] `release-please.yml`/`release-publish.yml` YAML validated (e.g. `actionlint` or GitHub's own
-      workflow syntax check on push) before merging this feature.
+- [ ] `release-please.yml` YAML validated (e.g. `actionlint` or GitHub's own workflow syntax check
+      on push) before merging this feature.

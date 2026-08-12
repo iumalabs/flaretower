@@ -50,11 +50,13 @@ runtime-performance-sensitive feature.
 configuration file class (Principle V). Must not change the preview environment's existing
 deploy-on-every-push behavior (FR-007, explicit scope boundary).
 
-**Scale/Scope**: Two new GitHub Actions workflows (`release-please.yml` for release proposal,
-`release-publish.yml` for advancing the `release` branch once a maintainer ships one — see
-research.md §2 for why an originally-planned third, daily auto-merge workflow was built, live-tested,
-and removed), one manual one-time Cloudflare dashboard change, one new small frontend read
-(`Sidebar.tsx`'s footer, via `App.tsx`).
+**Scale/Scope**: One new GitHub Actions workflow (`release-please.yml`), proposing releases and, in
+a same-job follow-up step, advancing the `release` branch once a maintainer ships one — see
+research.md §2 for why this ended up as one workflow rather than two or three (an originally-planned
+daily auto-merge workflow, and then a separate release-triggered fast-forward workflow, were each
+built, live-tested, and removed after exposing real GitHub Actions platform restrictions), one
+manual one-time Cloudflare dashboard change, one new small frontend read (`Sidebar.tsx`'s footer,
+via `App.tsx`).
 
 ## Constitution Check
 
@@ -93,8 +95,7 @@ specs/010-semver-releases/
 
 ```text
 .github/workflows/
-├── release-please.yml       # NEW — proposes/updates the release PR on every push to main; a maintainer merges it whenever ready to ship (FR-003/FR-004, revised 2026-08-12 — no unattended daily auto-merge, see research.md §2)
-├── release-publish.yml      # NEW — on release:published, fast-forwards `release` to the tag
+├── release-please.yml       # NEW — proposes/updates the release PR on every push to main; a maintainer merges it whenever ready to ship (FR-003/FR-004, revised 2026-08-12 — no unattended daily auto-merge, see research.md §2). In the same job, once release-please-action's own outputs (`release_created`/`sha`) confirm a release was just cut, a follow-up step fast-forwards `release` to that commit — not a separate workflow (research.md §2's second implementation-time correction).
 ├── ci.yml                   # existing, untouched
 └── e2e.yml                  # existing, untouched
 

@@ -46,27 +46,43 @@ built.
 Conventional Commit history alone) on every push to `main`, configured with its "generic updater"
 pointed at a single plain-text `VERSION` file at the repo root (not `package.json` or any file
 resembling a package manifest). A maintainer merges the standing release PR whenever they're ready
-to ship — that merge is what cuts the tag/GitHub Release. A second workflow, `release-publish.yml`,
-triggered on GitHub's own `release: published` event, advances the `release` branch to that tag's
-commit, which is what triggers the production deploy via §1's mechanism.
+to ship — that merge is what cuts the tag/GitHub Release. In the _same job run_ that notices the
+merge (checked via the action's own `steps.release.outputs.release_created` output), a follow-up
+step advances the `release` branch to `steps.release.outputs.sha`, which is what triggers the
+production deploy via §1's mechanism.
 
-**Implementation-time correction (superseding the original plan)**: this feature originally also
-included a third, scheduled workflow (`release-automerge.yml`) that merged the standing PR on a
-daily cron, to satisfy the original request's "roughly daily, no manual step" framing literally.
-Confirmed live (2026-08-12) that this doesn't work as designed: GitHub Actions' own default
-`GITHUB_TOKEN` is deliberately prevented from triggering downstream workflows when it pushes/merges
-(anti-recursion protection) — so a `gh pr merge` performed by that scheduled job merges the PR
-(VERSION/CHANGELOG.md land on `main` correctly, since those are just part of the merged diff), but
-never triggers a second `release-please.yml` run to notice the merge and actually cut the tag/GitHub
-Release, and therefore `release-publish.yml` never fires either — a real, live-confirmed silent gap
-(v1.1.1 stuck as merged-but-unreleased before this was caught). The standard fix is a
-separately-provisioned PAT or GitHub App token; asked the maintainer, who confirmed the project's
-sibling repos (`odograph`, `typstreak`) use release-please without any such daily auto-merge at all
-— they just merge the standing PR themselves whenever ready, which works perfectly with the default
-`GITHUB_TOKEN` since a human's own merge push isn't subject to the same restriction. Given that's
-already the maintainer's established, working practice elsewhere, `release-automerge.yml` was
-removed rather than fixed with new credentials — see spec.md's User Story 1 Scope note and revised
-FR-003/FR-004/SC-003.
+**Implementation-time corrections (superseding the original plan, both found live 2026-08-12)**:
+
+1. This feature originally also included a second, scheduled workflow (`release-automerge.yml`) that
+   merged the standing PR on a daily cron, to satisfy the original request's "roughly daily, no
+   manual step" framing literally. Confirmed live that this doesn't work as designed: GitHub
+   Actions' own default `GITHUB_TOKEN` is deliberately prevented from triggering downstream
+   workflows when it pushes/merges (anti-recursion protection) — so a `gh pr merge` performed by
+   that scheduled job merged the PR (VERSION/CHANGELOG.md land on `main` correctly, since those are
+   just part of the merged diff), but never triggered a second `release-please.yml` run to notice
+   the merge and actually cut the tag/GitHub Release — a real, live-confirmed silent gap (v1.1.1
+   stuck as merged-but-unreleased before this was caught). The standard fix is a
+   separately-provisioned PAT or GitHub App token; asked the maintainer, who confirmed the project's
+   sibling repos (`odograph`, `typstreak`) use release-please without any such daily auto-merge at
+   all — they just merge the standing PR themselves whenever ready, which works perfectly with the
+   default `GITHUB_TOKEN` since a human's own merge push isn't subject to the same restriction.
+   Given that's already the maintainer's established, working practice elsewhere,
+   `release-automerge.yml` was removed rather than fixed with new credentials — see spec.md's User
+   Story 1 Scope note and revised FR-003/FR-004/SC-003.
+2. A third workflow, `release-publish.yml`, triggered on GitHub's own `release: published` event,
+   was then added to advance the `release` branch once a release was cut. **Also removed** after
+   confirming — via `googleapis/release-please-action`'s own README, plus 0 real runs ever recorded
+   for that workflow despite a real release (v1.1.1) actually publishing — that
+   release-please-action's own tag/release creation is _itself_ GITHUB_TOKEN-authenticated, so it
+   doesn't fire `release:
+   published` for other workflows either. This is the exact same
+   restriction as correction #1, one step further down the chain, and it applies regardless of who
+   merged the PR (bot or human) — the release-_creation_ itself, not the PR-merge, is what's
+   GITHUB_TOKEN-authored. The action's own README documents the correct, no-extra-credential fix
+   directly: read the step's own outputs (`release_created`, `sha`) and act in a follow-up step of
+   the _same job_ — same-job steps aren't "triggering a workflow" and are therefore entirely
+   unaffected by the restriction. Folded that logic directly into `release-please.yml` instead of a
+   separately-triggered workflow.
 
 **Rationale**:
 

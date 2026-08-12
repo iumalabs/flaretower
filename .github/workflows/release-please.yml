@@ -12,7 +12,36 @@ jobs:
   release-please:
     runs-on: ubuntu-latest
     steps:
+      # release-please-action itself talks to the GitHub API directly and
+      # doesn't need a working tree, but the fast-forward step below does
+      # (it needs the tagged commit object available locally to push it).
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
       - uses: googleapis/release-please-action@v4
+        id: release
         with:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
+
+      # Fast-forwards `release` to the commit release-please just tagged —
+      # the one thing that actually triggers Cloudflare Workers Builds'
+      # production deploy, once its production-branch setting is
+      # re-pointed at `release` (research.md §1). Deliberately a step in
+      # THIS job, not a separate workflow triggered by `release:
+      # published`: release-please-action's own tag/release creation uses
+      # the default GITHUB_TOKEN, and GitHub Actions does not let
+      # GITHUB_TOKEN-authored events trigger other workflows (confirmed
+      # live — a `release-publish.yml` on that trigger never fired even
+      # once). Checking `steps.release.outputs.release_created` here
+      # sidesteps the restriction entirely, since nothing needs to be
+      # triggered — it's the same run. A plain (non-force) push, so it
+      # only ever succeeds as a genuine fast-forward; already-up-to-date is
+      # a no-op, not an error (idempotent). A failure (e.g. `release` has
+      # diverged) fails the job visibly (FR-012).
+      - name: Fast-forward release branch
+        if: ${{ steps.release.outputs.release_created }}
+        run: |
+          set -euo pipefail
+          git push origin ${{ steps.release.outputs.sha }}:release
