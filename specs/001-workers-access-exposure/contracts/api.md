@@ -41,15 +41,16 @@ Stories 1–3.
 }
 ```
 
-**Errors**:
-- `403` — missing/invalid Access JWT (constitution Principle II; no body
-  beyond a generic error, per fail-closed — must not leak why validation
-  failed in detail to the caller).
-- `502` with a body distinguishing which resources couldn't be evaluated —
-  used when the Cloudflare API itself errored or rate-limited mid-run
-  (FR-011: partial results are still returned for what *was* evaluated,
-  with `status: "not_evaluated"` on the affected items, not a blanket
-  failure of the whole response).
+**Errors**: `403` (missing/invalid Access JWT; constitution Principle II — no
+body beyond a generic error, per fail-closed — must not leak why validation
+failed in detail to the caller); partial results with
+`status: "not_evaluated"` on affected hostnames rather than a blanket
+failure, same as Module 2 (dns), Module 4 (pages), and Module 6 (security).
+There is no `502` path — a Cloudflare API failure mid-run
+(`buildWorkerInventory()`'s scripts/domains/subdomain list calls, or
+`listAccessApplications()`) degrades to sentinel `not_evaluated` findings
+instead of failing the request, so `runEvaluation()` always persists a run
+and this endpoint always returns `200`.
 
 ## `POST /api/exposure/evaluate`
 
