@@ -247,7 +247,7 @@ yet deliver the module's core value.
 
 ## Phase 7: Convergence
 
-- [ ] T028 Guard `listZones()`'s call site in `buildDnsInventory`
+- [x] T028 Guard `listZones()`'s call site in `buildDnsInventory`
       (`worker/modules/dns/inventory.ts`) against a total zone-listing failure: unlike
       `buildWorkerInventory` (`worker/modules/workers-access-exposure/inventory.ts`, whose own
       comment explicitly says "same sentinel shape Module 2/3 use for a total projects/zones-list
@@ -263,7 +263,7 @@ yet deliver the module's core value.
       as an unhandled 500 instead of a `not_evaluated` degradation. Per-zone record-listing failures
       are already correctly handled (`dns-inventory.test.ts`'s "a zone whose records can't be
       listed" case) — only the top-level zones list itself is unguarded. per FR-011 (partial)
-- [ ] T029 Add Playwright e2e coverage in `tests/e2e/dns-inventory.spec.ts` for the `not_evaluated`
+- [x] T029 Add Playwright e2e coverage in `tests/e2e/dns-inventory.spec.ts` for the `not_evaluated`
       ("N/A") status on a DNS record — US2's Acceptance Scenario 3 ("FlareTower cannot conclusively
       determine whether a record's target is dangling... marked not evaluated, never silently safe")
       is exercised by unit tests (`tests/unit/dns-evaluate.test.ts`'s "not_evaluated (not silently
