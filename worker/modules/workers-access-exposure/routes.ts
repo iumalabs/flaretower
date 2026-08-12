@@ -13,6 +13,25 @@ interface Env {
 
 export const exposureRoutes = new Hono<{ Bindings: Env }>();
 
+// Sentinel `hostname` for a Worker that was successfully enumerated but has
+// zero public hostnames (no custom domain, workers.dev disabled, no Preview
+// URL — evaluateWorker()'s normal, error-free result for such a Worker).
+// exposure_findings only has per-hostname rows, so without this marker a
+// zero-hostname Worker contributes no rows to a run and GET /inventory
+// (which groups strictly from exposure_findings) would silently drop it —
+// contradicting spec.md US1/AC3, FR-006, and SC-002. One marker row per such
+// Worker keeps it represented; the read path below strips markers back out
+// of the `hostnames` array it returns, so callers just see `hostnames: []`.
+// Mirrors dns/routes.ts's EMPTY_ZONE_RECORD_TYPE marker for an empty zone.
+//
+// `hostname_kind` reuses the existing 'custom_domain' enum value (the same
+// sentinel-reuse this module's own inventory.ts already uses for its
+// "(unavailable)" placeholder) rather than widening exposure_findings'
+// CHECK constraint via a new D1 migration for one marker value — T037 (see
+// its commit message) ruled that kind of schema change out of proportion
+// for a convergence-scale fix.
+const NO_HOSTNAMES_MARKER_HOSTNAME = "(no public hostnames)";
+
 // The most recent run's per-hostname status, read BEFORE the current run is
 // inserted — this is what diffForAlerts() compares the new results against.
 async function getPreviousStatuses(env: Env): Promise<Map<string, ExposureStatus>> {
@@ -45,8 +64,31 @@ export async function runEvaluation(
   const runId = crypto.randomUUID();
   const evaluatedAt = new Date().toISOString();
 
-  const findingStatements = results.flatMap((worker) =>
-    worker.hostnames.map((h) =>
+  const findingStatements = results.flatMap((worker) => {
+    // Zero hostnames is a legitimate, successfully-enumerated state — write
+    // one marker row so the Worker still shows up in GET /inventory, rather
+    // than contributing nothing to this run at all.
+    if (worker.hostnames.length === 0) {
+      return [
+        env.DB.prepare(
+          `INSERT INTO exposure_findings
+             (id, worker_name, hostname, hostname_kind, status, reason, evaluated_at, run_id, run_trigger)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        ).bind(
+          crypto.randomUUID(),
+          worker.workerName,
+          NO_HOSTNAMES_MARKER_HOSTNAME,
+          "custom_domain",
+          "safe",
+          "Worker has no public hostnames (no custom domain, workers.dev disabled, no Preview URL)",
+          evaluatedAt,
+          runId,
+          trigger,
+        ),
+      ];
+    }
+
+    return worker.hostnames.map((h) =>
       env.DB.prepare(
         `INSERT INTO exposure_findings
            (id, worker_name, hostname, hostname_kind, status, reason, evaluated_at, run_id, run_trigger)
@@ -62,8 +104,8 @@ export async function runEvaluation(
         runId,
         trigger,
       )
-    )
-  );
+    );
+  });
 
   if (findingStatements.length > 0) {
     await env.DB.batch(findingStatements);
@@ -115,9 +157,13 @@ exposureRoutes.get("/inventory", async (c) => {
 
   const byWorker = new Map<string, FindingRow[]>();
   for (const row of rows) {
+    // Ensures the worker key exists even when its only row is the
+    // no-hostnames marker — the marker itself is never surfaced as a
+    // hostname.
     const list = byWorker.get(row.worker_name) ?? [];
-    list.push(row);
     byWorker.set(row.worker_name, list);
+    if (row.hostname === NO_HOSTNAMES_MARKER_HOSTNAME) continue;
+    list.push(row);
   }
 
   return c.json({

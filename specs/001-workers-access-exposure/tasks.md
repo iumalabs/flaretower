@@ -364,7 +364,7 @@ validate quickstart.md Scenarios 1–2 and 6, then decide whether to ship before
 
 ## Phase 8: Convergence
 
-- [ ] T040 Fix `runEvaluation()` in `worker/modules/workers-access-exposure/routes.ts` so a Worker
+- [x] T040 Fix `runEvaluation()` in `worker/modules/workers-access-exposure/routes.ts` so a Worker
       with zero public hostnames (no custom domain, `workers.dev` disabled, no Preview URL — the
       normal, error-free outcome of `buildWorkerInventory()` in
       `worker/modules/workers-access-exposure/inventory.ts` for such a Worker) is still represented
@@ -382,7 +382,7 @@ validate quickstart.md Scenarios 1–2 and 6, then decide whether to ship before
       silent omissions"). Neither `data-model.md` nor `research.md` documents how a zero-hostname
       Worker should be persisted, and no test (`tests/unit/evaluate.test.ts` or
       `tests/e2e/exposure-inventory.spec.ts`) exercises this case. per FR-006 (missing)
-- [ ] T041 Reconcile `contracts/api.md`'s `GET /api/exposure/inventory` **Errors** section — which
+- [x] T041 Reconcile `contracts/api.md`'s `GET /api/exposure/inventory` **Errors** section — which
       documents a `502` response "used when the Cloudflare API itself errored or rate-limited
       mid-run" — with the actual, already-implemented behavior: since T037 (Phase 7), a top-level
       Cloudflare API failure in `buildWorkerInventory()`
