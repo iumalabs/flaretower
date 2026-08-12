@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.1](https://github.com/iumalabs/flaretower/compare/v1.1.0...v1.1.1) (2026-08-12)
+
+
+### Bug Fixes
+
+* **release:** fast-forward release branch on release:published, not merge-step ([#311](https://github.com/iumalabs/flaretower/issues/311)) ([70458cd](https://github.com/iumalabs/flaretower/commit/70458cda146f659af75c7f513cfd346635e4d817))
+
 ## [1.1.0](https://github.com/iumalabs/flaretower/compare/v1.0.0...v1.1.0) (2026-08-12)
 
 
