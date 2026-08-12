@@ -39,6 +39,19 @@ test.beforeEach(async ({ page }) => {
         body: JSON.stringify(EMPTY_INVENTORY),
       }),
   );
+  // "overview" is the default page (tasks.md T033) — it fetches these too.
+  await page.route("**/api/audit/alerts", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ alerts: [], unavailable_sources: [] }),
+    }));
+  await page.route("**/api/audit/changes", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ since: "", until: "", changes: [], unavailable_sources: [] }),
+    }));
   await page.goto("/");
 });
 
@@ -69,16 +82,15 @@ test("US1/AC3 — the active-state indicator moves to whichever page is current"
   const overviewButton = page.getByRole("button", { name: "Overview" });
   const exposureButton = page.getByRole("button", { name: "Workers & Access" });
 
-  // "exposure" is the app's current default/initial page (unchanged by
-  // this feature — switching the default to "overview" is a later task,
-  // tasks.md T033, scoped to once the real Overview page exists).
-  await expect(exposureButton).toHaveAttribute("aria-current", "page");
-  await expect(overviewButton).not.toHaveAttribute("aria-current", "page");
-
-  await overviewButton.click();
-
+  // "overview" is the app's default/initial page (tasks.md T033, User
+  // Story 3).
   await expect(overviewButton).toHaveAttribute("aria-current", "page");
   await expect(exposureButton).not.toHaveAttribute("aria-current", "page");
+
+  await exposureButton.click();
+
+  await expect(exposureButton).toHaveAttribute("aria-current", "page");
+  await expect(overviewButton).not.toHaveAttribute("aria-current", "page");
 });
 
 test("US1/AC4 — a module's nav badge shows only when its critical count is > 0", async ({ page }) => {

@@ -50,7 +50,22 @@ test.beforeEach(async ({ page }) => {
       contentType: "application/json",
       body: JSON.stringify({ modules: [], unavailable_sources: [] }),
     }));
+  await page.route("**/api/audit/alerts", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ alerts: [], unavailable_sources: [] }),
+    }));
+  await page.route("**/api/audit/changes", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ since: "", until: "", changes: [], unavailable_sources: [] }),
+    }));
+  // "overview" is now the default page (tasks.md T033) — navigate into
+  // Exposure explicitly, matching every other module's spec convention.
   await page.goto("/");
+  await page.getByRole("button", { name: "Workers & Access" }).click();
 });
 
 function row(

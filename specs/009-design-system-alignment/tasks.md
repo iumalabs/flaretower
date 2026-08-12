@@ -308,32 +308,46 @@ counts (quickstart.md Scenario 3).
 
 ### Tests for User Story 3
 
-- [ ] T030 [US3] Write `tests/e2e/overview.spec.ts` covering spec.md's
-      US3 acceptance scenarios 1–5: aggregate per-severity counts render;
-      counts match the sum of per-module data; a critical finding appears
-      in the prioritized list with an inspect/act affordance; a recent-
-      activity log renders; an all-clear state renders when every module
-      has zero findings; a module whose latest run is unavailable is
-      shown as not-available, not folded into zero. Confirm it fails
-      before implementing.
+- [x] T030 [US3] Write `tests/e2e/overview.spec.ts` covering spec.md's
+      US3 acceptance scenarios 1–5, plus FR-018's unavailable-module
+      handling as its own dedicated test. Confirmed failing (module
+      didn't exist, and `"overview"` wasn't yet the default page) before
+      implementing. Also updated `tests/e2e/exposure-inventory.spec.ts`
+      and `tests/e2e/app-shell.spec.ts` — both had baked in the
+      assumption that `/` lands directly on Exposure, which flipped once
+      `"overview"` became the default (T033); every other module's spec
+      was already unaffected since they all explicitly click into their
+      own nav item.
 
 ### Implementation for User Story 3
 
-- [ ] T031 [US3] Create `app/pages/OverviewPage.tsx`: fetch
+- [x] T031 [US3] Create `app/pages/OverviewPage.tsx`: fetches
       `GET /api/audit/summary`, `/alerts`, `/changes` (research.md §3);
-      render 4 metric cards (critical/warning/safe/not-applicable,
+      renders 4 metric cards (critical/warning/safe/not-applicable,
       summed across every `PostureSummaryEntry`), a prioritized findings
-      list sourced from `/alerts`, and a chronological activity log
-      sourced from `/changes` (FR-016, FR-017).
-- [ ] T032 [US3] Handle `unavailableSources` from `GET /api/audit/summary`
-      in `OverviewPage`: a module reported there must render as
-      not-available in the aggregate counts, never silently counted as
-      zero (FR-018).
-- [ ] T033 [US3] Add an `"overview"` entry to `app/App.tsx`'s `PAGES`
-      array as the first/default page, and set it as `Sidebar`'s initial
-      `activeKey`.
-- [ ] T034 [US3] Run quickstart.md Scenario 3 manually; fix any drift
-      found.
+      list sourced from `/alerts` (reusing the same acknowledge action
+      `AuditInventory.tsx` already has — "a way to inspect or act on
+      each" per FR-016, rather than inventing a second action mechanism),
+      and a chronological activity log sourced from `/changes` (FR-016,
+      FR-017). The design source's 14-day sparkline trend chart was
+      deliberately not built — no endpoint provides day-by-day historical
+      counts, and research.md/plan.md both explicitly allow simplifying
+      or deferring it rather than requiring new time-series storage for
+      this feature.
+- [x] T032 [US3] Handle `unavailable_sources` from `GET /api/audit/summary`
+      in `OverviewPage`: an unavailable module is excluded from the
+      aggregate totals entirely (not folded in as zero) and named in a
+      dedicated notice banner above the metric cards (FR-018).
+- [x] T033 [US3] Added an `"overview"` entry to `app/App.tsx`'s `PAGES`
+      array as the first/default page (`useState<PageKey>("overview")`),
+      replacing the placeholder from Phase 3/US1. `Sidebar`'s
+      `activeKey` follows `App`'s own page state as it already did.
+- [x] T034 [US3] Ran quickstart.md Scenario 3 manually via a Playwright
+      screenshot against mocked `/api/audit/{summary,alerts,changes}`
+      responses (including an unavailable-source case) — metric cards,
+      findings list with working Acknowledge buttons, scan log, and the
+      unavailable-module notice all render correctly and match the
+      design source's Dashboard-overview reference screen.
 
 **Checkpoint**: All three user stories are independently functional and
 the full feature is demoable end-to-end.
