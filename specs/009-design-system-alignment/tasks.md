@@ -361,3 +361,27 @@ end-to-end.
 5. Polish → final cross-cutting verification.
 
 Each increment adds value without breaking the previous one, per spec.md's own priority ordering.
+
+---
+
+## Phase 7: Convergence
+
+**Purpose**: Close a gap found by re-assessing the shipped feature against spec.md/plan.md/ tasks.md
+as they stand today (constitution's Design System section, docs/design.zip, and the newer 010/011
+features were also cross-checked — no further gaps found there: zero stray hex outside the two
+documented exceptions, zero non-zero border-radius outside the one documented enforcement, and
+`deno fmt`/`deno lint`/`deno test -A tests/unit`/`deno task test:e2e` all pass clean, 279/279 and
+49/49 respectively).
+
+- [ ] T040 [US2] Write e2e coverage for the row expand/collapse interaction (click a row with
+      `detail` content, confirm additional detail is revealed in place; click again, confirm it
+      collapses) per SC-006 and US2/AC4; confirm it fails against the current implementation, since
+      no module page currently populates any row's `detail` field so no row anywhere has an expand
+      affordance to click (missing)
+- [ ] T041 [US2] Populate real per-row `detail` content on at least one `FindingsTable` instance in
+      a migrated module page (data-model.md's `FindingsTableRow.detail`, e.g.
+      `app/pages/ExposureInventory.tsx`'s hostname rows exposing detail already present in that
+      page's own API response) so FR-012's row-expand/collapse mechanic — already implemented in
+      `app/components/FindingsTable.tsx` but never exercised by any page since T021 — becomes
+      reachable by a real operator instead of only structurally present and unused; confirm T040
+      passes (partial)

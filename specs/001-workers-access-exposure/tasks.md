@@ -359,3 +359,40 @@ validate quickstart.md Scenarios 1–2 and 6, then decide whether to ship before
       `Workers Scripts Read` row's endpoint list omits it, and `Workers Routes Read` is marked
       "reserved... not used," so the table doesn't currently name any scope for the endpoint
       custom-domain detection depends on. per Constitution VIII (partial)
+
+---
+
+## Phase 8: Convergence
+
+- [ ] T040 Fix `runEvaluation()` in `worker/modules/workers-access-exposure/routes.ts` so a Worker
+      with zero public hostnames (no custom domain, `workers.dev` disabled, no Preview URL — the
+      normal, error-free outcome of `buildWorkerInventory()` in
+      `worker/modules/workers-access-exposure/inventory.ts` for such a Worker) is still represented
+      in `exposure_findings` and therefore still appears in the `GET /api/exposure/inventory`
+      response. Today `findingStatements` is built via
+      `results.flatMap((worker) => worker.hostnames.map(...))`: a `WorkerEvaluation` with an empty
+      `hostnames` array (see `evaluateWorker()` in
+      `worker/modules/workers-access-exposure/evaluate.ts`, which simply maps over whatever
+      `inventory.ts` produced) contributes zero INSERT statements, so that Worker has no row for the
+      run and is silently absent from `GET /api/exposure/inventory`'s `byWorker`-grouped response —
+      the endpoint has no other source of "which Workers exist" to fall back on. This directly
+      contradicts spec.md User Story 1's Acceptance Scenario 3 ("that Worker appears with no
+      exposure to report, not omitted from the list"), FR-006 ("every Worker in the account
+      represented exactly once"), and SC-002 ("100% of Workers... appear in the inventory — zero
+      silent omissions"). Neither `data-model.md` nor `research.md` documents how a zero-hostname
+      Worker should be persisted, and no test (`tests/unit/evaluate.test.ts` or
+      `tests/e2e/exposure-inventory.spec.ts`) exercises this case. per FR-006 (missing)
+- [ ] T041 Reconcile `contracts/api.md`'s `GET /api/exposure/inventory` **Errors** section — which
+      documents a `502` response "used when the Cloudflare API itself errored or rate-limited
+      mid-run" — with the actual, already-implemented behavior: since T037 (Phase 7), a top-level
+      Cloudflare API failure in `buildWorkerInventory()`
+      (`worker/modules/workers-access-exposure/inventory.ts`) degrades to a `not_evaluated` sentinel
+      finding persisted through a normal 202/200 response
+      (`worker/modules/workers-access-exposure/routes.ts`'s `runEvaluation`/`GET /inventory`), and
+      no code path in this module ever returns HTTP `502`. The documented contract is
+      unreachable/stale relative to the sentinel-based architecture this module (and, per T037's own
+      comment, `worker/modules/pages/inventory.ts` and `worker/modules/security/inventory.ts`) now
+      deliberately uses. Either implement the documented `502` path or update `contracts/api.md` to
+      describe the sentinel-in-200 behavior actually shipped, so the contract stops promising a
+      status code the implementation never sends. per plan: contracts/api.md 502 decision
+      (contradicts)
