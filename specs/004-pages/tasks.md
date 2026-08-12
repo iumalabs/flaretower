@@ -18,12 +18,12 @@ phase — reuses Modules 1-3's tooling entirely.
 
 ## Phase 1: Foundational (Blocking Prerequisites)
 
-- [ ] T001 [P] Create D1 migration `worker/db/migrations/0005_pages_findings.sql`
+- [x] T001 [P] Create D1 migration `worker/db/migrations/0005_pages_findings.sql`
       for `pages_domain_findings`, `pages_domain_alerts`,
       `pages_subdomain_findings`, `pages_subdomain_alerts`,
       `pages_deployment_findings`, `pages_deployment_alerts` per
       data-model.md.
-- [ ] T002 Mount `/api/pages/*` in `worker/index.ts`'s Hono app, gated by
+- [x] T002 Mount `/api/pages/*` in `worker/index.ts`'s Hono app, gated by
       the existing `accessAuth` middleware. Stub router until US1.
 
 **Checkpoint**: D1 schema and routing mount point exist.
@@ -39,39 +39,39 @@ with each domain's active/non-active state correctly distinguished.
 
 ### Tests for User Story 1
 
-- [ ] T003 [P] [US1] Unit test in `tests/unit/pages-inventory.test.ts`
+- [x] T003 [P] [US1] Unit test in `tests/unit/pages-inventory.test.ts`
       (mocked `fetch`): projects and their custom domains are correctly
       enumerated, including a project with zero custom domains.
-- [ ] T004 [P] [US1] Playwright e2e test in
+- [x] T004 [P] [US1] Playwright e2e test in
       `tests/e2e/pages-inventory.spec.ts` (mocked
       `GET /api/pages/inventory`): every project and every custom domain
       renders, none omitted.
 
 ### Implementation for User Story 1
 
-- [ ] T005 [P] [US1] Implement `worker/modules/pages/types.ts` and
+- [x] T005 [P] [US1] Implement `worker/modules/pages/types.ts` and
       `inventory.ts`: list Pages projects
       (`GET /accounts/{account_id}/pages/projects`), list each project's
       custom domains
       (`GET /accounts/{account_id}/pages/projects/{name}/domains`) per
       research.md §1.
-- [ ] T006 [US1] Implement `evaluateCustomDomain()` in
+- [x] T006 [US1] Implement `evaluateCustomDomain()` in
       `worker/modules/pages/evaluate.ts` (active → safe, any other status
       → warning, evaluationError → not_evaluated), plus stub
       `evaluateSubdomainExposure()`/`evaluateDeployment()` returning
       `not_evaluated` for now (US2/US3 implement the real branches).
       Depends on T005's types.
-- [ ] T007 [US1] Implement `GET /api/pages/inventory` in
+- [x] T007 [US1] Implement `GET /api/pages/inventory` in
       `worker/modules/pages/routes.ts` per contracts/api.md's nested
       shape. Depends on T005, T006.
-- [ ] T008 [US1] Implement `POST /api/pages/evaluate`: runs inventory +
+- [x] T008 [US1] Implement `POST /api/pages/evaluate`: runs inventory +
       evaluate, persists to `pages_domain_findings` (real) and
       `pages_subdomain_findings`/`pages_deployment_findings` (stubbed
       `not_evaluated` for now). Depends on T001, T006.
-- [ ] T009 [P] [US1] Build `app/pages/PagesInventory.tsx`, reusing
+- [x] T009 [P] [US1] Build `app/pages/PagesInventory.tsx`, reusing
       `ExposureStatusBadge` unchanged. Add a fourth nav entry to
       `app/App.tsx`.
-- [ ] T010 [US1] Wire `routes.ts` into the `/api/pages` mount from T002.
+- [x] T010 [US1] Wire `routes.ts` into the `/api/pages` mount from T002.
 
 **Checkpoint**: User Story 1 fully functional and independently testable.
 
@@ -87,20 +87,20 @@ effectively open, safe when covered by a meaningfully-scoped policy.
 
 ### Tests for User Story 2
 
-- [ ] T011 [P] [US2] Unit test: uncovered `pages.dev` subdomain →
+- [x] T011 [P] [US2] Unit test: uncovered `pages.dev` subdomain →
       critical; covered by an Allow-Everyone or zero-policy application →
       warning; covered by a Bypass-policy application → warning; covered
       by a scoped-policy application → safe (same distinctions Module 1
       and Module 3 already established).
-- [ ] T012 [P] [US2] Playwright e2e test: the critical, warning, and safe
+- [x] T012 [P] [US2] Playwright e2e test: the critical, warning, and safe
       subdomain-exposure badges render distinctly for mocked projects.
 
 ### Implementation for User Story 2
 
-- [ ] T013 [US2] Extend `worker/modules/pages/inventory.ts` to also fetch
+- [x] T013 [US2] Extend `worker/modules/pages/inventory.ts` to also fetch
       Access applications (`GET /accounts/{account_id}/access/apps`) per
       research.md §2, independently of Modules 1/3's own fetches.
-- [ ] T014 [US2] Implement the hostname-coverage and policy-openness
+- [x] T014 [US2] Implement the hostname-coverage and policy-openness
       decision logic in `evaluate.ts` (research.md §2 — local
       re-implementation, not imported from Module 1 or Module 3) and wire
       it into `evaluateSubdomainExposure()`, replacing US1's stub. Persist
@@ -121,20 +121,20 @@ production deployment is safe.
 
 ### Tests for User Story 3
 
-- [ ] T015 [P] [US3] Unit test: latest production deployment
+- [x] T015 [P] [US3] Unit test: latest production deployment
       `latest_stage.status === "failure"` (or any non-`"success"` terminal
       state) → warning; no production deployment in the list → warning;
       `"success"` → safe.
-- [ ] T016 [P] [US3] Playwright e2e test: the warning and safe deployment
+- [x] T016 [P] [US3] Playwright e2e test: the warning and safe deployment
       health badges render distinctly for mocked projects.
 
 ### Implementation for User Story 3
 
-- [ ] T017 [US3] Extend `worker/modules/pages/inventory.ts` to fetch each
+- [x] T017 [US3] Extend `worker/modules/pages/inventory.ts` to fetch each
       project's most recent production deployment
       (`GET /accounts/{account_id}/pages/projects/{name}/deployments?env=production`,
       index `0` of the response) per research.md §1.
-- [ ] T018 [US3] Implement the deployment-health branch in
+- [x] T018 [US3] Implement the deployment-health branch in
       `evaluateDeployment()`, replacing US1's stub. Persist real values in
       `POST /api/pages/evaluate` (T008) and surface them in
       `GET /api/pages/inventory` (T007).
@@ -154,7 +154,7 @@ repeats.
 
 ### Tests for User Story 4
 
-- [ ] T019 [P] [US4] Unit test in `tests/unit/pages-alerts.test.ts`:
+- [x] T019 [P] [US4] Unit test in `tests/unit/pages-alerts.test.ts`:
       first-run alerting, no-repeat on unchanged state, transitions, for
       all three diff functions (domain, subdomain exposure, deployment
       health — three separate diff functions per data-model.md's
@@ -162,19 +162,19 @@ repeats.
 
 ### Implementation for User Story 4
 
-- [ ] T020 [US4] Implement `worker/modules/pages/alerts.ts` — three diff
+- [x] T020 [US4] Implement `worker/modules/pages/alerts.ts` — three diff
       functions (`diffForDomainAlerts`, `diffForSubdomainAlerts`,
       `diffForDeploymentAlerts`), same new-vs-repeat semantics as every
       prior module.
-- [ ] T021 [US4] **Integration point** (plan.md's Constitution Check):
+- [x] T021 [US4] **Integration point** (plan.md's Constitution Check):
       add this module's evaluation + alert-diffing to the *existing*
       `scheduled` handler in `worker/index.ts`, as a fourth independent
       `waitUntil` call alongside Modules 1-3's. Depends on T008, T014,
       T018, T020.
-- [ ] T022 [US4] Implement `GET /api/pages/alerts` (merges all three
+- [x] T022 [US4] Implement `GET /api/pages/alerts` (merges all three
       alert tables with a `kind` discriminator per contracts/api.md).
       Depends on T020.
-- [ ] T023 [US4] Implement
+- [x] T023 [US4] Implement
       `POST /api/pages/alerts/:kind/:id/acknowledge` (routes to the
       matching table based on `:kind`). Depends on T020.
 
@@ -185,13 +185,13 @@ feature-complete per spec.md.
 
 ## Final Phase: Polish & Cross-Cutting Concerns
 
-- [ ] T024 [P] Run all 6 quickstart.md scenarios end-to-end against a real
+- [x] T024 [P] Run all 6 quickstart.md scenarios end-to-end against a real
       scratch Cloudflare test account (real-account dependency, same as
       every prior module's equivalent task).
-- [ ] T025 [P] Add this module's required token scopes (`Cloudflare Pages
+- [x] T025 [P] Add this module's required token scopes (`Cloudflare Pages
       Read`, new, and `Access: Apps and Policies Read` — already
       documented for Modules 1 and 3) to the README.
-- [ ] T026 [P] `deno fmt` + `deno lint` pass across the new
+- [x] T026 [P] `deno fmt` + `deno lint` pass across the new
       `worker/modules/pages/` and `PagesInventory.tsx` files.
 
 ---
