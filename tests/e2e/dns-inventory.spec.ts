@@ -34,6 +34,15 @@ const MOCK_DNS_INVENTORY = {
           status: "safe",
           reason: "not proxy-capable",
         },
+        {
+          record_name: "unknown.example.com",
+          type: "A",
+          content: "203.0.113.20",
+          proxy_capable: true,
+          proxied: false,
+          status: "not_evaluated",
+          reason: "could not evaluate dangling-target status (Security Insights API error)",
+        },
       ],
     },
   ],
@@ -93,4 +102,12 @@ test("US3 — a DNS-only origin-facing record renders as warning; a non-proxy-ca
 
   const mxRow = row(page, "example.com", "MX", "example.com", "10 mail.example.com");
   await expect(mxRow.getByText("PROTECTED")).toBeVisible();
+});
+
+test("US2/AC3 — a record whose dangling status couldn't be determined renders as not_evaluated (N/A), never silently safe", async ({ page }) => {
+  const naRow = row(page, "example.com", "A", "unknown.example.com", "203.0.113.20");
+  await expect(naRow.getByText("N/A")).toBeVisible();
+  await expect(
+    naRow.getByText("could not evaluate dangling-target status (Security Insights API error)"),
+  ).toBeVisible();
 });

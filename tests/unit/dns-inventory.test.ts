@@ -95,6 +95,29 @@ Deno.test("buildDnsInventory - a zone whose records can't be listed surfaces a s
   assertEquals(typeof zones[0].records[0].evaluationError, "string");
 });
 
+Deno.test("buildDnsInventory - a total zone-list failure degrades to a sentinel not_evaluated zone, not an uncaught throw (T028)", async () => {
+  const fetchImpl = mockFetch([
+    [
+      "/zones",
+      () =>
+        jsonResponse(
+          {
+            success: false,
+            result: null,
+            errors: [{ code: 9109, message: "Invalid access token" }],
+          },
+          403,
+        ),
+    ],
+  ]);
+
+  const zones = await buildDnsInventory(creds, fetchImpl);
+
+  assertEquals(zones.length, 1);
+  assertEquals(zones[0].records.length, 1);
+  assertEquals(typeof zones[0].records[0].evaluationError, "string");
+});
+
 Deno.test("buildDnsInventory - two zones with the same-name-different-type records both appear as distinct entries", async () => {
   const fetchImpl = mockFetch([
     [

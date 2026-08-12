@@ -156,7 +156,32 @@ export async function buildDnsInventory(
   creds: CloudflareDnsCredentials,
   fetchImpl: typeof fetch = fetch,
 ): Promise<Zone[]> {
-  const rawZones = await listZones(creds, fetchImpl);
+  let rawZones: RawZone[];
+  try {
+    rawZones = await listZones(creds, fetchImpl);
+  } catch (err) {
+    // Could not list zones at all (missing Zone Read scope, account-wide
+    // API error, outage) — same sentinel shape Module 1/2 use for a total
+    // scripts/projects-list failure (buildWorkerInventory,
+    // buildPagesInventory): one placeholder zone whose sole record carries
+    // evaluationError, so evaluateRecord() (evaluate.ts) resolves it to
+    // not_evaluated instead of the run throwing and writing zero
+    // dns_findings rows at all (FR-011).
+    return [{
+      zoneName: "(unavailable)",
+      records: [{
+        zoneName: "(unavailable)",
+        recordName: "(unavailable)",
+        recordType: "(zone)",
+        content: "",
+        proxyCapable: false,
+        proxied: null,
+        evaluationError: `could not list zones: ${
+          err instanceof Error ? err.message : "unknown error"
+        }`,
+      }],
+    }];
+  }
 
   // One fetch per zone — capped at 5 concurrent (worker/concurrency.ts),
   // since an account's zone count trivially exceeds the Workers runtime's
