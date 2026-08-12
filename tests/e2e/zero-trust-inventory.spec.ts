@@ -61,6 +61,12 @@ test.beforeEach(async ({ page }) => {
       contentType: "application/json",
       body: JSON.stringify(MOCK_ZT_INVENTORY),
     }));
+  await page.route("**/api/audit/summary", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ modules: [], unavailable_sources: [] }),
+    }));
   await page.goto("/");
   await page.getByRole("button", { name: "Zero Trust" }).click();
 });
@@ -68,27 +74,29 @@ test.beforeEach(async ({ page }) => {
 test("US1 — every application and every service token appears, none omitted", async ({ page }) => {
   await expect(page.getByText("internal-tool.example.com")).toBeVisible();
   await expect(page.getByText("scoped-tool.example.com")).toBeVisible();
-  await expect(page.getByText("old-ci-token")).toBeVisible();
+  // old-ci-token is critical and legitimately appears twice — once in its
+  // row, once in the module-scope alert banner above the table (FR-013).
+  await expect(page.getByText("old-ci-token").first()).toBeVisible();
   await expect(page.getByText("soon-to-expire-token")).toBeVisible();
   await expect(page.getByText("healthy-token")).toBeVisible();
 });
 
 test("US2 — the open-policy application renders as warning, the scoped one as safe", async ({ page }) => {
-  const openRow = page.locator("tr", { hasText: "internal-tool.example.com" });
+  const openRow = page.getByTestId("findings-row-app-open");
   await expect(openRow.getByText("WARNING")).toBeVisible();
 
-  const scopedRow = page.locator("tr", { hasText: "scoped-tool.example.com" });
+  const scopedRow = page.getByTestId("findings-row-app-scoped");
   await expect(scopedRow.getByText("PROTECTED")).toBeVisible();
 });
 
 test("US3 — service token statuses render distinctly: critical, warning, safe", async ({ page }) => {
-  const expiredRow = page.locator("tr", { hasText: "old-ci-token" });
+  const expiredRow = page.getByTestId("findings-row-tok-expired");
   await expect(expiredRow.getByText("CRITICAL")).toBeVisible();
 
-  const soonRow = page.locator("tr", { hasText: "soon-to-expire-token" });
+  const soonRow = page.getByTestId("findings-row-tok-soon");
   await expect(soonRow.getByText("WARNING")).toBeVisible();
 
-  const healthyRow = page.locator("tr", { hasText: "healthy-token" });
+  const healthyRow = page.getByTestId("findings-row-tok-healthy");
   await expect(healthyRow.getByText("PROTECTED")).toBeVisible();
 });
 
@@ -110,7 +118,8 @@ test("T026 — a completed run with zero apps and zero tokens shows a distinct m
   await page.reload();
   await page.getByRole("button", { name: "Zero Trust" }).click();
 
-  await expect(page.getByText("no Access applications or service tokens found")).toBeVisible();
+  await expect(page.getByText("No Access applications", { exact: true })).toBeVisible();
+  await expect(page.getByText("No service tokens", { exact: true })).toBeVisible();
   await expect(page.getByText("No evaluation runs yet.")).not.toBeVisible();
 });
 
