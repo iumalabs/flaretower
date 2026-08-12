@@ -1,6 +1,12 @@
 import { useEffect, useState } from "react";
 import type { JSX } from "react";
-import { type ExposureStatus, ExposureStatusBadge } from "../components/ExposureStatusBadge.tsx";
+import { type ExposureStatus } from "../components/ExposureStatusBadge.tsx";
+import {
+  FindingsTable,
+  type FindingsTableColumn,
+  type FindingsTableRow,
+} from "../components/FindingsTable.tsx";
+import { AlertBanner } from "../components/AlertBanner.tsx";
 
 interface UnifiedAlert {
   id: string;
@@ -97,12 +103,14 @@ async function acknowledgeAlert(module: string, kind: string, id: string): Promi
   }
 }
 
-function AlertRow(
-  { alert, onAcknowledged }: { alert: UnifiedAlert; onAcknowledged: (id: string) => void },
-): JSX.Element {
+interface FlatAlert {
+  alert: UnifiedAlert;
+  onAcknowledged: (id: string) => void;
+}
+
+function AcknowledgeButton({ alert, onAcknowledged }: FlatAlert): JSX.Element {
   const [pending, setPending] = useState(false);
   const [ackError, setAckError] = useState<string | null>(null);
-  const critical = alert.new_status === "critical";
 
   async function handleAcknowledge() {
     setPending(true);
@@ -118,78 +126,98 @@ function AlertRow(
   }
 
   return (
-    <tr
-      style={{
-        borderTop: "1px solid var(--rule-hairline)",
-        borderLeft: critical ? "3px solid var(--status-critical)" : "3px solid transparent",
-        background: critical ? "var(--status-critical-row)" : "transparent",
-      }}
-    >
-      <td style={{ padding: "8px 0 8px 8px", width: 120 }}>
-        <ExposureStatusBadge status={alert.new_status} />
-      </td>
-      <td
+    <div style={{ textAlign: "right" }}>
+      <button
+        type="button"
+        onClick={handleAcknowledge}
+        disabled={pending}
         style={{
-          padding: "8px 0",
-          fontFamily: "var(--font-mono)",
-          fontSize: "var(--text-code-size)",
+          background: "none",
+          border: "1px solid var(--border)",
+          padding: "4px 10px",
+          cursor: pending ? "default" : "pointer",
           color: "var(--fg-secondary)",
+          font: "inherit",
+          fontSize: "var(--text-body-size)",
         }}
       >
-        {alert.entity_label}
-        <span style={{ color: "var(--fg-faint)" }}>· {alert.module}/{alert.kind}</span>
-      </td>
-      <td style={{ padding: "8px 0", fontSize: "var(--text-body-size)", color: "var(--fg-muted)" }}>
-        {alert.previous_status ?? "(new)"} → {alert.new_status} · {alert.detected_at}
-      </td>
-      <td style={{ padding: "8px 8px 8px 0", textAlign: "right" }}>
-        <button
-          type="button"
-          onClick={handleAcknowledge}
-          disabled={pending}
-          style={{
-            background: "none",
-            border: "1px solid var(--border)",
-            borderRadius: 4,
-            padding: "4px 10px",
-            cursor: pending ? "default" : "pointer",
-            color: "var(--fg-secondary)",
-            font: "inherit",
-            fontSize: "var(--text-body-size)",
-          }}
-        >
-          {pending ? "Acknowledging…" : "Acknowledge"}
-        </button>
-        {ackError && (
-          <div style={{ color: "var(--status-critical-fg)", fontSize: "var(--text-body-size)" }}>
-            {ackError}
-          </div>
-        )}
-      </td>
-    </tr>
+        {pending ? "Acknowledging…" : "Acknowledge"}
+      </button>
+      {ackError && (
+        <div style={{ color: "var(--status-critical-fg)", fontSize: "var(--text-body-size)" }}>
+          {ackError}
+        </div>
+      )}
+    </div>
   );
 }
 
-function ChangeRow({ change }: { change: ChangeEntry }): JSX.Element {
-  return (
-    <tr style={{ borderTop: "1px solid var(--rule-hairline)" }}>
-      <td
+const ALERT_COLUMNS: (onAcknowledged: (id: string) => void) => FindingsTableColumn<UnifiedAlert>[] =
+  (
+    onAcknowledged,
+  ) => [
+    {
+      key: "entity",
+      label: "Entity",
+      sortValue: (a) => a.entity_label,
+      render: (a) => (
+        <span
+          style={{
+            fontFamily: "var(--font-mono)",
+            fontSize: "var(--text-code-size)",
+            color: "var(--fg-secondary)",
+          }}
+        >
+          {a.entity_label}
+          <span style={{ color: "var(--fg-faint)" }}>· {a.module}/{a.kind}</span>
+        </span>
+      ),
+    },
+    {
+      key: "change",
+      label: "Change",
+      render: (a) => (
+        <span style={{ fontSize: "var(--text-body-size)", color: "var(--fg-muted)" }}>
+          {a.previous_status ?? "(new)"} → {a.new_status} · {a.detected_at}
+        </span>
+      ),
+    },
+    {
+      key: "action",
+      label: "",
+      width: "140px",
+      render: (a) => <AcknowledgeButton alert={a} onAcknowledged={onAcknowledged} />,
+    },
+  ];
+
+const CHANGE_COLUMNS: FindingsTableColumn<ChangeEntry>[] = [
+  {
+    key: "entity",
+    label: "Entity",
+    sortValue: (c) => c.entity_label,
+    render: (c) => (
+      <span
         style={{
-          padding: "8px 0",
           fontFamily: "var(--font-mono)",
           fontSize: "var(--text-code-size)",
           color: "var(--fg-secondary)",
         }}
       >
-        {change.entity_label}
-        <span style={{ color: "var(--fg-faint)" }}>· {change.module}/{change.kind}</span>
-      </td>
-      <td style={{ padding: "8px 0", fontSize: "var(--text-body-size)", color: "var(--fg-muted)" }}>
-        {change.previous_status ?? "(new)"} → {change.current_status}
-      </td>
-    </tr>
-  );
-}
+        {c.entity_label}
+        <span style={{ color: "var(--fg-faint)" }}>· {c.module}/{c.kind}</span>
+      </span>
+    ),
+  },
+  {
+    key: "change",
+    label: "Change",
+    render: (c) => (
+      <span style={{ fontSize: "var(--text-body-size)", color: "var(--fg-muted)" }}>
+        {c.previous_status ?? "(new)"} → {c.current_status}
+      </span>
+    ),
+  },
+];
 
 // Renders the sources GET /alerts, /changes, or /summary reported as
 // unreadable — distinct from "currently zero" so a real D1 outage never
@@ -204,7 +232,6 @@ function UnavailableSourcesNotice(
         marginBottom: 12,
         padding: "8px 12px",
         border: "1px solid var(--status-critical-fg)",
-        borderRadius: 4,
         color: "var(--status-critical-fg)",
         fontSize: "var(--text-body-size)",
       }}
@@ -246,6 +273,21 @@ function SummaryRow(
   );
 }
 
+function SectionHeading({ children }: { children: string }): JSX.Element {
+  return (
+    <h2
+      style={{
+        fontFamily: "var(--font-sans)",
+        fontSize: "var(--text-section-size)",
+        fontWeight: "var(--text-section-weight)" as unknown as number,
+        margin: "24px 0 12px",
+      }}
+    >
+      {children}
+    </h2>
+  );
+}
+
 export function AuditInventory(): JSX.Element {
   const [data, setData] = useState<AlertsResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -280,9 +322,23 @@ export function AuditInventory(): JSX.Element {
     return <p style={{ color: "var(--status-critical-fg)" }}>{error}</p>;
   }
 
-  if (!data) {
-    return <p style={{ color: "var(--fg-muted)" }}>Loading audit inbox…</p>;
-  }
+  const alertRows: FindingsTableRow<UnifiedAlert>[] | null = data
+    ? data.alerts.map((a) => ({ id: a.id, status: a.new_status, data: a }))
+    : null;
+  const changeRows: FindingsTableRow<ChangeEntry>[] | null = changesData
+    ? changesData.changes.map((c) => ({
+      id: `${c.module}/${c.kind}/${c.entity_label}`,
+      status: c.current_status,
+      data: c,
+    }))
+    : changesError
+    ? []
+    : null;
+
+  // The single most urgent outstanding alert, account-wide (FR-013,
+  // US3/AC3 for the future Overview page's own banner — this module page
+  // gets the same treatment for its own unacknowledged alerts today).
+  const criticalAlert = alertRows?.find((r) => r.status === "critical");
 
   return (
     <div>
@@ -298,123 +354,75 @@ export function AuditInventory(): JSX.Element {
         Audit & Drift
       </h1>
 
-      <section
-        style={{
-          border: "1px solid var(--border)",
-          borderRadius: 6,
-          padding: 16,
-          marginBottom: 12,
-          background: "var(--surface-1)",
-        }}
-      >
-        <h2
-          style={{
-            fontFamily: "var(--font-sans)",
-            fontSize: "var(--text-title-size)",
-            fontWeight: "var(--text-title-weight)" as unknown as number,
-            margin: "0 0 12px",
+      {criticalAlert && (
+        <AlertBanner
+          scope="account"
+          finding={{
+            severity: "critical",
+            title: "An outstanding critical alert needs attention",
+            target:
+              `${criticalAlert.data.module}/${criticalAlert.data.kind} · ${criticalAlert.data.entity_label}`,
+            description: `${
+              criticalAlert.data.previous_status ?? "(new)"
+            } → ${criticalAlert.data.new_status} · ${criticalAlert.data.detected_at}`,
           }}
-        >
-          Unified alerts inbox
-        </h2>
-        <UnavailableSourcesNotice sources={data.unavailable_sources} />
-        {data.alerts.length === 0
-          ? <p style={{ color: "var(--fg-muted)" }}>No outstanding alerts across any module.</p>
-          : (
-            <table style={{ width: "100%", borderCollapse: "collapse" }}>
-              <tbody>
-                {data.alerts.map((a) => (
-                  <AlertRow key={a.id} alert={a} onAcknowledged={handleAcknowledged} />
-                ))}
-              </tbody>
-            </table>
-          )}
-      </section>
+        />
+      )}
 
-      <section
-        style={{
-          border: "1px solid var(--border)",
-          borderRadius: 6,
-          padding: 16,
-          marginBottom: 12,
-          background: "var(--surface-1)",
+      <SectionHeading>Unified alerts inbox</SectionHeading>
+      {data && <UnavailableSourcesNotice sources={data.unavailable_sources} />}
+      <FindingsTable
+        columns={ALERT_COLUMNS(handleAcknowledged)}
+        rows={alertRows}
+        loadingLabel="Loading audit inbox…"
+        emptyState={{
+          heading: "No outstanding alerts",
+          description: "Every module's alerts are either resolved or acknowledged.",
         }}
-      >
-        <h2
-          style={{
-            fontFamily: "var(--font-sans)",
-            fontSize: "var(--text-title-size)",
-            fontWeight: "var(--text-title-weight)" as unknown as number,
-            margin: "0 0 12px",
-          }}
-        >
-          What changed
-        </h2>
-        {changesData && <UnavailableSourcesNotice sources={changesData.unavailable_sources} />}
-        {changesError
-          ? <p style={{ color: "var(--status-critical-fg)" }}>{changesError}</p>
-          : !changesData
-          ? <p style={{ color: "var(--fg-muted)" }}>Loading changes…</p>
-          : changesData.changes.length === 0
-          ? (
-            <p style={{ color: "var(--fg-muted)" }}>
-              No status changes since {changesData.since}.
-            </p>
-          )
-          : (
-            <table style={{ width: "100%", borderCollapse: "collapse" }}>
-              <tbody>
-                {changesData.changes.map((c) => (
-                  <ChangeRow key={`${c.module}/${c.kind}/${c.entity_label}`} change={c} />
-                ))}
-              </tbody>
-            </table>
-          )}
-      </section>
+      />
 
-      <section
-        style={{
-          border: "1px solid var(--border)",
-          borderRadius: 6,
-          padding: 16,
-          marginBottom: 12,
-          background: "var(--surface-1)",
-        }}
-      >
-        <h2
-          style={{
-            fontFamily: "var(--font-sans)",
-            fontSize: "var(--text-title-size)",
-            fontWeight: "var(--text-title-weight)" as unknown as number,
-            margin: "0 0 12px",
-          }}
-        >
-          Account-wide posture summary
-        </h2>
-        {summaryData && <UnavailableSourcesNotice sources={summaryData.unavailable_sources} />}
-        {summaryError
-          ? <p style={{ color: "var(--status-critical-fg)" }}>{summaryError}</p>
-          : !summaryData
-          ? <p style={{ color: "var(--fg-muted)" }}>Loading summary…</p>
-          : (
-            <table style={{ width: "100%", borderCollapse: "collapse" }}>
-              <tbody>
-                {summaryData.modules.map((entry) => {
-                  const unavailable = summaryData.unavailable_sources.some(
-                    (s) => s.module === entry.module && s.kind === entry.kind,
-                  );
-                  return (
-                    <SummaryRow
-                      key={`${entry.module}/${entry.kind}`}
-                      entry={entry}
-                      unavailable={unavailable}
-                    />
-                  );
-                })}
-              </tbody>
-            </table>
-          )}
-      </section>
+      <SectionHeading>What changed</SectionHeading>
+      {changesData && <UnavailableSourcesNotice sources={changesData.unavailable_sources} />}
+      {changesError
+        ? <p style={{ color: "var(--status-critical-fg)" }}>{changesError}</p>
+        : (
+          <FindingsTable
+            columns={CHANGE_COLUMNS}
+            rows={changeRows}
+            loadingLabel="Loading changes…"
+            emptyState={{
+              heading: "No status changes",
+              description: changesData
+                ? `No status changes since ${changesData.since}.`
+                : "No status changes in the observed window.",
+            }}
+          />
+        )}
+
+      <SectionHeading>Account-wide posture summary</SectionHeading>
+      {summaryData && <UnavailableSourcesNotice sources={summaryData.unavailable_sources} />}
+      {summaryError
+        ? <p style={{ color: "var(--status-critical-fg)" }}>{summaryError}</p>
+        : !summaryData
+        ? <p style={{ color: "var(--fg-muted)" }}>Loading summary…</p>
+        : (
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <tbody>
+              {summaryData.modules.map((entry) => {
+                const unavailable = summaryData.unavailable_sources.some(
+                  (s) => s.module === entry.module && s.kind === entry.kind,
+                );
+                return (
+                  <SummaryRow
+                    key={`${entry.module}/${entry.kind}`}
+                    entry={entry}
+                    unavailable={unavailable}
+                  />
+                );
+              })}
+            </tbody>
+          </table>
+        )}
     </div>
   );
 }

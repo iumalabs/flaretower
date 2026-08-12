@@ -103,7 +103,7 @@ test("a member operator's acknowledge attempt is rejected and the alert stays ou
     (route) => route.fulfill({ status: 403, contentType: "text/plain", body: "Forbidden" }),
   );
 
-  const row = page.locator("tr", { hasText: "flaretower-ack-test.example" });
+  const row = page.getByTestId("findings-row-a1");
   await row.getByRole("button", { name: "Acknowledge" }).click();
 
   await expect(row.getByText("You don't have permission", { exact: false })).toBeVisible();
@@ -118,8 +118,8 @@ test("an admin operator's acknowledge attempt succeeds and the alert leaves the 
       body: JSON.stringify({ id: "a1", acknowledged_at: "2026-08-11T09:00:00Z" }),
     }));
 
-  const row = page.locator("tr", { hasText: "flaretower-ack-test.example" });
+  const row = page.getByTestId("findings-row-a1");
   await row.getByRole("button", { name: "Acknowledge" }).click();
 
-  await expect(page.locator("tr", { hasText: "flaretower-ack-test.example" })).not.toBeVisible();
+  await expect(page.getByTestId("findings-row-a1")).not.toBeVisible();
 });
