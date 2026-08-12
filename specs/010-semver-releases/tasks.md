@@ -217,14 +217,19 @@ the footer shows `"self-hosted"` only, no fabricated version.
 
 ### Implementation for User Story 3
 
-- [x] T013 [US3] Add a build-time constant to `vite.config.ts`:
-      `define: {
-      __APP_VERSION__: JSON.stringify(readAppVersion()) }`, where
-      `readAppVersion()` first checks the checked-out git branch (`git rev-parse --abbrev-ref HEAD`)
-      and only reads/trims the repo-root `VERSION` file when it's exactly `release` — otherwise (or
-      on any failure) returns `""`. Branch-gated rather than a plain file read, since `VERSION`
-      exists identically on every branch and an unconditional read would leak a version into
-      preview/dev builds too (research.md §3's implementation-time correction; FR-010).
+- [x] T013 [US3] **Revised after a second live bug find.** Add a build-time constant to
+      `vite.config.ts`: `define: { __APP_VERSION__: JSON.stringify(readAppVersion()) }`, where
+      `readAppVersion()` checks Cloudflare's own `WORKERS_CI_BRANCH` env var and only reads/trims the
+      repo-root `VERSION` file when it's exactly `release` — otherwise (or on any failure) returns
+      `""`. Branch-gated rather than a plain file read, since `VERSION` exists identically on every
+      branch and an unconditional read would leak a version into preview/dev builds too (research.md
+      §3's first implementation-time correction; FR-010). **First version used `git rev-parse
+      --abbrev-ref HEAD` instead — confirmed live in production (2026-08-12) that this was broken**:
+      the real production build from `release` (v1.1.3) shipped a footer with no version at all,
+      because Workers Builds' checkout doesn't resolve to a branch name via plain git. Fixed by
+      reading `WORKERS_CI_BRANCH` (confirmed via Cloudflare's build-configuration docs — the branch
+      name from the triggering push event, injected for every Workers Builds run) instead of asking
+      git — sidesteps the checkout-state question entirely (research.md §3's second correction).
 - [x] T014 [P] [US3] Add the ambient type declaration for the injected constant in
       `app/vite-env.d.ts` (new file): `declare const __APP_VERSION__: string;` — matches plan.md's
       Project Structure entry, needed for `deno check`/strict TS (Constitution Principle VI) to

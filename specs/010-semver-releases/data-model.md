@@ -32,9 +32,11 @@ declare const __APP_VERSION__: string | undefined;
 
 `App.tsx` reads `__APP_VERSION__` directly — `""` in any build not built from the `release` branch
 (local dev, feature branches, PR previews, per FR-010 — see research.md §3's implementation-time
-correction: `VERSION` exists identically on every branch, so the empty fallback is keyed off the
-checked-out git branch, not off whether the file itself exists), a real `"1.0.3"`-shaped string in a
-build produced from the `release` branch after a real cut.
+corrections: `VERSION` exists identically on every branch, so the empty fallback is keyed off which
+branch triggered the build, read from Cloudflare's own `WORKERS_CI_BRANCH` env var — not off whether
+the file itself exists, and not off git checkout state, which Workers Builds' own checkout doesn't
+reliably expose as a branch name), a real `"1.0.3"`-shaped string in a build produced from the
+`release` branch after a real cut.
 
 ## `VERSION` file
 
