@@ -1,5 +1,11 @@
 # FlareTower
 
+[![CI](https://github.com/iumalabs/flaretower/actions/workflows/ci.yml/badge.svg)](https://github.com/iumalabs/flaretower/actions/workflows/ci.yml)
+[![E2E](https://github.com/iumalabs/flaretower/actions/workflows/e2e.yml/badge.svg)](https://github.com/iumalabs/flaretower/actions/workflows/e2e.yml)
+[![License: AGPL v3](https://img.shields.io/github/license/iumalabs/flaretower)](LICENSE)
+[![Open issues](https://img.shields.io/github/issues/iumalabs/flaretower)](https://github.com/iumalabs/flaretower/issues)
+[![Last commit](https://img.shields.io/github/last-commit/iumalabs/flaretower)](https://github.com/iumalabs/flaretower/commits/main)
+
 Open-source control panel for Cloudflare — manage Workers, Access, DNS and security settings from
 one place.
 

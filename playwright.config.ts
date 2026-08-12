@@ -3,7 +3,10 @@ import { defineConfig, devices } from "@playwright/test";
 export default defineConfig({
   testDir: "./tests/e2e",
   fullyParallel: true,
-  reporter: "list",
+  // "list" for local/CI console output; the HTML report is only written to
+  // disk (never auto-opened, including locally) so CI has something to
+  // upload as an artifact for a failed run's trace/screenshots.
+  reporter: [["list"], ["html", { open: "never" }]],
   use: {
     baseURL: "http://127.0.0.1:8787",
   },
