@@ -38,6 +38,15 @@ jobs:
       # `--admin` bypass — if branch protection blocks the merge (e.g.
       # required checks still pending), this step fails and the whole job
       # fails visibly (FR-012) rather than forcing it through.
+      # Merging is what release-please-action treats as "cut the release" —
+      # it tags and publishes the GitHub Release + CHANGELOG.md entry as a
+      # direct reaction to this PR closing merged (research.md §2).
+      # Advancing the `release` branch is NOT done here — it's handled by
+      # release-publish.yml's own `release: published` trigger, which fires
+      # regardless of *how* the release-please PR got merged (this job, or
+      # a maintainer merging it by hand per FR-004 — discovered live: a
+      # human merge bypassed this job entirely, so a fast-forward step
+      # living only here silently missed that path).
       - name: Merge release PR
         if: steps.find_pr.outputs.pr_number != ''
         env:
@@ -45,16 +54,3 @@ jobs:
         run: |
           set -euo pipefail
           gh pr merge "${{ steps.find_pr.outputs.pr_number }}" --squash
-
-      # Fast-forwards `release` to the new main HEAD — the one thing that
-      # actually triggers Cloudflare Workers Builds' production deploy,
-      # once its production-branch setting is re-pointed at `release`
-      # (research.md §1). A plain (non-force) push, so it only ever
-      # succeeds as a genuine fast-forward; already-up-to-date is a no-op,
-      # not an error (idempotent, per contracts/workflows.md).
-      - name: Fast-forward release branch
-        if: steps.find_pr.outputs.pr_number != ''
-        run: |
-          set -euo pipefail
-          git fetch origin main
-          git push origin origin/main:release

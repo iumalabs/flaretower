@@ -128,22 +128,37 @@ changes to deployment or the UI.
       (release-please's own standard label), if none found every later step
       is skipped (no-op — spec.md Acceptance Scenario 2/FR-002), otherwise
       `gh pr merge --squash` it. Matches contracts/workflows.md's
-      `release-automerge.yml` PR-merge half of its contract.
-- [x] T008 [US1] Extend `release-automerge.yml` (same file as T007) with a
-      final step, run only after a successful merge: fast-forward `release`
-      to the new `main` HEAD (`git fetch origin main && git push origin
-      origin/main:release`) — idempotent per contracts/workflows.md (a
-      fast-forward to a commit `release` is already at is a no-op, so a
-      re-run after a prior success or a run with nothing to merge doesn't
-      error). Depends on T004 (the `release` branch must already exist).
-- [x] T009 [US1] Every step in `release-automerge.yml` that can fail
-      (PR-merge conflict/blocked by branch protection, fast-forward
-      rejection because `release` diverged) runs under `set -euo pipefail`
-      with no `--admin` bypass and no `|| true` swallowing — a failure there
-      fails the job itself, visible in the Actions tab/commit status
-      (spec.md FR-012, contracts/workflows.md's explicit "must fail
-      visibly"), consistent with how `ci.yml`/`e2e.yml` failures already
-      surface in this repo.
+      `release-automerge.yml` PR-merge contract.
+- [x] T008 [US1] **Revised after a live bug find (see below)**: create
+      `.github/workflows/release-publish.yml`, triggered on GitHub's
+      `release: types: [published]` event, which checks out the exact
+      published tag and fast-forwards `release` to that commit — idempotent
+      per contracts/workflows.md. Originally this was a step inside
+      `release-automerge.yml` itself, run only after that job's own merge;
+      **confirmed live (2026-08-12) that a maintainer merging the standing
+      release PR by hand (FR-004's own supported path) bypassed it entirely
+      — the release still cut correctly (tag/GitHub Release/CHANGELOG/
+      VERSION are release-please's own reaction to the PR merging, any way
+      it merges), but `release` silently never advanced.** Moved to a
+      `release: published`-triggered workflow, which fires identically
+      regardless of which of the two merge paths produced the release —
+      closes the gap structurally. Depends on T004 (the `release` branch
+      must already exist).
+- [x] T009 [US1] Every step in `release-automerge.yml` and
+      `release-publish.yml` that can fail (PR-merge conflict/blocked by
+      branch protection, fast-forward rejection because `release`
+      diverged) runs under `set -euo pipefail` with no `--admin` bypass and
+      no `|| true` swallowing — a failure there fails the job itself,
+      visible in the Actions tab/commit status (spec.md FR-012,
+      contracts/workflows.md's explicit "must fail visibly"), consistent
+      with how `ci.yml`/`e2e.yml` failures already surface in this repo.
+- [x] T009b — **NEW, one-time manual catch-up**: the v1.1.0 release that
+      exposed T008's bug was already published before `release-publish.yml`
+      existed, so it never got a chance to fast-forward `release` for that
+      specific release. One-time `git push origin <v1.1.0 commit>:release`
+      to catch `release` up to where it should already be — every release
+      from this point on is handled by `release-publish.yml` itself, no
+      further manual catch-up needed.
 
 **Checkpoint**: Merging conventional-commit changes to `main` now produces a
 standing, correctly-versioned release PR; merging that PR (by hand or via the

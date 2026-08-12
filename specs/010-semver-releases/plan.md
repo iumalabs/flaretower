@@ -94,6 +94,7 @@ specs/010-semver-releases/
 .github/workflows/
 ├── release-please.yml       # NEW — proposes/updates the release PR on every push to main
 ├── release-automerge.yml    # NEW — daily scheduled job; auto-merges the open release PR if one exists (FR-003/SC-003)
+├── release-publish.yml      # NEW — on release:published, fast-forwards `release` to the tag (handles both the automerge path and a maintainer merging by hand, FR-004)
 ├── ci.yml                   # existing, untouched
 └── e2e.yml                  # existing, untouched
 

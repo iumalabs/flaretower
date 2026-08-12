@@ -1,6 +1,6 @@
 # Contracts: Semantic Versioning & Version-Gated Production Releases
 
-This feature adds no HTTP API endpoints. Its "interfaces" are two GitHub
+This feature adds no HTTP API endpoints. Its "interfaces" are three GitHub
 Actions workflows' behavior contracts, plus one frontend component
 contract.
 
@@ -34,12 +34,46 @@ hand at any time).
   behavior) — this job does not create the tag/release itself.
 - If no such PR is open, does nothing (spec.md edge case: no new
   changes means no release, whether triggered on schedule or manually).
-- After a successful merge, fast-forwards the `release` branch to the
-  new merge commit — this is what actually triggers Cloudflare Workers
-  Builds' production deploy (research.md §1). This step is idempotent
-  and safe to re-run: fast-forwarding `release` to a commit it's already
-  at is a no-op.
-- A failure at any step (PR merge conflict, fast-forward failure) MUST
+- Does **not** touch the `release` branch itself — that's
+  `release-publish.yml`'s job (below), by design (see that contract's
+  "Implementation-time correction").
+- A failure merging the PR (e.g. blocked by branch protection) MUST fail
+  the workflow run visibly (spec.md FR-012) — no silent swallowing.
+
+## `.github/workflows/release-publish.yml`
+
+**Trigger**: `release: types: [published]` — fires the moment
+release-please-action tags and publishes a GitHub Release, regardless of
+*what* caused that: `release-automerge.yml` merging the standing PR, or a
+maintainer merging it by hand directly in the GitHub UI.
+
+**Implementation-time correction (superseding the original plan)**: the
+first version of this feature fast-forwarded `release` as a step *inside*
+`release-automerge.yml`, run only immediately after that same job's own
+merge. Confirmed live (2026-08-12) that this missed a real case: a
+maintainer merged the standing release PR by hand (exactly spec.md
+FR-004's supported path) and the fast-forward never ran, since that PR
+merge didn't go through `release-automerge.yml` at all — the tag/GitHub
+Release/`CHANGELOG.md`/`VERSION` update all happened correctly (those are
+release-please's own reaction to the PR merging, any way it merges), but
+`release` silently stayed on the previous commit. Moving the
+fast-forward to its own workflow keyed on the `release: published` event
+— which fires identically no matter which of the two merge paths
+produced it — closes this gap structurally instead of requiring every
+future merge path to remember to also fast-forward `release` itself.
+
+**Behavior contract**:
+- Checks out the exact tag the published release points to (not
+  whatever `main`'s HEAD happens to be at event-delivery time) and
+  fast-forwards `release` to that commit — the one thing that actually
+  triggers Cloudflare Workers Builds' production deploy, once its
+  production-branch setting is re-pointed at `release` (research.md
+  §1). A plain (non-force) push, so it only ever succeeds as a genuine
+  fast-forward; already-up-to-date is a no-op, not an error (idempotent).
+- Guards on the tag name starting with `v` (release-please's own
+  convention) so a differently-named release created by hand doesn't
+  unexpectedly move `release`.
+- A failure (e.g. `release` has diverged and the push is rejected) MUST
   fail the workflow run visibly (spec.md FR-012) — no silent swallowing.
 
 ## `App.tsx`'s `footer={{ version }}` string (no `Sidebar.tsx` change needed)
