@@ -1,6 +1,12 @@
 import { useEffect, useState } from "react";
 import type { JSX } from "react";
-import { type ExposureStatus, ExposureStatusBadge } from "../components/ExposureStatusBadge.tsx";
+import { type ExposureStatus } from "../components/ExposureStatusBadge.tsx";
+import {
+  FindingsTable,
+  type FindingsTableColumn,
+  type FindingsTableRow,
+} from "../components/FindingsTable.tsx";
+import { AlertBanner } from "../components/AlertBanner.tsx";
 
 interface HostnameFinding {
   hostname: string;
@@ -20,6 +26,13 @@ interface InventoryResponse {
   workers: WorkerFinding[];
 }
 
+interface FlatFinding {
+  worker_name: string;
+  hostname: string;
+  kind: string;
+  reason: string;
+}
+
 async function fetchInventory(): Promise<InventoryResponse> {
   const res = await fetch("/api/exposure/inventory");
   if (!res.ok) {
@@ -27,6 +40,53 @@ async function fetchInventory(): Promise<InventoryResponse> {
   }
   return await res.json();
 }
+
+const COLUMNS: FindingsTableColumn<FlatFinding>[] = [
+  {
+    key: "worker",
+    label: "Worker",
+    width: "22%",
+    sortValue: (r) => r.worker_name,
+    render: (r) => (
+      <span
+        style={{
+          fontFamily: "var(--font-mono)",
+          fontSize: "var(--text-code-size)",
+          color: "var(--fg-secondary)",
+        }}
+      >
+        {r.worker_name}
+      </span>
+    ),
+  },
+  {
+    key: "hostname",
+    label: "Hostname",
+    sortValue: (r) => r.hostname,
+    render: (r) => (
+      <span
+        style={{
+          fontFamily: "var(--font-mono)",
+          fontSize: "var(--text-code-size)",
+          color: "var(--fg-secondary)",
+        }}
+      >
+        {r.hostname}
+        <span style={{ color: "var(--fg-faint)" }}>· {r.kind}</span>
+      </span>
+    ),
+  },
+  {
+    key: "reason",
+    label: "Reason",
+    width: "38%",
+    render: (r) => (
+      <span style={{ fontSize: "var(--text-body-size)", color: "var(--fg-muted)" }}>
+        {r.reason}
+      </span>
+    ),
+  },
+];
 
 export function ExposureInventory(): JSX.Element {
   const [data, setData] = useState<InventoryResponse | null>(null);
@@ -44,17 +104,19 @@ export function ExposureInventory(): JSX.Element {
     return <p style={{ color: "var(--status-critical-fg)" }}>{error}</p>;
   }
 
-  if (!data) {
-    return <p style={{ color: "var(--fg-muted)" }}>Loading exposure inventory…</p>;
-  }
+  const rows: FindingsTableRow<FlatFinding>[] | null = data
+    ? data.workers.flatMap((w) =>
+      w.hostnames.map((h) => ({
+        id: `${w.worker_name}:${h.kind}:${h.hostname}`,
+        status: h.status,
+        data: { worker_name: w.worker_name, hostname: h.hostname, kind: h.kind, reason: h.reason },
+      }))
+    )
+    : null;
 
-  if (data.workers.length === 0) {
-    return (
-      <p style={{ color: "var(--fg-muted)" }}>
-        No evaluation runs yet. Trigger one via <code>POST /api/exposure/evaluate</code>.
-      </p>
-    );
-  }
+  // The single most urgent finding, surfaced above the table (FR-013,
+  // US2/AC3) — the design system's account/module-scope alert banner.
+  const criticalRow = rows?.find((r) => r.status === "critical");
 
   return (
     <div>
@@ -69,89 +131,33 @@ export function ExposureInventory(): JSX.Element {
       >
         Exposure inventory
       </h1>
-      <p style={{ color: "var(--fg-faint)", fontSize: "var(--text-meta-size)", marginTop: 0 }}>
-        Last evaluated {data.evaluated_at} · run {data.run_id}
-      </p>
+      {data && (
+        <p style={{ color: "var(--fg-faint)", fontSize: "var(--text-meta-size)", marginTop: 0 }}>
+          Last evaluated {data.evaluated_at} · run {data.run_id}
+        </p>
+      )}
 
-      {data.workers.map((worker) => (
-        <section
-          key={worker.worker_name}
-          style={{
-            border: "1px solid var(--border)",
-            borderRadius: 6,
-            padding: 16,
-            marginBottom: 12,
-            background: "var(--surface-1)",
+      {criticalRow && (
+        <AlertBanner
+          scope="module"
+          finding={{
+            severity: "critical",
+            title: "A Worker is publicly reachable with no Access policy",
+            target: criticalRow.data.hostname,
+            description: criticalRow.data.reason,
           }}
-        >
-          <h2
-            style={{
-              fontFamily: "var(--font-sans)",
-              fontSize: "var(--text-title-size)",
-              fontWeight: "var(--text-title-weight)" as unknown as number,
-              margin: "0 0 12px",
-            }}
-          >
-            {worker.worker_name}
-          </h2>
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
-            <tbody>
-              {worker.hostnames.map((h) => {
-                // Critical rows are marked redundantly — tint, edge bar,
-                // and the badge's own shape+color — so a critical hostname
-                // reads as critical even at a glance, never relying on any
-                // single visual cue (constitution's Design System section;
-                // design.zip's own "marked four ways at once" critical
-                // treatment).
-                const critical = h.status === "critical";
-                return (
-                  <tr
-                    key={`${h.kind}:${h.hostname}`}
-                    style={{
-                      borderTop: "1px solid var(--rule-hairline)",
-                      borderLeft: critical
-                        ? "3px solid var(--status-critical)"
-                        : "3px solid transparent",
-                      background: critical ? "var(--status-critical-row)" : "transparent",
-                    }}
-                  >
-                    <td style={{ padding: "8px 0 8px 8px", width: 120 }}>
-                      <ExposureStatusBadge status={h.status} />
-                    </td>
-                    <td
-                      style={{
-                        padding: "8px 0",
-                        fontFamily: "var(--font-mono)",
-                        fontSize: "var(--text-code-size)",
-                        color: "var(--fg-secondary)",
-                      }}
-                    >
-                      {h.hostname}
-                      <span style={{ color: "var(--fg-faint)" }}>· {h.kind}</span>
-                    </td>
-                    <td
-                      style={{
-                        padding: "8px 0",
-                        fontSize: "var(--text-body-size)",
-                        color: "var(--fg-muted)",
-                      }}
-                    >
-                      {h.reason}
-                    </td>
-                  </tr>
-                );
-              })}
-              {worker.hostnames.length === 0 && (
-                <tr>
-                  <td colSpan={3} style={{ padding: "8px 0", color: "var(--fg-faint)" }}>
-                    No public hostnames.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </section>
-      ))}
+        />
+      )}
+
+      <FindingsTable
+        columns={COLUMNS}
+        rows={rows}
+        loadingLabel="Loading exposure inventory…"
+        emptyState={{
+          heading: "No Workers in this account",
+          description: "No evaluation runs yet. Trigger one via POST /api/exposure/evaluate.",
+        }}
+      />
     </div>
   );
 }

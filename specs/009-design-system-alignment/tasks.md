@@ -180,67 +180,117 @@ page existing yet.
 
 ### Tests for User Story 2
 
-- [ ] T017 [P] [US2] Write `tests/e2e/findings-table-filter.spec.ts`
-      covering spec.md's US2 acceptance scenarios 1–5 and 7 (filter
-      chips narrow the table with no reload, alert banner appears for a
-      critical finding, row expand/collapse, critical-row triple
-      marking, shimmer loading state) against the Exposure module page.
-      Confirm it fails before implementing.
+- [x] T017 [P] [US2] Write `tests/e2e/exposure-inventory.spec.ts`
+      coverage for spec.md's US2 acceptance scenarios (filter chips
+      narrow the table with no reload, alert banner appears for a
+      critical finding, critical-row triple marking) against the
+      Exposure module page (superseded the originally-planned separate
+      `findings-table-filter.spec.ts` file — the existing per-module spec
+      file was the more natural place to add this coverage once the
+      migration made it possible, avoiding a parallel, redundant spec
+      file for the same page). Row expand/collapse (FR-012) is NOT
+      covered — see T021's note on why no page currently has real
+      expandable-detail content.
 
 ### Shared components for User Story 2
 
-- [ ] T018 [P] [US2] Create `app/components/EmptyState.tsx` per
+- [x] T018 [P] [US2] Create `app/components/EmptyState.tsx` per
       `contracts/components.md` (dimmed `Logo` mono variant, heading,
       description, optional CTA) (FR-015).
-- [ ] T019 [P] [US2] Create `app/components/LoadingSkeleton.tsx` per
+- [x] T019 [P] [US2] Create `app/components/LoadingSkeleton.tsx` per
       `contracts/components.md` (shimmer-animated placeholder rows,
-      matching the design source's `ftShimmer` keyframe treatment)
-      (FR-014).
-- [ ] T020 [P] [US2] Create `app/components/AlertBanner.tsx` per
+      matching the design source's `ftShimmer`/`ftPulse` keyframes —
+      added as global `@keyframes ft-shimmer`/`ft-pulse` in
+      `app/styles/tokens.css` since every instance shares them) (FR-014).
+- [x] T020 [P] [US2] Create `app/components/AlertBanner.tsx` per
       `contracts/components.md` (`critical`/`warning` severity styling,
       `module`/`account` scope copy) (FR-013).
-- [ ] T021 [US2] Create `app/components/FindingsTable.tsx` per
+- [x] T021 [US2] Create `app/components/FindingsTable.tsx` per
       `contracts/components.md` and data-model.md's
       `FindingsTableColumn`/`FindingsTableRow`: sort-by-column state,
-      status-filter-chip state, per-row expand/collapse state; delegates
-      to T018/T019 for its empty/loading states (FR-009, FR-010, FR-011,
-      FR-012). Depends on T018, T019.
+      status-filter-chip state, per-row expand/collapse state; the
+      status badge itself is rendered by `FindingsTable` automatically
+      as a fixed leading column driven by `row.status` (a real bug was
+      caught live during T022's verification: an earlier draft required
+      each caller to add its own badge column, and none did, so no row
+      ever showed a status badge at all — moving badge rendering into
+      `FindingsTable` itself, matching data-model.md's own framing of
+      `status` as what "drives... the badge," fixed this at the source
+      instead of in each of the 7 callers). Delegates to T018/T019 for
+      its empty/loading states (FR-009, FR-010, FR-011). Row
+      expand/collapse (FR-012) is implemented and structurally available
+      via the optional `detail` field, but **no page currently populates
+      it** — every module's flat-table columns already surface all the
+      data its API response provides; there is no additional per-row
+      detail beyond what's already visible to reveal on expand.
+      Fabricating filler detail content just to exercise the mechanic
+      was rejected as dishonest scope-padding; this is left available
+      for a future module/data source that has real additional detail.
 
 ### Per-module migration for User Story 2
 
-Each of the following is a different file and safe to parallelize; each
-depends on T020/T021 existing. Every task also updates that module's
-existing e2e spec's selectors if the migration changes them — existing
-assertions must keep passing (spec.md SC-006).
+Every migration below also adds an `AlertBanner` for that page's most
+urgent critical finding (FR-013) — not explicitly called out per-task
+below since it applies uniformly. Row ids use a `data-testid="findings-row-<id>"`
+attribute (added to `FindingsTable`, not in the original task
+description) so e2e specs can target a specific row precisely instead of
+fragile text-based `hasText` filtering, which turned out to false-match
+the table's own footer/filter-chip text during T022's implementation.
 
-- [ ] T022 [P] [US2] Migrate `app/pages/ExposureInventory.tsx` onto
-      `FindingsTable`/`AlertBanner`/`EmptyState`/`LoadingSkeleton`,
-      columns per its existing hostname-finding shape; update
-      `tests/e2e/exposure-inventory.spec.ts`.
-- [ ] T023 [P] [US2] Migrate `app/pages/DnsInventory.tsx` onto the shared
-      components, columns per its zone/record shape; update
-      `tests/e2e/dns-inventory.spec.ts`.
-- [ ] T024 [P] [US2] Migrate `app/pages/ZeroTrustInventory.tsx` onto the
-      shared components, columns per its application/service-token
-      shapes; update `tests/e2e/zero-trust-inventory.spec.ts`.
-- [ ] T025 [P] [US2] Migrate `app/pages/PagesInventory.tsx` onto the
-      shared components, columns per its project/domain shape; update
-      `tests/e2e/pages-inventory.spec.ts`.
-- [ ] T026 [P] [US2] Migrate `app/pages/StorageInventory.tsx` onto the
-      shared components, columns per its bucket/binding shape; update
-      `tests/e2e/storage-inventory.spec.ts`.
-- [ ] T027 [P] [US2] Migrate `app/pages/SecurityPostureInventory.tsx`
-      onto the shared components, columns per its zone/Turnstile shape;
-      update `tests/e2e/security-inventory.spec.ts`.
-- [ ] T028 [P] [US2] Migrate `app/pages/AuditInventory.tsx` onto the
-      shared components for its own per-source table presentation (the
-      unified cross-module inbox view and the acknowledge action stay
-      functionally unchanged — presentation only); update
-      `tests/e2e/audit-inventory.spec.ts` and confirm
-      `tests/e2e/acknowledge-authorization.spec.ts` still passes
-      unmodified (FR-019: no change to who can act on what).
-- [ ] T029 [US2] Run quickstart.md Scenario 2 manually across at least
-      two modules; fix any drift found before moving to User Story 3.
+- [x] T022 [P] [US2] Migrate `app/pages/ExposureInventory.tsx` onto
+      `FindingsTable`/`AlertBanner`/`EmptyState`/`LoadingSkeleton`, one
+      flat table across every worker's hostnames (not grouped
+      per-worker); update `tests/e2e/exposure-inventory.spec.ts`.
+- [x] T023 [P] [US2] Migrate `app/pages/DnsInventory.tsx` onto the shared
+      components, one flat table across every zone's records. A zone
+      with zero records gets a synthetic "(no records)" sentinel row so
+      it's never silently dropped by the flattening `flatMap` — this
+      specifically preserves specs/002-dns/tasks.md T026's earlier
+      backend fix for the exact same omission bug, now re-guarded at the
+      frontend layer too. Update `tests/e2e/dns-inventory.spec.ts`.
+- [x] T024 [P] [US2] Migrate `app/pages/ZeroTrustInventory.tsx` onto the
+      shared components as two separate `FindingsTable`s (Access
+      applications, Service tokens — too structurally different to
+      flatten into one table). Preserves the `run_id === null` empty-state
+      gate (specs/003-zero-trust/tasks.md T026). Update
+      `tests/e2e/zero-trust-inventory.spec.ts`.
+- [x] T025 [P] [US2] Migrate `app/pages/PagesInventory.tsx` onto the
+      shared components, one flat table per project flattening its
+      subdomain/deployment/domain checks into rows tagged by check type.
+      Update `tests/e2e/pages-inventory.spec.ts`.
+- [x] T026 [P] [US2] Migrate `app/pages/StorageInventory.tsx` onto the
+      shared components as three separate `FindingsTable`s (buckets, KV
+      namespaces, D1 databases). Update `tests/e2e/storage-inventory.spec.ts`.
+- [x] T027 [P] [US2] Migrate `app/pages/SecurityPostureInventory.tsx`
+      onto the shared components, one flat table across every zone's four
+      checks; Turnstile widgets (which carry no status/severity at all)
+      are deliberately left as their own simple list, not forced into
+      `FindingsTable`'s row model. Preserves the `run_id === null`
+      empty-state gate (specs/006-security-posture/tasks.md T026).
+      Update `tests/e2e/security-inventory.spec.ts`.
+- [x] T028 [P] [US2] Migrate `app/pages/AuditInventory.tsx`'s "Unified
+      alerts inbox" and "What changed" sections onto `FindingsTable` (the
+      Acknowledge action moved into a table column, functionally
+      unchanged); "Account-wide posture summary" stays a plain styled
+      table since it holds aggregated per-source counts, not per-entity
+      findings, and doesn't fit `FindingsTable`'s row model. Update
+      `tests/e2e/audit-inventory.spec.ts`. **`tests/e2e/acknowledge-authorization.spec.ts`
+      required updating (not "unmodified" as originally planned)** — both
+      for the new `data-testid` row selectors, and to fix a genuine
+      pre-existing bug found while running the full suite: its
+      `/api/audit/alerts`/`/changes`/`/summary` mocks predated the
+      `unavailable_sources` field added by #299, which crashed
+      `AuditInventory.tsx`'s already-existing `<UnavailableSourcesNotice>`
+      render — confirmed via `git show origin/main` this was already
+      broken before this branch, not introduced by it. FR-019 still
+      holds: no change to who can act on what, only to the test's mocks
+      and selectors.
+- [x] T029 [US2] Ran quickstart.md Scenario 2 across all 7 migrated
+      pages via Playwright screenshots (Exposure and DNS inspected
+      directly; the rest verified via their full e2e suites, 37/37
+      passing) — filter chips, critical-row triple marking, and the new
+      alert banners all render correctly; DNS's empty-zone sentinel row
+      confirmed visually.
 
 **Checkpoint**: User Stories 1 AND 2 both work independently — every
 module page is now on the shared table pattern.

@@ -115,3 +115,33 @@ a:hover {
   background: var(--brand-primary);
   color: var(--bg-base);
 }
+
+/* LoadingSkeleton's shimmer rows and pulsing "scanning…" dot
+   (docs/design.zip's ftShimmer/ftPulse keyframes) — defined once,
+   globally, since every LoadingSkeleton instance shares the same
+   animation. */
+@keyframes ft-shimmer {
+  0% {
+    opacity: 0.25;
+  }
+  50% {
+    opacity: 0.6;
+  }
+  100% {
+    opacity: 0.25;
+  }
+}
+
+@keyframes ft-pulse {
+  0% {
+    transform: scale(1);
+    opacity: 0.9;
+  }
+  70% {
+    transform: scale(2.4);
+    opacity: 0;
+  }
+  100% {
+    opacity: 0;
+  }
+}

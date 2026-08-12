@@ -142,11 +142,11 @@ test.beforeEach(async ({ page }) => {
 });
 
 test("US1 — alerts from multiple modules appear in the unified inbox, each labeled with its source", async ({ page }) => {
-  const sslRow = page.locator("tr", { hasText: "example.com" });
+  const sslRow = page.getByTestId("findings-row-a1");
   await expect(sslRow).toBeVisible();
   await expect(sslRow.getByText("security/ssl_tls", { exact: false })).toBeVisible();
 
-  const bucketRow = page.locator("tr", { hasText: "uploads" });
+  const bucketRow = page.getByTestId("findings-row-a2");
   await expect(bucketRow).toBeVisible();
   await expect(bucketRow.getByText("storage/r2_bucket", { exact: false })).toBeVisible();
 });
@@ -154,7 +154,7 @@ test("US1 — alerts from multiple modules appear in the unified inbox, each lab
 test("US2 — the what changed section shows an entity whose status changed since the cutoff", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "What changed" })).toBeVisible();
 
-  const changeRow = page.locator("tr", { hasText: "flaretower-changed.test" });
+  const changeRow = page.getByTestId("findings-row-security/dnssec/flaretower-changed.test");
   await expect(changeRow).toBeVisible();
   await expect(changeRow.getByText("security/dnssec", { exact: false })).toBeVisible();
   await expect(changeRow.getByText("safe → critical", { exact: false })).toBeVisible();

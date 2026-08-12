@@ -1,6 +1,12 @@
 import { useEffect, useState } from "react";
 import type { JSX } from "react";
-import { type ExposureStatus, ExposureStatusBadge } from "../components/ExposureStatusBadge.tsx";
+import { type ExposureStatus } from "../components/ExposureStatusBadge.tsx";
+import {
+  FindingsTable,
+  type FindingsTableColumn,
+  type FindingsTableRow,
+} from "../components/FindingsTable.tsx";
+import { AlertBanner } from "../components/AlertBanner.tsx";
 
 interface CheckFinding {
   status: ExposureStatus;
@@ -33,6 +39,12 @@ interface SecurityInventoryResponse {
   turnstile_widgets: TurnstileWidget[] | null;
 }
 
+interface FlatCheck {
+  zone_name: string;
+  check: string;
+  reason: string;
+}
+
 async function fetchSecurityInventory(): Promise<SecurityInventoryResponse> {
   const res = await fetch("/api/security/inventory");
   if (!res.ok) {
@@ -41,95 +53,70 @@ async function fetchSecurityInventory(): Promise<SecurityInventoryResponse> {
   return await res.json();
 }
 
-function Row(
-  { badge, label, meta, reason }: {
-    badge: ExposureStatus;
-    label: string;
-    meta: string;
-    reason: string;
-  },
-): JSX.Element {
-  const critical = badge === "critical";
-  return (
-    <tr
-      style={{
-        borderTop: "1px solid var(--rule-hairline)",
-        borderLeft: critical ? "3px solid var(--status-critical)" : "3px solid transparent",
-        background: critical ? "var(--status-critical-row)" : "transparent",
-      }}
-    >
-      <td style={{ padding: "8px 0 8px 8px", width: 120 }}>
-        <ExposureStatusBadge status={badge} />
-      </td>
-      <td
+const COLUMNS: FindingsTableColumn<FlatCheck>[] = [
+  {
+    key: "zone",
+    label: "Zone",
+    width: "24%",
+    sortValue: (r) => r.zone_name,
+    render: (r) => (
+      <span
         style={{
-          padding: "8px 0",
           fontFamily: "var(--font-mono)",
           fontSize: "var(--text-code-size)",
           color: "var(--fg-secondary)",
         }}
       >
-        {label}
-        <span style={{ color: "var(--fg-faint)" }}>· {meta}</span>
-      </td>
-      <td style={{ padding: "8px 0", fontSize: "var(--text-body-size)", color: "var(--fg-muted)" }}>
-        {reason}
-      </td>
-    </tr>
-  );
-}
-
-function ZoneSection({ zone }: { zone: ZoneFinding }): JSX.Element {
-  return (
-    <section
-      style={{
-        border: "1px solid var(--border)",
-        borderRadius: 6,
-        padding: 16,
-        marginBottom: 12,
-        background: "var(--surface-1)",
-      }}
-    >
-      <h2
+        {r.zone_name}
+      </span>
+    ),
+  },
+  {
+    key: "check",
+    label: "Check",
+    width: "18%",
+    render: (r) => (
+      <span
         style={{
-          fontFamily: "var(--font-sans)",
-          fontSize: "var(--text-title-size)",
-          fontWeight: "var(--text-title-weight)" as unknown as number,
-          margin: "0 0 12px",
+          fontFamily: "var(--font-mono)",
+          fontSize: "var(--text-code-size)",
+          color: "var(--fg-secondary)",
         }}
       >
-        {zone.zone_name}
-      </h2>
-      <table style={{ width: "100%", borderCollapse: "collapse" }}>
-        <tbody>
-          <Row
-            badge={zone.ssl_tls.status}
-            label="SSL/TLS mode"
-            meta="ssl_tls"
-            reason={zone.ssl_tls.reason}
-          />
-          {zone.dnssec && (
-            <Row
-              badge={zone.dnssec.status}
-              label="DNSSEC"
-              meta="dnssec"
-              reason={zone.dnssec.reason}
-            />
-          )}
-          {zone.waf && (
-            <Row badge={zone.waf.status} label="WAF" meta="waf" reason={zone.waf.reason} />
-          )}
-          {zone.rate_limiting && (
-            <Row
-              badge={zone.rate_limiting.status}
-              label="Rate limiting"
-              meta="rate_limiting"
-              reason={zone.rate_limiting.reason}
-            />
-          )}
-        </tbody>
-      </table>
-    </section>
+        {r.check}
+      </span>
+    ),
+  },
+  {
+    key: "reason",
+    label: "Reason",
+    render: (r) => (
+      <span style={{ fontSize: "var(--text-body-size)", color: "var(--fg-muted)" }}>
+        {r.reason}
+      </span>
+    ),
+  },
+];
+
+const CHECK_LABEL: Record<string, string> = {
+  ssl_tls: "SSL/TLS mode",
+  dnssec: "DNSSEC",
+  waf: "WAF",
+  rate_limiting: "Rate limiting",
+};
+
+function SectionHeading({ children }: { children: string }): JSX.Element {
+  return (
+    <h2
+      style={{
+        fontFamily: "var(--font-sans)",
+        fontSize: "var(--text-section-size)",
+        fontWeight: "var(--text-section-weight)" as unknown as number,
+        margin: "24px 0 12px",
+      }}
+    >
+      {children}
+    </h2>
   );
 }
 
@@ -149,22 +136,51 @@ export function SecurityPostureInventory(): JSX.Element {
     return <p style={{ color: "var(--status-critical-fg)" }}>{error}</p>;
   }
 
-  if (!data) {
-    return <p style={{ color: "var(--fg-muted)" }}>Loading security posture inventory…</p>;
-  }
-
   // `run_id === null` is the backend's authoritative "no evaluation run
   // yet" signal (worker/modules/security/routes.ts) — a zone/widget
-  // array-length check is wrong here, since a real completed run against
-  // a genuinely zero-zone account also produces empty arrays and must
-  // render as a confirmed-empty result, not this message.
-  if (data.run_id === null) {
+  // array-length check is wrong here, since a real completed run against a
+  // genuinely zero-zone account also produces empty arrays and must render
+  // as a confirmed-empty result, not this message (specs/006-security-posture/tasks.md T026).
+  if (data && data.run_id === null) {
     return (
-      <p style={{ color: "var(--fg-muted)" }}>
-        No evaluation runs yet. Trigger one via <code>POST /api/security/evaluate</code>.
-      </p>
+      <div>
+        <h1
+          style={{
+            fontFamily: "var(--font-sans)",
+            fontSize: "var(--text-display-size)",
+            fontWeight: "var(--text-display-weight)" as unknown as number,
+            letterSpacing: "var(--text-display-ls)",
+            margin: "0 0 8px",
+          }}
+        >
+          Security posture inventory
+        </h1>
+        <p style={{ color: "var(--fg-muted)" }}>
+          No evaluation runs yet. Trigger one via <code>POST /api/security/evaluate</code>.
+        </p>
+      </div>
     );
   }
+
+  const rows: FindingsTableRow<FlatCheck>[] | null = data
+    ? data.zones.flatMap((z) => {
+      const checks: [string, CheckFinding | undefined][] = [
+        ["ssl_tls", z.ssl_tls],
+        ["dnssec", z.dnssec],
+        ["waf", z.waf],
+        ["rate_limiting", z.rate_limiting],
+      ];
+      return checks
+        .filter((c): c is [string, CheckFinding] => c[1] !== undefined)
+        .map(([kind, c]) => ({
+          id: `${z.zone_id}:${kind}`,
+          status: c.status,
+          data: { zone_name: z.zone_name, check: CHECK_LABEL[kind], reason: c.reason },
+        }));
+    })
+    : null;
+
+  const criticalRow = rows?.find((r) => r.status === "critical");
 
   return (
     <div>
@@ -179,53 +195,57 @@ export function SecurityPostureInventory(): JSX.Element {
       >
         Security posture inventory
       </h1>
-      <p style={{ color: "var(--fg-faint)", fontSize: "var(--text-meta-size)", marginTop: 0 }}>
-        Last evaluated {data.evaluated_at} · run {data.run_id}
-      </p>
+      {data && (
+        <p style={{ color: "var(--fg-faint)", fontSize: "var(--text-meta-size)", marginTop: 0 }}>
+          Last evaluated {data.evaluated_at} · run {data.run_id}
+        </p>
+      )}
 
-      {data.zones.map((zone) => <ZoneSection key={zone.zone_id} zone={zone} />)}
-
-      <section
-        style={{
-          border: "1px solid var(--border)",
-          borderRadius: 6,
-          padding: 16,
-          marginBottom: 12,
-          background: "var(--surface-1)",
-        }}
-      >
-        <h2
-          style={{
-            fontFamily: "var(--font-sans)",
-            fontSize: "var(--text-title-size)",
-            fontWeight: "var(--text-title-weight)" as unknown as number,
-            margin: "0 0 12px",
+      {criticalRow && (
+        <AlertBanner
+          scope="module"
+          finding={{
+            severity: "critical",
+            title: `${criticalRow.data.check} needs attention`,
+            target: criticalRow.data.zone_name,
+            description: criticalRow.data.reason,
           }}
-        >
-          Turnstile widgets
-        </h2>
-        {data.turnstile_widgets === null
-          ? (
-            <p style={{ color: "var(--status-critical-fg)" }}>
-              Turnstile widgets could not be evaluated.
-            </p>
-          )
-          : data.turnstile_widgets.length === 0
-          ? <p style={{ color: "var(--fg-muted)" }}>No Turnstile widgets configured.</p>
-          : (
-            <ul style={{ margin: 0, paddingLeft: 20 }}>
-              {data.turnstile_widgets.map((w) => (
-                <li
-                  key={w.sitekey}
-                  style={{ fontFamily: "var(--font-mono)", fontSize: "var(--text-code-size)" }}
-                >
-                  {w.name}{" "}
-                  <span style={{ color: "var(--fg-faint)" }}>· {w.domains.join(", ")}</span>
-                </li>
-              ))}
-            </ul>
-          )}
-      </section>
+        />
+      )}
+
+      <FindingsTable
+        columns={COLUMNS}
+        rows={rows}
+        loadingLabel="Loading security posture inventory…"
+        emptyState={{
+          heading: "No zones in this account",
+          description: "This account has no zones to evaluate.",
+        }}
+      />
+
+      <SectionHeading>Turnstile widgets</SectionHeading>
+      {data && data.turnstile_widgets === null
+        ? (
+          <p style={{ color: "var(--status-critical-fg)" }}>
+            Turnstile widgets could not be evaluated.
+          </p>
+        )
+        : data && data.turnstile_widgets !== null && data.turnstile_widgets.length === 0
+        ? <p style={{ color: "var(--fg-muted)" }}>No Turnstile widgets configured.</p>
+        : data
+        ? (
+          <ul style={{ margin: 0, paddingLeft: 20 }}>
+            {data.turnstile_widgets!.map((w) => (
+              <li
+                key={w.sitekey}
+                style={{ fontFamily: "var(--font-mono)", fontSize: "var(--text-code-size)" }}
+              >
+                {w.name} <span style={{ color: "var(--fg-faint)" }}>· {w.domains.join(", ")}</span>
+              </li>
+            ))}
+          </ul>
+        )
+        : null}
     </div>
   );
 }

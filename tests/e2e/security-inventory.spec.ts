@@ -93,51 +93,41 @@ test.beforeEach(async ({ page }) => {
       contentType: "application/json",
       body: JSON.stringify(MOCK_SECURITY_INVENTORY),
     }));
+  await page.route("**/api/audit/summary", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ modules: [], unavailable_sources: [] }),
+    }));
   await page.goto("/");
   await page.getByRole("button", { name: "Security Posture" }).click();
 });
 
 test("US1 — every zone's four checks and every Turnstile widget appear, none omitted", async ({ page }) => {
-  await expect(page.locator("h2", { hasText: "safe-strict-zone.test" })).toBeVisible();
-  await expect(page.locator("h2", { hasText: "insecure.example.com" })).toBeVisible();
-  await expect(page.locator("tr", { hasText: "SSL/TLS mode" }).first()).toBeVisible();
-  await expect(page.locator("tr", { hasText: "DNSSEC" }).first()).toBeVisible();
-  await expect(page.locator("tr", { hasText: "WAF" }).first()).toBeVisible();
-  await expect(page.locator("tr", { hasText: "Rate limiting" }).first()).toBeVisible();
+  await expect(page.getByText("safe-strict-zone.test").first()).toBeVisible();
+  await expect(page.getByText("insecure.example.com").first()).toBeVisible();
+  for (const kind of ["ssl_tls", "dnssec", "waf", "rate_limiting"]) {
+    await expect(page.getByTestId(`findings-row-zone-1:${kind}`)).toBeVisible();
+    await expect(page.getByTestId(`findings-row-zone-2:${kind}`)).toBeVisible();
+  }
   await expect(page.getByText("login-widget")).toBeVisible();
 });
 
 test("US2 — a fully strict zone's SSL/TLS mode renders safe, a flexible one renders critical", async ({ page }) => {
-  const strictSection = page.locator("section", {
-    has: page.locator("h2", { hasText: "safe-strict-zone.test" }),
-  });
-  await expect(strictSection.locator("tr", { hasText: "SSL/TLS mode" }).getByText("PROTECTED"))
+  await expect(page.getByTestId("findings-row-zone-1:ssl_tls").getByText("PROTECTED"))
     .toBeVisible();
-
-  const flexibleSection = page.locator("section", {
-    has: page.locator("h2", { hasText: "insecure.example.com" }),
-  });
-  await expect(flexibleSection.locator("tr", { hasText: "SSL/TLS mode" }).getByText("CRITICAL"))
-    .toBeVisible();
+  await expect(page.getByTestId("findings-row-zone-2:ssl_tls").getByText("CRITICAL")).toBeVisible();
 });
 
 test("US3 — DNSSEC/WAF/rate-limiting gaps render warning, protected zone renders safe", async ({ page }) => {
-  const strictSection = page.locator("section", {
-    has: page.locator("h2", { hasText: "safe-strict-zone.test" }),
-  });
-  await expect(strictSection.locator("tr", { hasText: "DNSSEC" }).getByText("PROTECTED"))
-    .toBeVisible();
-  await expect(strictSection.locator("tr", { hasText: "WAF" }).getByText("PROTECTED"))
-    .toBeVisible();
-  await expect(strictSection.locator("tr", { hasText: "Rate limiting" }).getByText("PROTECTED"))
+  await expect(page.getByTestId("findings-row-zone-1:dnssec").getByText("PROTECTED")).toBeVisible();
+  await expect(page.getByTestId("findings-row-zone-1:waf").getByText("PROTECTED")).toBeVisible();
+  await expect(page.getByTestId("findings-row-zone-1:rate_limiting").getByText("PROTECTED"))
     .toBeVisible();
 
-  const gapSection = page.locator("section", {
-    has: page.locator("h2", { hasText: "insecure.example.com" }),
-  });
-  await expect(gapSection.locator("tr", { hasText: "DNSSEC" }).getByText("WARNING")).toBeVisible();
-  await expect(gapSection.locator("tr", { hasText: "WAF" }).getByText("WARNING")).toBeVisible();
-  await expect(gapSection.locator("tr", { hasText: "Rate limiting" }).getByText("WARNING"))
+  await expect(page.getByTestId("findings-row-zone-2:dnssec").getByText("WARNING")).toBeVisible();
+  await expect(page.getByTestId("findings-row-zone-2:waf").getByText("WARNING")).toBeVisible();
+  await expect(page.getByTestId("findings-row-zone-2:rate_limiting").getByText("WARNING"))
     .toBeVisible();
 });
 
@@ -179,5 +169,8 @@ test("no evaluation run yet (run_id null) still renders the 'trigger one' messag
   await page.getByRole("button", { name: "Security Posture" }).click();
 
   await expect(page.getByText("No evaluation runs yet", { exact: false })).toBeVisible();
-  await expect(page.getByText("Security posture inventory")).not.toBeVisible();
+  // The page heading now renders in every state (including "not yet
+  // evaluated"), matching the design shell's consistent page-identity
+  // pattern — only the body content below it differs.
+  await expect(page.getByText("Security posture inventory")).toBeVisible();
 });

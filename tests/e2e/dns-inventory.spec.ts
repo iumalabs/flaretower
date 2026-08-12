@@ -52,26 +52,45 @@ test.beforeEach(async ({ page }) => {
       contentType: "application/json",
       body: JSON.stringify(MOCK_DNS_INVENTORY),
     }));
+  await page.route("**/api/audit/summary", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ modules: [], unavailable_sources: [] }),
+    }));
   await page.goto("/");
   await page.getByRole("button", { name: "DNS" }).click();
 });
 
+function row(
+  page: import("@playwright/test").Page,
+  zone: string,
+  type: string,
+  name: string,
+  content: string,
+) {
+  return page.getByTestId(`findings-row-${zone}:${type}:${name}:${content}`);
+}
+
 test("US1 — every zone and every record appears, none omitted", async ({ page }) => {
-  await expect(page.getByRole("heading", { name: "example.com" })).toBeVisible();
-  await expect(page.getByText("old-blog.example.com")).toBeVisible();
+  await expect(page.getByText("example.com", { exact: true }).first()).toBeVisible();
+  // old-blog.example.com is critical and legitimately appears twice — once
+  // in its row, once in the module-scope alert banner above the table
+  // (FR-013).
+  await expect(page.getByText("old-blog.example.com").first()).toBeVisible();
   await expect(page.getByText("api.example.com")).toBeVisible();
-  await expect(page.locator("tr", { hasText: "mail.example.com" })).toBeVisible();
+  await expect(row(page, "example.com", "MX", "example.com", "10 mail.example.com")).toBeVisible();
 });
 
 test("US2 — the dangling CNAME renders as critical, distinct from the other records", async ({ page }) => {
-  const row = page.locator("tr", { hasText: "old-blog.example.com" });
-  await expect(row.getByText("CRITICAL")).toBeVisible();
+  const r = row(page, "example.com", "CNAME", "old-blog.example.com", "old-blog.herokuapp.com");
+  await expect(r.getByText("CRITICAL")).toBeVisible();
 });
 
 test("US3 — a DNS-only origin-facing record renders as warning; a non-proxy-capable record renders as safe", async ({ page }) => {
-  const warningRow = page.locator("tr", { hasText: "api.example.com" });
+  const warningRow = row(page, "example.com", "A", "api.example.com", "203.0.113.10");
   await expect(warningRow.getByText("WARNING")).toBeVisible();
 
-  const mxRow = page.locator("tr", { hasText: "10 mail.example.com" });
+  const mxRow = row(page, "example.com", "MX", "example.com", "10 mail.example.com");
   await expect(mxRow.getByText("PROTECTED")).toBeVisible();
 });

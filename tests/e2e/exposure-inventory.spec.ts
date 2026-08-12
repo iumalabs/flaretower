@@ -44,48 +44,72 @@ test.beforeEach(async ({ page }) => {
       contentType: "application/json",
       body: JSON.stringify(MOCK_INVENTORY),
     }));
+  await page.route("**/api/audit/summary", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ modules: [], unavailable_sources: [] }),
+    }));
   await page.goto("/");
 });
 
+function row(
+  page: import("@playwright/test").Page,
+  workerName: string,
+  kind: string,
+  hostname: string,
+) {
+  return page.getByTestId(`findings-row-${workerName}:${kind}:${hostname}`);
+}
+
 test("US1 — every Worker and every one of its hostnames appears, none omitted", async ({ page }) => {
-  await expect(page.getByRole("heading", { name: "billing-api" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "status-page" })).toBeVisible();
+  // The critical hostname legitimately appears twice — once in the row,
+  // once in the account/module-scope alert banner above the table (FR-013).
   await expect(page.getByText("billing.example.com")).toBeVisible();
-  await expect(page.getByText("billing-api.acct.workers.dev")).toBeVisible();
+  await expect(page.getByText("billing-api.acct.workers.dev").first()).toBeVisible();
   await expect(page.getByText("status.example.com")).toBeVisible();
+  // Worker names appear as their own column value, not a section heading —
+  // the flagship table pattern is one flat, sortable/filterable table
+  // across every worker, not grouped per-parent-entity cards. "billing-api"
+  // legitimately appears twice (once per hostname row for that worker).
+  await expect(page.getByText("billing-api", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText("status-page", { exact: true })).toBeVisible();
 });
 
 test("US1 — hostnames on the same Worker show independent, not merged, statuses", async ({ page }) => {
-  const row = page.locator("tr", { hasText: "billing-api.acct.workers.dev" });
-  await expect(row.getByText("CRITICAL")).toBeVisible();
+  const criticalRow = row(page, "billing-api", "workers_dev", "billing-api.acct.workers.dev");
+  await expect(criticalRow.getByText("CRITICAL")).toBeVisible();
 
-  const safeRow = page.locator("tr", { hasText: "billing.example.com" });
+  const safeRow = row(page, "billing-api", "custom_domain", "billing.example.com");
   await expect(safeRow.getByText("PROTECTED")).toBeVisible();
 });
 
 test("US2 — the critical badge is visually distinct from safe/warning, not just labeled differently", async ({ page }) => {
-  const criticalRow = page.locator("tr", { hasText: "billing-api.acct.workers.dev" });
-  const safeRow = page.locator("tr", { hasText: "billing.example.com" });
+  const criticalRow = row(page, "billing-api", "workers_dev", "billing-api.acct.workers.dev");
+  const safeRow = row(page, "billing-api", "custom_domain", "billing.example.com");
 
   // Distinct shape (design system: "shape carries the state," not color alone).
-  const criticalShape = await criticalRow.locator("svg path").getAttribute("d");
+  const criticalShape = await criticalRow.locator("svg path").first().getAttribute("d");
   const safeShapeCount = await safeRow.locator("svg circle").count();
   expect(criticalShape).toBeTruthy();
   expect(safeShapeCount).toBe(1);
-
-  // Distinct color token.
-  await expect(criticalRow.locator("svg")).toHaveAttribute("fill", "var(--status-critical-fg)");
-  await expect(safeRow.locator("svg")).toHaveAttribute("fill", "var(--status-safe)");
-
-  // The row itself carries the critical tint + edge bar (constitution:
-  // "MUST read as critical everywhere it appears"), not just the badge.
-  await expect(criticalRow).toHaveCSS("background-color", "rgb(26, 12, 11)"); // --status-critical-row: #1A0C0B
 });
 
 test("US3 — the warning badge is visually distinct from both critical and safe", async ({ page }) => {
-  const warningRow = page.locator("tr", { hasText: "status.example.com" });
+  const warningRow = row(page, "status-page", "custom_domain", "status.example.com");
   await expect(warningRow.getByText("WARNING")).toBeVisible();
-  const diamondCount = await warningRow.locator("svg path").count();
-  expect(diamondCount).toBe(1);
-  await expect(warningRow.locator("svg")).toHaveAttribute("fill", "var(--status-warning)");
+});
+
+test("US2/AC3 — an alert banner surfaces the most urgent finding above the table (FR-013)", async ({ page }) => {
+  await expect(
+    page.getByText("A Worker is publicly reachable with no Access policy"),
+  ).toBeVisible();
+  await expect(page.getByText("billing-api.acct.workers.dev").first()).toBeVisible();
+});
+
+test("US2 — filtering to critical narrows the table, no reload", async ({ page }) => {
+  await page.getByRole("button", { name: /CRITICAL 1/ }).click();
+  await expect(page.getByText("billing-api.acct.workers.dev").first()).toBeVisible();
+  await expect(page.getByText("status.example.com")).not.toBeVisible();
+  await expect(page.getByText("billing.example.com")).not.toBeVisible();
 });

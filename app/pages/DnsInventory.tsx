@@ -1,6 +1,12 @@
 import { useEffect, useState } from "react";
 import type { JSX } from "react";
-import { type ExposureStatus, ExposureStatusBadge } from "../components/ExposureStatusBadge.tsx";
+import { type ExposureStatus } from "../components/ExposureStatusBadge.tsx";
+import {
+  FindingsTable,
+  type FindingsTableColumn,
+  type FindingsTableRow,
+} from "../components/FindingsTable.tsx";
+import { AlertBanner } from "../components/AlertBanner.tsx";
 
 interface DnsRecordFinding {
   record_name: string;
@@ -23,6 +29,14 @@ interface DnsInventoryResponse {
   zones: ZoneFinding[];
 }
 
+interface FlatFinding {
+  zone_name: string;
+  record_name: string;
+  type: string;
+  content: string;
+  reason: string;
+}
+
 async function fetchDnsInventory(): Promise<DnsInventoryResponse> {
   const res = await fetch("/api/dns/inventory");
   if (!res.ok) {
@@ -30,6 +44,53 @@ async function fetchDnsInventory(): Promise<DnsInventoryResponse> {
   }
   return await res.json();
 }
+
+const COLUMNS: FindingsTableColumn<FlatFinding>[] = [
+  {
+    key: "zone",
+    label: "Zone",
+    width: "18%",
+    sortValue: (r) => r.zone_name,
+    render: (r) => (
+      <span
+        style={{
+          fontFamily: "var(--font-mono)",
+          fontSize: "var(--text-code-size)",
+          color: "var(--fg-secondary)",
+        }}
+      >
+        {r.zone_name}
+      </span>
+    ),
+  },
+  {
+    key: "record",
+    label: "Record",
+    sortValue: (r) => r.record_name,
+    render: (r) => (
+      <span
+        style={{
+          fontFamily: "var(--font-mono)",
+          fontSize: "var(--text-code-size)",
+          color: "var(--fg-secondary)",
+        }}
+      >
+        {r.record_name}
+        <span style={{ color: "var(--fg-faint)" }}>· {r.type} → {r.content}</span>
+      </span>
+    ),
+  },
+  {
+    key: "reason",
+    label: "Reason",
+    width: "34%",
+    render: (r) => (
+      <span style={{ fontSize: "var(--text-body-size)", color: "var(--fg-muted)" }}>
+        {r.reason}
+      </span>
+    ),
+  },
+];
 
 export function DnsInventory(): JSX.Element {
   const [data, setData] = useState<DnsInventoryResponse | null>(null);
@@ -47,17 +108,38 @@ export function DnsInventory(): JSX.Element {
     return <p style={{ color: "var(--status-critical-fg)" }}>{error}</p>;
   }
 
-  if (!data) {
-    return <p style={{ color: "var(--fg-muted)" }}>Loading DNS inventory…</p>;
-  }
+  const rows: FindingsTableRow<FlatFinding>[] | null = data
+    ? data.zones.flatMap((z) =>
+      // A zone with zero records must still appear (specs/002-dns/tasks.md
+      // T026) — flatMap would otherwise silently drop it from this flat
+      // table, exactly the omission bug that fix closed on the backend.
+      z.records.length === 0
+        ? [{
+          id: `${z.zone_name}:(empty)`,
+          status: "safe" as ExposureStatus,
+          data: {
+            zone_name: z.zone_name,
+            record_name: "(no records)",
+            type: "",
+            content: "",
+            reason: "No DNS records in this zone.",
+          },
+        }]
+        : z.records.map((r) => ({
+          id: `${z.zone_name}:${r.type}:${r.record_name}:${r.content}`,
+          status: r.status,
+          data: {
+            zone_name: z.zone_name,
+            record_name: r.record_name,
+            type: r.type,
+            content: r.content,
+            reason: r.reason,
+          },
+        }))
+    )
+    : null;
 
-  if (data.zones.length === 0) {
-    return (
-      <p style={{ color: "var(--fg-muted)" }}>
-        No evaluation runs yet. Trigger one via <code>POST /api/dns/evaluate</code>.
-      </p>
-    );
-  }
+  const criticalRow = rows?.find((r) => r.status === "critical");
 
   return (
     <div>
@@ -72,85 +154,33 @@ export function DnsInventory(): JSX.Element {
       >
         DNS inventory
       </h1>
-      <p style={{ color: "var(--fg-faint)", fontSize: "var(--text-meta-size)", marginTop: 0 }}>
-        Last evaluated {data.evaluated_at} · run {data.run_id}
-      </p>
+      {data && (
+        <p style={{ color: "var(--fg-faint)", fontSize: "var(--text-meta-size)", marginTop: 0 }}>
+          Last evaluated {data.evaluated_at} · run {data.run_id}
+        </p>
+      )}
 
-      {data.zones.map((zone) => (
-        <section
-          key={zone.zone_name}
-          style={{
-            border: "1px solid var(--border)",
-            borderRadius: 6,
-            padding: 16,
-            marginBottom: 12,
-            background: "var(--surface-1)",
+      {criticalRow && (
+        <AlertBanner
+          scope="module"
+          finding={{
+            severity: "critical",
+            title: "A DNS record needs attention",
+            target: criticalRow.data.record_name,
+            description: criticalRow.data.reason,
           }}
-        >
-          <h2
-            style={{
-              fontFamily: "var(--font-sans)",
-              fontSize: "var(--text-title-size)",
-              fontWeight: "var(--text-title-weight)" as unknown as number,
-              margin: "0 0 12px",
-            }}
-          >
-            {zone.zone_name}
-          </h2>
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
-            <tbody>
-              {zone.records.map((r) => {
-                const critical = r.status === "critical";
-                return (
-                  <tr
-                    key={`${r.type}:${r.record_name}:${r.content}`}
-                    style={{
-                      borderTop: "1px solid var(--rule-hairline)",
-                      borderLeft: critical
-                        ? "3px solid var(--status-critical)"
-                        : "3px solid transparent",
-                      background: critical ? "var(--status-critical-row)" : "transparent",
-                    }}
-                  >
-                    <td style={{ padding: "8px 0 8px 8px", width: 120 }}>
-                      <ExposureStatusBadge status={r.status} />
-                    </td>
-                    <td
-                      style={{
-                        padding: "8px 0",
-                        fontFamily: "var(--font-mono)",
-                        fontSize: "var(--text-code-size)",
-                        color: "var(--fg-secondary)",
-                      }}
-                    >
-                      {r.record_name}
-                      <span style={{ color: "var(--fg-faint)" }}>
-                        · {r.type} → {r.content}
-                      </span>
-                    </td>
-                    <td
-                      style={{
-                        padding: "8px 0",
-                        fontSize: "var(--text-body-size)",
-                        color: "var(--fg-muted)",
-                      }}
-                    >
-                      {r.reason}
-                    </td>
-                  </tr>
-                );
-              })}
-              {zone.records.length === 0 && (
-                <tr>
-                  <td colSpan={3} style={{ padding: "8px 0", color: "var(--fg-faint)" }}>
-                    No records.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </section>
-      ))}
+        />
+      )}
+
+      <FindingsTable
+        columns={COLUMNS}
+        rows={rows}
+        loadingLabel="Loading DNS inventory…"
+        emptyState={{
+          heading: "No DNS zones in this account",
+          description: "No evaluation runs yet. Trigger one via POST /api/dns/evaluate.",
+        }}
+      />
     </div>
   );
 }
