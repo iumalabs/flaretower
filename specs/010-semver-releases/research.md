@@ -109,15 +109,30 @@ mechanism) triggers the production deploy.
 
 **Decision**: `vite.config.ts` reads the repo-root `VERSION` file at
 build time and injects its contents via Vite's `define` option as a
-build-time string constant; `Sidebar.tsx`'s footer reads that constant
-directly (no runtime fetch, no new `/api/*` endpoint) and renders it
-alongside the existing `"self-hosted"` text — e.g. `"v1.0.3 ·
-self-hosted"` — only when the constant is actually a real version
-string; falls back to today's `"self-hosted"`-only text (spec.md
-FR-010) when running via `deno task dev` locally, where no `VERSION`
-file update from a real release has ever happened and the constant
-would just be a stale/absent placeholder rather than something
-meaningfully wrong to hide.
+build-time string constant; `App.tsx` reads that constant directly (no
+runtime fetch, no new `/api/*` endpoint) and passes it into `Sidebar`'s
+existing `footer.version` field — e.g. `"v1.0.3 · self-hosted"` — only
+when the constant is actually a real version string; falls back to
+today's `"self-hosted"`-only text (spec.md FR-010) otherwise.
+
+**Implementation-time correction (superseding the original plan)**:
+`VERSION` is a real, committed file that exists identically on every
+branch — `main`, feature branches, and PR preview branches all carry
+whatever the last release wrote to it. Reading it unconditionally would
+therefore inject a version into **every** build, including preview
+deploys and local dev, not just production — directly violating spec.md
+FR-010/US3's Acceptance Scenario 2 ("running locally or viewing a
+preview deployment ... they do not see a fabricated or misleading
+production version number"), since a preview build can be arbitrarily
+far ahead of the last cut release. The fix: `readAppVersion()` in
+`vite.config.ts` first checks the currently checked-out git branch
+(`git rev-parse --abbrev-ref HEAD`) and only reads `VERSION` when it's
+exactly `release` — the one branch that only ever advances via
+`release-automerge.yml`'s fast-forward after a real cut (research.md
+§1). Every other build (any branch name, or a failure to resolve one at
+all, e.g. a shallow/detached checkout) falls back to `""`. This needs no
+new Cloudflare-side configuration — Workers Builds already checks out
+the exact branch it's configured to build for each deploy.
 
 **Rationale**: This is the simplest mechanism that satisfies FR-008/
 FR-009 — no new backend endpoint, no runtime network call, and the
