@@ -167,15 +167,20 @@ function ReuseOutput({ policies }: { policies: ParsedTokenPayload }): JSX.Elemen
           Permissions checklist
         </div>
         <ul style={{ margin: 0, paddingLeft: 18, fontSize: "var(--text-code-size)" }}>
-          {checklist.map((item) => (
+          {checklist.map((item, index) => (
             <li
-              key={item.id}
+              key={`${index}-${item.effect}-${item.id}`}
               style={{
-                color: item.recognized ? "var(--fg-primary)" : "var(--status-warning)",
+                color: item.effect === "deny"
+                  ? "var(--status-critical-fg)"
+                  : item.recognized
+                  ? "var(--fg-primary)"
+                  : "var(--status-warning)",
                 fontFamily: item.recognized ? "var(--font-sans)" : "var(--font-mono)",
                 marginBottom: 4,
               }}
             >
+              {item.effect === "deny" && "DENIED — "}
               {item.name}
               {!item.recognized && " (unrecognized permission group)"}
             </li>
@@ -259,35 +264,39 @@ function CompareOutput({ result }: { result: ComparisonResult }): JSX.Element {
       <DimensionDiff
         title="Permission groups"
         dimension={result.permissionGroups}
-        resolveName={(id) => CLOUDFLARE_PERMISSION_GROUP_NAMES[id] ?? id}
+        renderItem={(entry) =>
+          `${CLOUDFLARE_PERMISSION_GROUP_NAMES[entry.id] ?? entry.id} (${entry.effect})`}
       />
       {
         /* Resources are inherently account/zone-specific strings, not
           permission-group names — no lookup table applies (research.md §3). */
       }
-      <DimensionDiff title="Resources" dimension={result.resources} />
+      <DimensionDiff
+        title="Resources"
+        dimension={result.resources}
+        renderItem={(id) => id}
+      />
     </div>
   );
 }
 
-function DimensionDiff(
-  { title, dimension, resolveName }: {
+function DimensionDiff<T>(
+  { title, dimension, renderItem }: {
     title: string;
-    dimension: { onlyInA: string[]; onlyInB: string[]; matches: boolean };
-    resolveName?: (id: string) => string;
+    dimension: { onlyInA: T[]; onlyInB: T[]; matches: boolean };
+    renderItem: (item: T) => string;
   },
 ): JSX.Element | null {
   if (dimension.matches) return null;
-  const label = resolveName ?? ((id: string) => id);
 
   return (
     <div style={{ fontSize: "var(--text-code-size)" }}>
       <div style={{ fontWeight: 600, marginBottom: 4 }}>{title} differ:</div>
       {dimension.onlyInA.length > 0 && (
-        <div>Only in Token A: {dimension.onlyInA.map(label).join(", ")}</div>
+        <div>Only in Token A: {dimension.onlyInA.map(renderItem).join(", ")}</div>
       )}
       {dimension.onlyInB.length > 0 && (
-        <div>Only in Token B: {dimension.onlyInB.map(label).join(", ")}</div>
+        <div>Only in Token B: {dimension.onlyInB.map(renderItem).join(", ")}</div>
       )}
     </div>
   );

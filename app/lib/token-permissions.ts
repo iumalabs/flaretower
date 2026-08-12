@@ -18,6 +18,7 @@ export interface ChecklistItem {
   id: string;
   name: string;
   recognized: boolean;
+  effect: "allow" | "deny";
 }
 
 export interface ComparisonDimension {
@@ -26,8 +27,23 @@ export interface ComparisonDimension {
   matches: boolean;
 }
 
+// Permission groups need effect on each diff entry too — a group present
+// under "allow" on one side and "deny" on the other for the same id is a
+// mismatch (T014), so a plain id string isn't enough to describe what
+// differs.
+export interface PermissionGroupDiffEntry {
+  id: string;
+  effect: "allow" | "deny";
+}
+
+export interface PermissionGroupComparisonDimension {
+  onlyInA: PermissionGroupDiffEntry[];
+  onlyInB: PermissionGroupDiffEntry[];
+  matches: boolean;
+}
+
 export interface ComparisonResult {
-  permissionGroups: ComparisonDimension;
+  permissionGroups: PermissionGroupComparisonDimension;
   resources: ComparisonDimension;
 }
 
@@ -111,6 +127,7 @@ export function renderChecklist(policies: ParsedTokenPayload): ChecklistItem[] {
         id: group.id,
         name: resolved ?? group.id,
         recognized: resolved !== undefined,
+        effect: policy.effect,
       });
     }
   }
@@ -127,14 +144,20 @@ export function toReusablePayload(policies: ParsedTokenPayload): unknown {
   };
 }
 
-function flattenPermissionGroupIds(policies: ParsedTokenPayload): Set<string> {
-  const ids = new Set<string>();
+// Keyed by "<effect>:<id>", not just the id, so that the same permission
+// group id under opposite effects (one policy allows it, the other denies
+// it) is treated as two distinct entries rather than silently collapsing
+// into a single match (T014).
+function flattenPermissionGroupEntries(
+  policies: ParsedTokenPayload,
+): Map<string, PermissionGroupDiffEntry> {
+  const entries = new Map<string, PermissionGroupDiffEntry>();
   for (const policy of policies) {
     for (const group of policy.permissionGroups) {
-      ids.add(group.id);
+      entries.set(`${policy.effect}:${group.id}`, { id: group.id, effect: policy.effect });
     }
   }
-  return ids;
+  return entries;
 }
 
 function flattenResourceEntries(policies: ParsedTokenPayload): Map<string, string> {
@@ -147,10 +170,23 @@ function flattenResourceEntries(policies: ParsedTokenPayload): Map<string, strin
   return entries;
 }
 
-function diffSets(a: Set<string>, b: Set<string>): { onlyInA: string[]; onlyInB: string[] } {
+function sortPermissionGroupDiffEntries(
+  entries: PermissionGroupDiffEntry[],
+): PermissionGroupDiffEntry[] {
+  return entries.sort((x, y) =>
+    x.id === y.id ? x.effect.localeCompare(y.effect) : x.id.localeCompare(y.id)
+  );
+}
+
+function diffPermissionGroupEntries(
+  a: Map<string, PermissionGroupDiffEntry>,
+  b: Map<string, PermissionGroupDiffEntry>,
+): { onlyInA: PermissionGroupDiffEntry[]; onlyInB: PermissionGroupDiffEntry[] } {
+  const onlyInA = [...a].filter(([key]) => !b.has(key)).map(([, entry]) => entry);
+  const onlyInB = [...b].filter(([key]) => !a.has(key)).map(([, entry]) => entry);
   return {
-    onlyInA: [...a].filter((id) => !b.has(id)).sort(),
-    onlyInB: [...b].filter((id) => !a.has(id)).sort(),
+    onlyInA: sortPermissionGroupDiffEntries(onlyInA),
+    onlyInB: sortPermissionGroupDiffEntries(onlyInB),
   };
 }
 
@@ -170,7 +206,10 @@ function diffMaps(
 }
 
 export function comparePolicies(a: ParsedTokenPayload, b: ParsedTokenPayload): ComparisonResult {
-  const groupsDiff = diffSets(flattenPermissionGroupIds(a), flattenPermissionGroupIds(b));
+  const groupsDiff = diffPermissionGroupEntries(
+    flattenPermissionGroupEntries(a),
+    flattenPermissionGroupEntries(b),
+  );
   const resourcesDiff = diffMaps(flattenResourceEntries(a), flattenResourceEntries(b));
 
   return {

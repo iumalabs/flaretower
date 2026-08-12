@@ -27,6 +27,39 @@ const VALID_PAYLOAD_DIFFERENT_RESOURCES = JSON.stringify({
   ],
 });
 
+// T013/T014 regression payloads: mixes an allow policy with a deny policy
+// for a distinct group, and — for the compare case — reuses the same group
+// id under opposite effects across the two tokens.
+const MIXED_ALLOW_DENY_PAYLOAD = JSON.stringify({
+  policies: [
+    {
+      effect: "allow",
+      permission_groups: [{ id: "abc123", name: "Workers Scripts Read" }],
+      resources: { "com.cloudflare.api.account.acct1": "*" },
+    },
+    {
+      effect: "deny",
+      permission_groups: [{ id: "def456", name: "Workers Scripts Write" }],
+      resources: { "com.cloudflare.api.account.acct1": "*" },
+    },
+  ],
+});
+
+// Identical to VALID_PAYLOAD except for effect — isolates the effect flip
+// as the only difference between the two tokens being compared.
+const SAME_GROUP_OPPOSITE_EFFECT_PAYLOAD = JSON.stringify({
+  policies: [
+    {
+      effect: "deny",
+      permission_groups: [
+        { id: "abc123", name: "Workers Scripts Read" },
+        { id: "unknown-group-id" },
+      ],
+      resources: { "com.cloudflare.api.account.acct1": "*" },
+    },
+  ],
+});
+
 test.beforeEach(async ({ page }) => {
   await page.route("**/api/audit/summary", (route) =>
     route.fulfill({
@@ -110,4 +143,25 @@ test("US2 — payloads with matching permission groups but different resources s
   await expect(page.getByText("These tokens differ")).toBeVisible();
   await expect(page.getByText("Resources differ:")).toBeVisible();
   await expect(page.getByText(/Permission groups differ/)).toHaveCount(0);
+});
+
+test("T013 — a denied permission group is visibly marked as denied in the checklist, not shown as granted", async ({ page }) => {
+  await page.getByLabel("Source token permission payload").fill(MIXED_ALLOW_DENY_PAYLOAD);
+
+  const grantedItem = page.locator("li", { hasText: "Workers Scripts Read" });
+  const deniedItem = page.locator("li", { hasText: "Workers Scripts Write" });
+
+  await expect(grantedItem).toBeVisible();
+  await expect(deniedItem).toBeVisible();
+  await expect(deniedItem).toContainText("DENIED");
+  await expect(grantedItem).not.toContainText("DENIED");
+});
+
+test("T014 — comparing tokens where the same group is allowed on one side and denied on the other reports a mismatch", async ({ page }) => {
+  await page.getByRole("button", { name: "Compare two tokens" }).click();
+  await page.getByLabel("Token A permission payload").fill(VALID_PAYLOAD);
+  await page.getByLabel("Token B permission payload").fill(SAME_GROUP_OPPOSITE_EFFECT_PAYLOAD);
+
+  await expect(page.getByText("These tokens differ")).toBeVisible();
+  await expect(page.getByText(/Permission groups differ/)).toBeVisible();
 });
