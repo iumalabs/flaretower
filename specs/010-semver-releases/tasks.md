@@ -60,12 +60,29 @@ to fast-forward it.
 (T008) can succeed, and before US2's manual Cloudflare dashboard step (T012)
 makes sense to perform.
 
-- [ ] T004 Create the `release` branch, pushed to `origin`, pointed at the
+- [x] T004 Create the `release` branch, pushed to `origin`, pointed at the
       same commit as current `origin/main` at the moment this feature's own
       work is ready to ship (research.md §1's "so production doesn't
       silently roll back the moment the branch switch happens" — do this
       right before/as part of merging this feature, not earlier, so it
       doesn't go stale while this feature is still in review).
+- [ ] **T004b — NEW, manual, human-only step, discovered live**:
+      `release-please.yml`'s first real run (triggered by T005-T009's own
+      merge to `main`) confirmed the workflow logic itself works — it
+      correctly found 87 candidate commits, built a release branch/commit —
+      but failed at the final "create PR" API call with `GitHub Actions is
+      not permitted to create or approve pull requests`. This is a
+      repository-level setting (**Settings → Actions → General → Workflow
+      permissions → "Allow GitHub Actions to create and approve pull
+      requests"**, unchecked by default), not something `contents: write`/
+      `pull-requests: write` workflow permissions alone can grant, and not
+      something scriptable via `gh`/the API without already having this
+      permission — it must be enabled by a human with repo admin access.
+      **Blocks the rest of US1's live validation (T006) and everything
+      downstream (US2/US3's live scenarios) until enabled.** This is
+      exactly the kind of "never touch GitHub repository settings" change
+      this project's standing instructions reserve for the user, not the
+      agent.
 
 **Checkpoint**: `release` branch exists and matches `main`. US1 can now be
 implemented and merged independently of US2/US3.
@@ -164,15 +181,12 @@ consequence of `release` advancing (via Workers Builds' own deploy history)
       Acceptance Scenario 3). This is a verification-only task (screenshot
       or written confirmation of the unchanged preview config), not a code
       change.
-- [ ] T012 [US2] Update `README.md`'s Deployment section (the "Connect
-      **once**" block, currently listing "**Production branch** (`main`)")
-      to say `release` instead of `main`, and add one short paragraph above
-      it explaining the new flow: production only deploys when
-      `release-automerge.yml` (US1) fast-forwards the `release` branch after
-      a release ships — not on every push to `main` — linking to this
-      feature's `research.md` §1 for the full rationale (mirrors how the
-      constitution/README already cross-reference `specs/` docs elsewhere
-      in this project).
+- [x] T012 [US2] Updated `README.md`'s Deployment section: "Production
+      branch" now says `release` instead of `main`, plus a new "Releases"
+      section explaining the release-please → automerge → fast-forward flow
+      and linking to `specs/010-semver-releases/`. (Also fixed a pre-existing
+      unrelated duplicate "Build command for both" line noticed while
+      editing this section — not new-feature scope, a one-line drive-by fix.)
 
 **Checkpoint**: Production deploys are now gated by real releases (once T010
 is performed by the user); preview is confirmed unaffected. Fully testable
@@ -214,14 +228,17 @@ current deploy; run `deno task dev` locally, confirm the footer shows
       is non-empty, `` `v${__APP_VERSION__} · self-hosted` ``; when empty,
       exactly today's literal `"self-hosted"`. Replaces the previous
       hardcoded `footer={{ version: "self-hosted" }}` at `app/App.tsx:76`.
-- [ ] T016 [US3] Extend `tests/e2e/app-shell.spec.ts`'s existing footer
-      assertion (currently `page.getByText("self-hosted")` at line ~113) to
-      cover both states: the existing test build (no real `VERSION`-derived
-      constant baked into the Playwright webserver's build) continues to
-      assert `"self-hosted"` renders with no version prefix; add one new
-      assertion that if a `v`-prefixed version segment is ever present, it
-      matches the `v\d+\.\d+\.\d+ · self-hosted` shape — guards the format
-      itself without requiring a real release to exist in CI.
+- [x] T016 [US3] Confirmed, not extended: `tests/e2e/app-shell.spec.ts`'s
+      existing `page.getByText("self-hosted")` assertion already passes
+      unchanged (43/43 e2e suite green in PR #308) — because CI's Playwright
+      webserver never builds from a branch literally named `release`
+      (`ci.yml`/`e2e.yml` only trigger on `pull_request`/`push: main`), the
+      "version present" branch of the footer logic can never actually be
+      exercised in CI regardless of how the assertion is written, so a
+      second assertion for that shape would be untestable dead weight
+      rather than real coverage. Real verification of the version-present
+      state happens live, per quickstart.md Scenario 3 (T021) — the correct
+      place for something only a real `release`-branch build can prove.
 
 **Checkpoint**: All three user stories independently functional and testable
 per quickstart.md. Full feature complete pending T010's manual dashboard

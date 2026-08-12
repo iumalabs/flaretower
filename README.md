@@ -216,10 +216,13 @@ of this setup gave each environment a distinct `name`, which does create two ind
 resources with no automatic preview linking between them — confirmed by deploying that way and
 having to push a probe commit to prove neither triggered the other. Not what's wanted here.)
 
+Production deploys are gated by release, not by every push — see [Releases](#releases) below for why
+and how. Preview keeps deploying on every push/PR, unaffected.
+
 Connect **once**: Cloudflare dashboard → **Workers & Pages** → `flaretower` → **Settings** →
 **Build**, connect the GitHub repo, then set:
 
-- **Production branch** (`main`) deploy command: `deno task deploy`
+- **Production branch** (`release`, **not** `main`) deploy command: `deno task deploy`
   (`wrangler deploy --env
   production`).
 - **Preview deploy command** (every other branch/PR): `deno task deploy:preview`
@@ -229,4 +232,19 @@ Connect **once**: Cloudflare dashboard → **Workers & Pages** → `flaretower` 
 
 Build command for both: `deno task build`.
 
-Build command for both: `deno task build`.
+## Releases
+
+FlareTower uses [semantic versioning](https://semver.org/) and
+[Conventional Commits](https://www.conventionalcommits.org/)-driven, mostly-automated releases — see
+`specs/010-semver-releases/` for the full design.
+
+- [`release-please`](https://github.com/googleapis/release-please) proposes a standing release PR on
+  every push to `main`, bumping `VERSION` and `CHANGELOG.md` from commit history (`fix:` → patch,
+  `feat:` → minor; a MAJOR bump needs a deliberate maintainer action, never inferred automatically).
+- A daily scheduled job (`.github/workflows/release-automerge.yml`) merges that PR if one is open —
+  cutting the actual git tag + GitHub Release — and fast-forwards the `release` branch to match,
+  which is what triggers the production deploy above. A maintainer can also merge the PR by hand at
+  any time to release outside the daily cadence.
+- The currently-running production version is shown in the app's own sidebar footer (baked in at
+  build time from `VERSION`; local/preview builds show `self-hosted` with no version, since no real
+  release applies there).
