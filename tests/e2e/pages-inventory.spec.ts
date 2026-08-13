@@ -137,3 +137,34 @@ test("US1 — health pill matches the existing subdomain-exposure status unchang
   const criticalRow = page.getByTestId("findings-row-empty-project");
   await expect(criticalRow.getByText("CRITICAL")).toBeVisible();
 });
+
+// Regression coverage: a build timestamp a few seconds ahead of the
+// client's clock (clock skew, or a fast render right after a build
+// completes) must render as "0s ago," never as a negative duration.
+test("last build recency clamps a future timestamp to '0s ago', never negative", async ({ page }) => {
+  const skewedInventory = {
+    ...MOCK_PAGES_INVENTORY,
+    projects: [
+      {
+        ...MOCK_PAGES_INVENTORY.projects[0],
+        last_build_created_at: new Date(Date.now() + 5000).toISOString(),
+        deployment: {
+          ...MOCK_PAGES_INVENTORY.projects[0].deployment,
+          created_at: new Date(Date.now() + 5000).toISOString(),
+        },
+      },
+      MOCK_PAGES_INVENTORY.projects[1],
+    ],
+  };
+  await page.route("**/api/pages/inventory", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(skewedInventory),
+    }));
+  await page.goto("/");
+  await page.getByRole("button", { name: "Pages" }).click();
+
+  const row = page.getByTestId("findings-row-marketing-site");
+  await expect(row.getByText("0s ago", { exact: false })).toBeVisible();
+});
