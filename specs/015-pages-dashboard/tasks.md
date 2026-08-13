@@ -67,7 +67,7 @@ story spec).
 
 - [ ] T010 [P] Run all 3 quickstart.md scenarios end-to-end against a real scratch Cloudflare test
       account (real-account dependency, same as every prior module's equivalent task).
-- [ ] T011 [P] `deno fmt` + `deno lint` pass across every touched file.
+- [x] T011 [P] `deno fmt` + `deno lint` pass across every touched file.
 
 ---
 
