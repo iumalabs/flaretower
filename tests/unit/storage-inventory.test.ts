@@ -2,6 +2,7 @@ import { assertEquals } from "@std/assert";
 import {
   buildStorageInventory,
   getBucketManagedDomain,
+  getD1DatabaseDetail,
   listAccessApplications,
   listBucketCustomDomains,
   listD1Databases,
@@ -76,6 +77,32 @@ Deno.test("listD1Databases - maps uuid and name", async () => {
   const databases = await listD1Databases(creds, fetchImpl);
 
   assertEquals(databases, [{ uuid: "db-1", name: "flaretower" }]);
+});
+
+// specs/016-storage-dashboard research.md §1
+Deno.test("getD1DatabaseDetail - maps num_tables and file_size", async () => {
+  const fetchImpl = mockFetch([
+    ["/d1/database/db-1", () =>
+      jsonResponse({
+        success: true,
+        result: { uuid: "db-1", name: "flaretower", num_tables: 12, file_size: 840000 },
+        errors: [],
+      })],
+  ]);
+
+  const detail = await getD1DatabaseDetail(creds, "db-1", fetchImpl);
+
+  assertEquals(detail, { numTables: 12, fileSizeBytes: 840000 });
+});
+
+Deno.test("getD1DatabaseDetail - a failed fetch yields an empty object, not a thrown error", async () => {
+  const fetchImpl = mockFetch([
+    ["/d1/database/db-1", () => jsonResponse({ success: false, result: null, errors: [] }, 500)],
+  ]);
+
+  const detail = await getD1DatabaseDetail(creds, "db-1", fetchImpl);
+
+  assertEquals(detail, {});
 });
 
 Deno.test("getBucketManagedDomain - returns the enabled flag", async () => {
@@ -341,6 +368,62 @@ Deno.test("buildStorageInventory - a namespace/database referenced by a Worker's
   assertEquals(inventory.bindingReferences.kvNamespaceIds.has("kv-unused"), false);
   assertEquals(inventory.bindingReferences.d1DatabaseIds.has("db-used"), true);
   assertEquals(inventory.bindingReferences.allBindingsConfirmed, true);
+});
+
+// specs/016-storage-dashboard research.md §2
+Deno.test("buildStorageInventory - bindingReferences preserves the referencing Worker names, including for R2 buckets (matched by name)", async () => {
+  const fetchImpl = mockFetch([
+    [
+      "/r2/buckets",
+      () => jsonResponse({ success: true, result: { buckets: [{ name: "uploads" }] }, errors: [] }),
+    ],
+    [
+      "/storage/kv/namespaces",
+      () =>
+        jsonResponse({
+          success: true,
+          result: [{ id: "kv-shared", title: "SHARED" }],
+          errors: [],
+        }),
+    ],
+    ["/d1/database", () => jsonResponse({ success: true, result: [], errors: [] })],
+    R2_DEV_DISABLED,
+    NO_CUSTOM_DOMAINS,
+    EMPTY_ACCESS_APPS,
+    [
+      "/workers/scripts",
+      () =>
+        jsonResponse({
+          success: true,
+          result: [{ id: "worker-a" }, { id: "worker-b" }],
+          errors: [],
+        }),
+    ],
+    ["/worker-a/bindings", () =>
+      jsonResponse({
+        success: true,
+        result: [
+          { type: "kv_namespace", namespace_id: "kv-shared" },
+          { type: "r2_bucket", bucket_name: "uploads" },
+        ],
+        errors: [],
+      })],
+    ["/worker-b/bindings", () =>
+      jsonResponse({
+        success: true,
+        result: [{ type: "kv_namespace", namespace_id: "kv-shared" }],
+        errors: [],
+      })],
+  ]);
+
+  const inventory = await buildStorageInventory(creds, fetchImpl);
+
+  assertEquals(
+    inventory.bindingReferences.kvNamespaceBoundTo.get("kv-shared"),
+    ["worker-a", "worker-b"],
+  );
+  assertEquals(inventory.bindingReferences.r2BucketBoundTo.get("uploads"), ["worker-a"]);
+  assertEquals(inventory.bindingReferences.d1DatabaseBoundTo.get("db-unreferenced"), undefined);
 });
 
 Deno.test("buildStorageInventory - a per-script bindings-fetch failure marks allBindingsConfirmed false, other scripts' bindings still counted", async () => {

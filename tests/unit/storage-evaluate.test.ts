@@ -100,6 +100,36 @@ Deno.test("evaluateBucketExposure - not_evaluated when the bucket itself has an 
   assertEquals(result.status, "not_evaluated");
 });
 
+// specs/016-storage-dashboard research.md §3
+Deno.test("evaluateBucketExposure - customDomain is the first enabled domain, regardless of status", () => {
+  const result = evaluateBucketExposure(
+    bucket({
+      customDomains: [
+        { domain: "disabled.example.com", enabled: false },
+        { domain: "uploads.example.com", enabled: true },
+        { domain: "second.example.com", enabled: true },
+      ],
+    }),
+    [scopedApp("app-1", "uploads.example.com"), scopedApp("app-2", "second.example.com")],
+  );
+  assertEquals(result.customDomain, "uploads.example.com");
+});
+
+Deno.test("evaluateBucketExposure - customDomain is null when no custom domain is enabled", () => {
+  const result = evaluateBucketExposure(bucket(), []);
+  assertEquals(result.customDomain, null);
+});
+
+// specs/016-storage-dashboard research.md §2 — boundToWorkers is a pure
+// pass-through, present regardless of which status branch is taken.
+Deno.test("evaluateBucketExposure - boundToWorkers passes through unchanged, independent of status", () => {
+  const result = evaluateBucketExposure(bucket({ r2DevEnabled: true }), [], [
+    "worker-a",
+    "worker-b",
+  ]);
+  assertEquals(result.boundToWorkers, ["worker-a", "worker-b"]);
+});
+
 Deno.test("evaluateKvNamespaceUsage - safe when the namespace id is referenced by a Worker's bindings", () => {
   const result = evaluateKvNamespaceUsage(
     { namespaceId: "kv-1", title: "SESSIONS" },
@@ -170,4 +200,26 @@ Deno.test("evaluateD1DatabaseUsage - not_evaluated when not referenced but some 
     false,
   );
   assertEquals(result.status, "not_evaluated");
+});
+
+// specs/016-storage-dashboard research.md §1 — pure pass-through,
+// independent of the usage decision.
+Deno.test("evaluateD1DatabaseUsage - numTables/fileSizeBytes pass through when present", () => {
+  const result = evaluateD1DatabaseUsage(
+    { databaseUuid: "db-1", name: "flaretower", numTables: 12, fileSizeBytes: 840000 },
+    new Set(["db-1"]),
+    true,
+  );
+  assertEquals(result.numTables, 12);
+  assertEquals(result.fileSizeBytes, 840000);
+});
+
+Deno.test("evaluateD1DatabaseUsage - numTables/fileSizeBytes are null, not fabricated, when the detail fetch failed", () => {
+  const result = evaluateD1DatabaseUsage(
+    { databaseUuid: "db-1", name: "flaretower" },
+    new Set(["db-1"]),
+    true,
+  );
+  assertEquals(result.numTables, null);
+  assertEquals(result.fileSizeBytes, null);
 });

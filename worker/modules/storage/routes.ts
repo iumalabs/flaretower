@@ -77,16 +77,22 @@ export async function runStorageEvaluation(
     getPreviousD1DatabaseStatuses(env),
   ]);
 
-  const bucketResults = evaluateBuckets(buckets, accessApplications);
+  const bucketResults = evaluateBuckets(
+    buckets,
+    accessApplications,
+    bindingReferences.r2BucketBoundTo,
+  );
   const kvResults = evaluateKvNamespaces(
     kvNamespaces,
     bindingReferences.kvNamespaceIds,
     bindingReferences.allBindingsConfirmed,
+    bindingReferences.kvNamespaceBoundTo,
   );
   const d1Results = evaluateD1Databases(
     d1Databases,
     bindingReferences.d1DatabaseIds,
     bindingReferences.allBindingsConfirmed,
+    bindingReferences.d1DatabaseBoundTo,
   );
 
   const runId = crypto.randomUUID();
@@ -94,15 +100,25 @@ export async function runStorageEvaluation(
 
   const bucketStatements = bucketResults.map((b) =>
     env.DB.prepare(
-      `INSERT INTO r2_bucket_findings (id, bucket_name, status, reason, evaluated_at, run_id, run_trigger)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    ).bind(crypto.randomUUID(), b.bucketName, b.status, b.reason, evaluatedAt, runId, trigger)
+      `INSERT INTO r2_bucket_findings (id, bucket_name, status, reason, evaluated_at, run_id, run_trigger, custom_domain, bound_to_workers)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).bind(
+      crypto.randomUUID(),
+      b.bucketName,
+      b.status,
+      b.reason,
+      evaluatedAt,
+      runId,
+      trigger,
+      b.customDomain,
+      JSON.stringify(b.boundToWorkers),
+    )
   );
 
   const kvStatements = kvResults.map((k) =>
     env.DB.prepare(
-      `INSERT INTO kv_namespace_findings (id, namespace_id, title, status, reason, evaluated_at, run_id, run_trigger)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO kv_namespace_findings (id, namespace_id, title, status, reason, evaluated_at, run_id, run_trigger, bound_to_workers)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).bind(
       crypto.randomUUID(),
       k.namespaceId,
@@ -112,13 +128,14 @@ export async function runStorageEvaluation(
       evaluatedAt,
       runId,
       trigger,
+      JSON.stringify(k.boundToWorkers),
     )
   );
 
   const d1Statements = d1Results.map((d) =>
     env.DB.prepare(
-      `INSERT INTO d1_database_findings (id, database_uuid, name, status, reason, evaluated_at, run_id, run_trigger)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO d1_database_findings (id, database_uuid, name, status, reason, evaluated_at, run_id, run_trigger, bound_to_workers, num_tables, file_size)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).bind(
       crypto.randomUUID(),
       d.databaseUuid,
@@ -128,6 +145,9 @@ export async function runStorageEvaluation(
       evaluatedAt,
       runId,
       trigger,
+      JSON.stringify(d.boundToWorkers),
+      d.numTables,
+      d.fileSizeBytes,
     )
   );
 
@@ -201,6 +221,8 @@ interface BucketFindingRow {
   bucket_name: string;
   status: string;
   reason: string;
+  custom_domain: string | null;
+  bound_to_workers: string | null;
 }
 
 interface KvFindingRow {
@@ -208,6 +230,7 @@ interface KvFindingRow {
   title: string;
   status: string;
   reason: string;
+  bound_to_workers: string | null;
 }
 
 interface D1FindingRow {
@@ -215,6 +238,31 @@ interface D1FindingRow {
   name: string;
   status: string;
   reason: string;
+  bound_to_workers: string | null;
+  num_tables: number | null;
+  file_size: number | null;
+}
+
+// specs/016-storage-dashboard data-model.md — "none" for zero referencing
+// Workers, the single name for exactly one, a count for more than one
+// (never a truncated name list).
+export function boundToLabel(workers: readonly string[]): string {
+  if (workers.length === 0) return "none";
+  if (workers.length === 1) return workers[0];
+  return `${workers.length} workers`;
+}
+
+// bound_to_workers predates this migration for rows written before it, so
+// the column can be NULL — treated the same as "confirmed zero" (`[]`)
+// rather than a parse error.
+function parseBoundToWorkers(json: string | null): string[] {
+  if (!json) return [];
+  try {
+    const parsed = JSON.parse(json);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
 }
 
 // Unlike Modules 1-4, buckets/namespaces/databases are three fully
@@ -260,36 +308,54 @@ storageRoutes.get("/inventory", async (c) => {
 
   const [{ results: bucketRows }, { results: kvRows }, { results: d1Rows }] = await Promise.all([
     c.env.DB.prepare(
-      `SELECT bucket_name, status, reason FROM r2_bucket_findings WHERE run_id = ? ORDER BY bucket_name`,
+      `SELECT bucket_name, status, reason, custom_domain, bound_to_workers FROM r2_bucket_findings WHERE run_id = ? ORDER BY bucket_name`,
     ).bind(latest.run_id).all<BucketFindingRow>(),
     c.env.DB.prepare(
-      `SELECT namespace_id, title, status, reason FROM kv_namespace_findings WHERE run_id = ? ORDER BY title`,
+      `SELECT namespace_id, title, status, reason, bound_to_workers FROM kv_namespace_findings WHERE run_id = ? ORDER BY title`,
     ).bind(latest.run_id).all<KvFindingRow>(),
     c.env.DB.prepare(
-      `SELECT database_uuid, name, status, reason FROM d1_database_findings WHERE run_id = ? ORDER BY name`,
+      `SELECT database_uuid, name, status, reason, bound_to_workers, num_tables, file_size FROM d1_database_findings WHERE run_id = ? ORDER BY name`,
     ).bind(latest.run_id).all<D1FindingRow>(),
   ]);
 
   return c.json({
     run_id: latest.run_id,
     evaluated_at: latest.evaluated_at,
-    buckets: bucketRows.map((b) => ({
-      bucket_name: b.bucket_name,
-      status: b.status,
-      reason: b.reason,
-    })),
-    kv_namespaces: kvRows.map((k) => ({
-      namespace_id: k.namespace_id,
-      title: k.title,
-      status: k.status,
-      reason: k.reason,
-    })),
-    d1_databases: d1Rows.map((d) => ({
-      database_uuid: d.database_uuid,
-      name: d.name,
-      status: d.status,
-      reason: d.reason,
-    })),
+    buckets: bucketRows.map((b) => {
+      const boundToWorkers = parseBoundToWorkers(b.bound_to_workers);
+      return {
+        bucket_name: b.bucket_name,
+        status: b.status,
+        reason: b.reason,
+        custom_domain: b.custom_domain,
+        bound_to_workers: boundToWorkers,
+        bound_to: boundToLabel(boundToWorkers),
+      };
+    }),
+    kv_namespaces: kvRows.map((k) => {
+      const boundToWorkers = parseBoundToWorkers(k.bound_to_workers);
+      return {
+        namespace_id: k.namespace_id,
+        title: k.title,
+        status: k.status,
+        reason: k.reason,
+        bound_to_workers: boundToWorkers,
+        bound_to: boundToLabel(boundToWorkers),
+      };
+    }),
+    d1_databases: d1Rows.map((d) => {
+      const boundToWorkers = parseBoundToWorkers(d.bound_to_workers);
+      return {
+        database_uuid: d.database_uuid,
+        name: d.name,
+        status: d.status,
+        reason: d.reason,
+        bound_to_workers: boundToWorkers,
+        bound_to: boundToLabel(boundToWorkers),
+        num_tables: d.num_tables,
+        file_size: d.file_size,
+      };
+    }),
   });
 });
 

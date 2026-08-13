@@ -64,7 +64,11 @@ existing Application health-status semantics unchanged; Service Tokens is untouc
 [**Pages Dashboard**](specs/015-pages-dashboard/) is the fourth — upgrades the existing Pages page
 in place, one row per project (production domain, production branch, last build status + recency,
 unchanged exposure health) instead of the prior 3-or-more rows per project (one per underlying
-check), no new token scope.
+check), no new token scope. [**Storage Dashboard**](specs/016-storage-dashboard/) is the fifth —
+upgrades the existing R2/KV/D1 page in place, a "Bound to" column shared across all three grouped
+tables (which deployed Worker(s) actually reference each resource), a Custom domain column for R2
+buckets, and Tables/Size columns for D1 databases, reusing the existing exposure/usage status
+semantics unchanged; no new token scope.
 
 ## Prerequisites
 

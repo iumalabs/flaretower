@@ -54,12 +54,20 @@ function isAppOpenOrUnconfigured(app: AccessApplication): boolean {
 export function evaluateBucketExposure(
   bucket: BucketInventoryItem,
   apps: AccessApplication[] | null,
+  boundToWorkers: readonly string[] = [],
 ): BucketEvaluation {
+  // Pure pass-through (specs/016-storage-dashboard research.md §2/§3) —
+  // not an input to any branch below.
+  const customDomain = bucket.customDomains.find((d) => d.enabled)?.domain ?? null;
+  const boundTo = [...boundToWorkers];
+
   if (bucket.evaluationError) {
     return {
       bucketName: bucket.bucketName,
       status: "not_evaluated",
       reason: bucket.evaluationError,
+      customDomain,
+      boundToWorkers: boundTo,
     };
   }
 
@@ -72,6 +80,8 @@ export function evaluateBucketExposure(
       bucketName: bucket.bucketName,
       status: "critical",
       reason: "r2.dev managed public URL is enabled",
+      customDomain,
+      boundToWorkers: boundTo,
     };
   }
 
@@ -81,6 +91,8 @@ export function evaluateBucketExposure(
       bucketName: bucket.bucketName,
       status: "safe",
       reason: "no r2.dev domain and no enabled custom domains",
+      customDomain,
+      boundToWorkers: boundTo,
     };
   }
 
@@ -89,6 +101,8 @@ export function evaluateBucketExposure(
       bucketName: bucket.bucketName,
       status: "not_evaluated",
       reason: "could not evaluate Access coverage (Access applications API error)",
+      customDomain,
+      boundToWorkers: boundTo,
     };
   }
 
@@ -102,6 +116,8 @@ export function evaluateBucketExposure(
       reason: `enabled custom domain(s) not covered by any Access application: ${
         uncoveredDomains.map((d) => d.domain).join(", ")
       }`,
+      customDomain,
+      boundToWorkers: boundTo,
     };
   }
 
@@ -116,6 +132,8 @@ export function evaluateBucketExposure(
         `enabled custom domain(s) covered by an Access application that does not meaningfully restrict access: ${
           openDomains.map((d) => d.domain).join(", ")
         }`,
+      customDomain,
+      boundToWorkers: boundTo,
     };
   }
 
@@ -123,6 +141,8 @@ export function evaluateBucketExposure(
     bucketName: bucket.bucketName,
     status: "safe",
     reason: "every enabled custom domain is covered by a meaningfully scoped Access policy",
+    customDomain,
+    boundToWorkers: boundTo,
   };
 }
 
@@ -134,13 +154,17 @@ export function evaluateKvNamespaceUsage(
   namespace: KvNamespaceInventoryItem,
   referencedIds: Set<string>,
   allBindingsConfirmed: boolean,
+  boundToWorkers: readonly string[] = [],
 ): KvNamespaceEvaluation {
+  const boundTo = [...boundToWorkers];
+
   if (namespace.evaluationError) {
     return {
       namespaceId: namespace.namespaceId,
       title: namespace.title,
       status: "not_evaluated",
       reason: namespace.evaluationError,
+      boundToWorkers: boundTo,
     };
   }
 
@@ -150,6 +174,7 @@ export function evaluateKvNamespaceUsage(
       title: namespace.title,
       status: "safe",
       reason: "referenced by at least one deployed Worker's bindings",
+      boundToWorkers: boundTo,
     };
   }
 
@@ -159,6 +184,7 @@ export function evaluateKvNamespaceUsage(
       title: namespace.title,
       status: "not_evaluated",
       reason: "could not confirm usage — some Worker bindings could not be checked",
+      boundToWorkers: boundTo,
     };
   }
 
@@ -167,6 +193,7 @@ export function evaluateKvNamespaceUsage(
     title: namespace.title,
     status: "warning",
     reason: "not referenced by any deployed Worker's bindings",
+    boundToWorkers: boundTo,
   };
 }
 
@@ -174,13 +201,24 @@ export function evaluateD1DatabaseUsage(
   database: D1DatabaseInventoryItem,
   referencedIds: Set<string>,
   allBindingsConfirmed: boolean,
+  boundToWorkers: readonly string[] = [],
 ): D1DatabaseEvaluation {
+  // Pure pass-through (specs/016-storage-dashboard research.md §1) — not
+  // an input to any branch below. undefined (detail fetch failed/not
+  // attempted) becomes null, distinct from a real 0.
+  const numTables = database.numTables ?? null;
+  const fileSizeBytes = database.fileSizeBytes ?? null;
+  const boundTo = [...boundToWorkers];
+
   if (database.evaluationError) {
     return {
       databaseUuid: database.databaseUuid,
       name: database.name,
       status: "not_evaluated",
       reason: database.evaluationError,
+      boundToWorkers: boundTo,
+      numTables,
+      fileSizeBytes,
     };
   }
 
@@ -190,6 +228,9 @@ export function evaluateD1DatabaseUsage(
       name: database.name,
       status: "safe",
       reason: "referenced by at least one deployed Worker's bindings",
+      boundToWorkers: boundTo,
+      numTables,
+      fileSizeBytes,
     };
   }
 
@@ -199,6 +240,9 @@ export function evaluateD1DatabaseUsage(
       name: database.name,
       status: "not_evaluated",
       reason: "could not confirm usage — some Worker bindings could not be checked",
+      boundToWorkers: boundTo,
+      numTables,
+      fileSizeBytes,
     };
   }
 
@@ -207,28 +251,50 @@ export function evaluateD1DatabaseUsage(
     name: database.name,
     status: "warning",
     reason: "not referenced by any deployed Worker's bindings",
+    boundToWorkers: boundTo,
+    numTables,
+    fileSizeBytes,
   };
 }
 
 export function evaluateBuckets(
   buckets: BucketInventoryItem[],
   apps: AccessApplication[] | null,
+  boundToMap: Map<string, string[]> = new Map(),
 ): BucketEvaluation[] {
-  return buckets.map((bucket) => evaluateBucketExposure(bucket, apps));
+  return buckets.map((bucket) =>
+    evaluateBucketExposure(bucket, apps, boundToMap.get(bucket.bucketName) ?? [])
+  );
 }
 
 export function evaluateKvNamespaces(
   namespaces: KvNamespaceInventoryItem[],
   referencedIds: Set<string>,
   allBindingsConfirmed: boolean,
+  boundToMap: Map<string, string[]> = new Map(),
 ): KvNamespaceEvaluation[] {
-  return namespaces.map((n) => evaluateKvNamespaceUsage(n, referencedIds, allBindingsConfirmed));
+  return namespaces.map((n) =>
+    evaluateKvNamespaceUsage(
+      n,
+      referencedIds,
+      allBindingsConfirmed,
+      boundToMap.get(n.namespaceId) ?? [],
+    )
+  );
 }
 
 export function evaluateD1Databases(
   databases: D1DatabaseInventoryItem[],
   referencedIds: Set<string>,
   allBindingsConfirmed: boolean,
+  boundToMap: Map<string, string[]> = new Map(),
 ): D1DatabaseEvaluation[] {
-  return databases.map((d) => evaluateD1DatabaseUsage(d, referencedIds, allBindingsConfirmed));
+  return databases.map((d) =>
+    evaluateD1DatabaseUsage(
+      d,
+      referencedIds,
+      allBindingsConfirmed,
+      boundToMap.get(d.databaseUuid) ?? [],
+    )
+  );
 }

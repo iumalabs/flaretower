@@ -110,6 +110,12 @@ interface RawBinding {
   type: string;
   namespace_id?: string;
   id?: string;
+  bucket_name?: string;
+}
+
+interface RawD1DatabaseDetail {
+  num_tables?: number;
+  file_size?: number;
 }
 
 function errorMessage(reason: unknown): string {
@@ -162,6 +168,28 @@ export async function listD1Databases(
     creds,
     fetchImpl,
   );
+}
+
+// The per-database detail endpoint (distinct from the list call above)
+// returns num_tables/file_size, which the list call doesn't (specs/016-
+// storage-dashboard research.md §1). Returns {} on failure rather than
+// throwing — a database whose detail couldn't be fetched still exists and
+// should keep rendering its other columns (spec.md Edge Cases).
+export async function getD1DatabaseDetail(
+  creds: CloudflareStorageCredentials,
+  databaseUuid: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<{ numTables?: number; fileSizeBytes?: number }> {
+  try {
+    const detail = await cfFetch<RawD1DatabaseDetail>(
+      `/accounts/${creds.accountId}/d1/database/${databaseUuid}`,
+      creds,
+      fetchImpl,
+    );
+    return { numTables: detail.num_tables, fileSizeBytes: detail.file_size };
+  } catch {
+    return {};
+  }
 }
 
 export async function getBucketManagedDomain(
@@ -238,11 +266,30 @@ export async function listScriptBindings(
 export interface BindingReferences {
   kvNamespaceIds: Set<string>;
   d1DatabaseIds: Set<string>;
+  // specs/016-storage-dashboard research.md §2 — additive alongside the
+  // Sets above (which stay exactly as they are, so the existing
+  // safe/warning usage decision in evaluate.ts is untouched): the actual
+  // Worker script name(s) that reference each resource, for display only.
+  // R2 buckets are keyed by name (r2_bucket bindings have no id, only
+  // bucket_name) — buckets were never scanned for "unused" before this,
+  // and still aren't; this map exists purely to populate "Bound to".
+  kvNamespaceBoundTo: Map<string, string[]>;
+  d1DatabaseBoundTo: Map<string, string[]>;
+  r2BucketBoundTo: Map<string, string[]>;
   // false if the script list itself failed, or if any individual
   // script's bindings could not be fetched — a namespace/database not
   // found in the sets above can only be confidently called "unused" when
   // this is true (research.md §3's partial-failure rule).
   allBindingsConfirmed: boolean;
+}
+
+function addBinding(map: Map<string, string[]>, key: string, workerName: string): void {
+  const existing = map.get(key);
+  if (existing) {
+    existing.push(workerName);
+  } else {
+    map.set(key, [workerName]);
+  }
 }
 
 // Scans every deployed Worker's bindings to build the set of KV
@@ -259,11 +306,21 @@ async function buildBindingReferences(
   try {
     scriptNames = await listWorkerScripts(creds, fetchImpl);
   } catch {
-    return { kvNamespaceIds: new Set(), d1DatabaseIds: new Set(), allBindingsConfirmed: false };
+    return {
+      kvNamespaceIds: new Set(),
+      d1DatabaseIds: new Set(),
+      kvNamespaceBoundTo: new Map(),
+      d1DatabaseBoundTo: new Map(),
+      r2BucketBoundTo: new Map(),
+      allBindingsConfirmed: false,
+    };
   }
 
   const kvNamespaceIds = new Set<string>();
   const d1DatabaseIds = new Set<string>();
+  const kvNamespaceBoundTo = new Map<string, string[]>();
+  const d1DatabaseBoundTo = new Map<string, string[]>();
+  const r2BucketBoundTo = new Map<string, string[]>();
   let allBindingsConfirmed = true;
 
   // One fetch per script — capped at 5 concurrent (worker/concurrency.ts),
@@ -276,9 +333,13 @@ async function buildBindingReferences(
     5,
     async (name) => {
       try {
-        return { ok: true as const, bindings: await listScriptBindings(creds, name, fetchImpl) };
+        return {
+          ok: true as const,
+          name,
+          bindings: await listScriptBindings(creds, name, fetchImpl),
+        };
       } catch {
-        return { ok: false as const, bindings: [] };
+        return { ok: false as const, name, bindings: [] };
       }
     },
   );
@@ -290,14 +351,26 @@ async function buildBindingReferences(
     for (const binding of result.bindings) {
       if (binding.type === "kv_namespace" && binding.namespace_id) {
         kvNamespaceIds.add(binding.namespace_id);
+        addBinding(kvNamespaceBoundTo, binding.namespace_id, result.name);
       }
       if (binding.type === "d1" && binding.id) {
         d1DatabaseIds.add(binding.id);
+        addBinding(d1DatabaseBoundTo, binding.id, result.name);
+      }
+      if (binding.type === "r2_bucket" && binding.bucket_name) {
+        addBinding(r2BucketBoundTo, binding.bucket_name, result.name);
       }
     }
   }
 
-  return { kvNamespaceIds, d1DatabaseIds, allBindingsConfirmed };
+  return {
+    kvNamespaceIds,
+    d1DatabaseIds,
+    kvNamespaceBoundTo,
+    d1DatabaseBoundTo,
+    r2BucketBoundTo,
+    allBindingsConfirmed,
+  };
 }
 
 export interface StorageInventory {
@@ -355,6 +428,23 @@ async function fetchBucketsWithDomains(
   });
 }
 
+// One small extra fetch per already-discovered D1 database (specs/016-
+// storage-dashboard research.md §1) — capped at 2 concurrent, same
+// modest cap as fetchBucketsWithDomains. A per-database detail failure
+// only leaves that database's numTables/fileSizeBytes undefined; it does
+// NOT surface as an evaluationError, since the database itself is
+// already confirmed to exist from the list call (spec.md Edge Cases).
+async function fetchD1DatabasesWithDetail(
+  creds: CloudflareStorageCredentials,
+  rawDatabases: RawD1Database[],
+  fetchImpl: typeof fetch,
+): Promise<D1DatabaseInventoryItem[]> {
+  return await mapWithConcurrency(rawDatabases, 2, async (d) => {
+    const detail = await getD1DatabaseDetail(creds, d.uuid, fetchImpl);
+    return { databaseUuid: d.uuid, name: d.name, ...detail };
+  });
+}
+
 // Unlike Modules 1-4, R2/KV/D1 are three fully independent resource
 // lists — zero buckets does not imply zero namespaces or databases, so
 // each total-list failure surfaces its own sentinel entry, independently
@@ -384,7 +474,7 @@ export async function buildStorageInventory(
     }];
 
   const d1Databases: D1DatabaseInventoryItem[] = d1Result.status === "fulfilled"
-    ? d1Result.value.map((d) => ({ databaseUuid: d.uuid, name: d.name }))
+    ? await fetchD1DatabasesWithDetail(creds, d1Result.value, fetchImpl)
     : [{
       databaseUuid: "(unavailable)",
       name: "(unavailable)",
