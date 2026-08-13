@@ -39,8 +39,15 @@ Deno.test("buildDnsInventory - zones and their records are enumerated and groupe
             content: "203.0.113.1",
             proxiable: true,
             proxied: true,
+            ttl: 1,
           },
-          { name: "example.com", type: "MX", content: "10 mail.example.com", proxiable: false },
+          {
+            name: "example.com",
+            type: "MX",
+            content: "10 mail.example.com",
+            proxiable: false,
+            ttl: 3600,
+          },
         ],
         errors: [],
       })],
@@ -54,9 +61,13 @@ Deno.test("buildDnsInventory - zones and their records are enumerated and groupe
   const aRecord = zones[0].records.find((r) => r.recordType === "A");
   assertEquals(aRecord?.proxyCapable, true);
   assertEquals(aRecord?.proxied, true);
+  // specs/013-dns-dashboard/research.md §1 — ttl is already in this same
+  // response, just newly captured.
+  assertEquals(aRecord?.ttl, 1);
   const mxRecord = zones[0].records.find((r) => r.recordType === "MX");
   assertEquals(mxRecord?.proxyCapable, false);
   assertEquals(mxRecord?.proxied, null);
+  assertEquals(mxRecord?.ttl, 3600);
 });
 
 Deno.test("buildDnsInventory - a zone with zero records still appears", async () => {

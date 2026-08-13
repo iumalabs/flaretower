@@ -1,5 +1,9 @@
 import { assertEquals } from "@std/assert";
-import { evaluateRecord } from "../../worker/modules/dns/evaluate.ts";
+import {
+  evaluateDmarcPolicy,
+  evaluateRecord,
+  isPlatformTargetDomain,
+} from "../../worker/modules/dns/evaluate.ts";
 import type { DanglingInsight, DnsRecord } from "../../worker/modules/dns/types.ts";
 
 function record(overrides: Partial<DnsRecord>): DnsRecord {
@@ -118,4 +122,99 @@ Deno.test("evaluateRecord - dangling (critical) takes priority over DNS-only (wa
     [insight()],
   );
   assertEquals(result.status, "critical");
+});
+
+// specs/013-dns-dashboard/research.md §2
+Deno.test("evaluateDmarcPolicy - p=none on a _dmarc TXT record is flagged", () => {
+  const reason = evaluateDmarcPolicy(
+    record({
+      recordName: "_dmarc.example.com",
+      recordType: "TXT",
+      content: "v=DMARC1; p=none; rua=mailto:x@example.com",
+    }),
+  );
+  assertEquals(reason, "DMARC policy provides no enforcement (p=none)");
+});
+
+Deno.test("evaluateDmarcPolicy - p=quarantine and p=reject are not flagged", () => {
+  for (const policy of ["quarantine", "reject"]) {
+    const reason = evaluateDmarcPolicy(
+      record({
+        recordName: "_dmarc.example.com",
+        recordType: "TXT",
+        content: `v=DMARC1; p=${policy}`,
+      }),
+    );
+    assertEquals(reason, null);
+  }
+});
+
+Deno.test("evaluateDmarcPolicy - an unparseable value never fabricates a warning", () => {
+  const reason = evaluateDmarcPolicy(
+    record({
+      recordName: "_dmarc.example.com",
+      recordType: "TXT",
+      content: "not a dmarc string at all",
+    }),
+  );
+  assertEquals(reason, null);
+});
+
+Deno.test("evaluateDmarcPolicy - never applies to a non-_dmarc record, even with p=none-like content", () => {
+  const reason = evaluateDmarcPolicy(
+    record({ recordName: "other.example.com", recordType: "TXT", content: "v=DMARC1; p=none" }),
+  );
+  assertEquals(reason, null);
+});
+
+Deno.test("evaluateDmarcPolicy - never applies to a non-TXT record", () => {
+  const reason = evaluateDmarcPolicy(
+    record({ recordName: "_dmarc.example.com", recordType: "CNAME", content: "p=none" }),
+  );
+  assertEquals(reason, null);
+});
+
+Deno.test("evaluateRecord - _dmarc p=none surfaces as a warning via evaluateRecord itself", () => {
+  const result = evaluateRecord(
+    record({
+      recordName: "_dmarc.example.com",
+      recordType: "TXT",
+      proxyCapable: false,
+      proxied: null,
+      content: "v=DMARC1; p=none",
+    }),
+    [],
+  );
+  assertEquals(result.status, "warning");
+  assertEquals(result.reason, "DMARC policy provides no enforcement (p=none)");
+});
+
+// specs/013-dns-dashboard/research.md §3
+Deno.test("isPlatformTargetDomain - matches known Cloudflare platform suffixes", () => {
+  assertEquals(isPlatformTargetDomain("acme-docs.pages.dev"), true);
+  assertEquals(isPlatformTargetDomain("api-gateway.acme-labs.workers.dev"), true);
+});
+
+Deno.test("isPlatformTargetDomain - does not match unrelated content", () => {
+  assertEquals(isPlatformTargetDomain("192.0.2.1"), false);
+  assertEquals(isPlatformTargetDomain("api-gateway.acme-labs.workers.dev.evil.com"), false);
+});
+
+Deno.test("evaluateRecord - isPlatformTarget is presentational only, never affects status", () => {
+  const result = evaluateRecord(
+    record({ recordType: "CNAME", content: "acme-docs.pages.dev", proxied: true }),
+    [],
+  );
+  assertEquals(result.isPlatformTarget, true);
+  assertEquals(result.status, "safe");
+});
+
+Deno.test("evaluateRecord - ttl passes through unchanged", () => {
+  const result = evaluateRecord(record({ ttl: 3600 }), []);
+  assertEquals(result.ttl, 3600);
+});
+
+Deno.test("evaluateRecord - ttl is null when not present on the source record", () => {
+  const result = evaluateRecord(record({}), []);
+  assertEquals(result.ttl, null);
 });

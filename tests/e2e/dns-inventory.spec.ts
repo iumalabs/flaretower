@@ -13,6 +13,8 @@ const MOCK_DNS_INVENTORY = {
           content: "old-blog.herokuapp.com",
           proxy_capable: true,
           proxied: false,
+          ttl: 300,
+          is_platform_target: false,
           status: "critical",
           reason: "dangling CNAME target",
         },
@@ -22,6 +24,8 @@ const MOCK_DNS_INVENTORY = {
           content: "203.0.113.10",
           proxy_capable: true,
           proxied: false,
+          ttl: 300,
+          is_platform_target: false,
           status: "warning",
           reason: "DNS-only — bypasses Cloudflare protection",
         },
@@ -31,6 +35,8 @@ const MOCK_DNS_INVENTORY = {
           content: "10 mail.example.com",
           proxy_capable: false,
           proxied: null,
+          ttl: 3600,
+          is_platform_target: false,
           status: "safe",
           reason: "not proxy-capable",
         },
@@ -40,8 +46,48 @@ const MOCK_DNS_INVENTORY = {
           content: "203.0.113.20",
           proxy_capable: true,
           proxied: false,
+          ttl: 300,
+          is_platform_target: false,
           status: "not_evaluated",
           reason: "could not evaluate dangling-target status (Security Insights API error)",
+        },
+        {
+          record_name: "_dmarc.example.com",
+          type: "TXT",
+          content: "v=DMARC1; p=none",
+          proxy_capable: false,
+          proxied: null,
+          ttl: 3600,
+          is_platform_target: false,
+          status: "warning",
+          reason: "DMARC policy provides no enforcement (p=none)",
+        },
+        {
+          record_name: "docs.example.com",
+          type: "CNAME",
+          content: "example-docs.pages.dev",
+          proxy_capable: true,
+          proxied: true,
+          ttl: 1,
+          is_platform_target: true,
+          status: "safe",
+          reason: "proxied through Cloudflare",
+        },
+      ],
+    },
+    {
+      zone_name: "second.example",
+      records: [
+        {
+          record_name: "second.example",
+          type: "A",
+          content: "203.0.113.99",
+          proxy_capable: true,
+          proxied: true,
+          ttl: 1,
+          is_platform_target: false,
+          status: "safe",
+          reason: "proxied through Cloudflare",
         },
       ],
     },
@@ -67,6 +113,26 @@ test.beforeEach(async ({ page }) => {
       contentType: "application/json",
       body: JSON.stringify({ modules: [], unavailable_sources: [] }),
     }));
+  await page.route("**/api/workers/dashboard", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        generated_at: "2026-08-07T12:00:00Z",
+        summary: {
+          deployed_count: 0,
+          deployed_by_environment: { production: 0, preview: 0 },
+          requests_24h_total: null,
+          requests_24h_change_pct: null,
+          error_rate_pct: null,
+          errors_24h_total: null,
+          cpu_p99_ms: null,
+        },
+        workers: [],
+        recent_changes: [],
+        unavailable: [],
+      }),
+    }));
   await page.goto("/");
   await page.getByRole("button", { name: "DNS" }).click();
 });
@@ -81,8 +147,7 @@ function row(
   return page.getByTestId(`findings-row-${zone}:${type}:${name}:${content}`);
 }
 
-test("US1 — every zone and every record appears, none omitted", async ({ page }) => {
-  await expect(page.getByText("example.com", { exact: true }).first()).toBeVisible();
+test("US1 — every zone and every record in the (default, first) selected zone appears, none omitted", async ({ page }) => {
   // old-blog.example.com is critical and legitimately appears twice — once
   // in its row, once in the module-scope alert banner above the table
   // (FR-013).
@@ -110,4 +175,83 @@ test("US2/AC3 — a record whose dangling status couldn't be determined renders 
   await expect(
     naRow.getByText("could not evaluate dangling-target status (Security Insights API error)"),
   ).toBeVisible();
+});
+
+test("specs/013 US1 — zone tabs show name+count; selecting a different tab swaps the table, no reload", async ({ page }) => {
+  await expect(page.getByRole("button", { name: "example.com" }).getByText("6", { exact: true }))
+    .toBeVisible();
+  await expect(page.getByRole("button", { name: "second.example" }).getByText("1", { exact: true }))
+    .toBeVisible();
+
+  // Before switching: example.com's records visible, second.example's not.
+  await expect(page.getByText("old-blog.example.com").first()).toBeVisible();
+  await expect(page.getByTestId("findings-row-second.example:A:second.example:203.0.113.99"))
+    .toHaveCount(0);
+
+  await page.getByRole("button", { name: "second.example" }).click();
+
+  await expect(page.getByTestId("findings-row-second.example:A:second.example:203.0.113.99"))
+    .toBeVisible();
+  // example.com's records are gone now that a different zone is selected.
+  await expect(page.getByText("old-blog.example.com")).toHaveCount(0);
+});
+
+test("specs/013 US2 — Proxy status and TTL render per record, distinct from the Finding status", async ({ page }) => {
+  const proxiedRow = row(
+    page,
+    "example.com",
+    "CNAME",
+    "docs.example.com",
+    "example-docs.pages.dev",
+  );
+  await expect(proxiedRow.getByText("PROXIED", { exact: true })).toBeVisible();
+  await expect(proxiedRow.getByText("auto")).toBeVisible();
+
+  const dnsOnlyRow = row(page, "example.com", "A", "api.example.com", "203.0.113.10");
+  await expect(dnsOnlyRow.getByText("DNS ONLY")).toBeVisible();
+  await expect(dnsOnlyRow.getByText("300")).toBeVisible();
+
+  const naRow = row(page, "example.com", "MX", "example.com", "10 mail.example.com");
+  await expect(naRow.getByText("N/A").first()).toBeVisible();
+  await expect(naRow.getByText("3600")).toBeVisible();
+});
+
+test("specs/013 US3 — an ineffective DMARC policy is flagged as a warning on the _dmarc record", async ({ page }) => {
+  const dmarcRow = row(page, "example.com", "TXT", "_dmarc.example.com", "v=DMARC1; p=none");
+  await expect(dmarcRow.getByText("WARNING")).toBeVisible();
+  await expect(dmarcRow.getByText("DMARC policy provides no enforcement (p=none)")).toBeVisible();
+});
+
+test("specs/013 US3 — a record pointing at a Cloudflare platform domain shows an informational label, not a warning", async ({ page }) => {
+  const platformRow = row(
+    page,
+    "example.com",
+    "CNAME",
+    "docs.example.com",
+    "example-docs.pages.dev",
+  );
+  await expect(platformRow.getByText("PUBLIC")).toBeVisible();
+  // Informational only — this record's actual Finding status stays PROTECTED (safe), not a warning color.
+  await expect(platformRow.getByText("PROTECTED")).toBeVisible();
+});
+
+test("specs/013 US1 — a zone with zero records shows its own empty state when selected", async ({ page }) => {
+  await page.unroute("**/api/dns/inventory");
+  await page.route("**/api/dns/inventory", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ...MOCK_DNS_INVENTORY,
+        zones: [
+          ...MOCK_DNS_INVENTORY.zones,
+          { zone_name: "empty.example", records: [] },
+        ],
+      }),
+    }));
+  await page.goto("/");
+  await page.getByRole("button", { name: "DNS" }).click();
+  await page.getByRole("button", { name: "empty.example" }).click();
+
+  await expect(page.getByText("No DNS records in empty.example")).toBeVisible();
 });

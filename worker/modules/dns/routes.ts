@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { requireRole } from "../../auth/access-jwt.ts";
 import { buildDnsInventory, listDanglingInsights } from "./inventory.ts";
-import { evaluateDnsInventory } from "./evaluate.ts";
+import { evaluateDnsInventory, isPlatformTargetDomain } from "./evaluate.ts";
 import { diffForDnsAlerts, dnsRecordKey } from "./alerts.ts";
 import type { DnsExposureStatus, ZoneEvaluation } from "./types.ts";
 
@@ -72,8 +72,8 @@ export async function runDnsEvaluation(
       return [
         env.DB.prepare(
           `INSERT INTO dns_findings
-             (id, zone_name, record_name, record_type, content, proxy_capable, proxied, status, reason, evaluated_at, run_id, run_trigger)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+             (id, zone_name, record_name, record_type, content, proxy_capable, proxied, ttl, status, reason, evaluated_at, run_id, run_trigger)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         ).bind(
           crypto.randomUUID(),
           zone.zoneName,
@@ -81,6 +81,7 @@ export async function runDnsEvaluation(
           EMPTY_ZONE_RECORD_TYPE,
           "",
           0,
+          null,
           null,
           "safe",
           "zone has no DNS records",
@@ -94,8 +95,8 @@ export async function runDnsEvaluation(
     return zone.records.map((r) =>
       env.DB.prepare(
         `INSERT INTO dns_findings
-           (id, zone_name, record_name, record_type, content, proxy_capable, proxied, status, reason, evaluated_at, run_id, run_trigger)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           (id, zone_name, record_name, record_type, content, proxy_capable, proxied, ttl, status, reason, evaluated_at, run_id, run_trigger)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       ).bind(
         crypto.randomUUID(),
         zone.zoneName,
@@ -104,6 +105,7 @@ export async function runDnsEvaluation(
         r.content,
         r.proxyCapable ? 1 : 0,
         r.proxied === null ? null : (r.proxied ? 1 : 0),
+        r.ttl,
         r.status,
         r.reason,
         evaluatedAt,
@@ -154,6 +156,7 @@ interface FindingRow {
   content: string;
   proxy_capable: number;
   proxied: number | null;
+  ttl: number | null;
   status: string;
   reason: string;
 }
@@ -168,7 +171,7 @@ dnsRoutes.get("/inventory", async (c) => {
   }
 
   const { results: rows } = await c.env.DB.prepare(
-    `SELECT zone_name, record_name, record_type, content, proxy_capable, proxied, status, reason
+    `SELECT zone_name, record_name, record_type, content, proxy_capable, proxied, ttl, status, reason
      FROM dns_findings WHERE run_id = ?
      ORDER BY zone_name, record_name, record_type`,
   ).bind(latest.run_id).all<FindingRow>();
@@ -194,6 +197,8 @@ dnsRoutes.get("/inventory", async (c) => {
         content: r.content,
         proxy_capable: r.proxy_capable === 1,
         proxied: r.proxied === null ? null : r.proxied === 1,
+        ttl: r.ttl,
+        is_platform_target: isPlatformTargetDomain(r.content),
         status: r.status,
         reason: r.reason,
       })),

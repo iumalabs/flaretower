@@ -55,6 +55,9 @@ metrics and a Workers-scoped recent-changes panel, following the design source's
 per-module dashboard mockups. Adds two new token scopes (`Account Analytics Read`, `Audit Logs Read`
 — see below); the same design update adds equivalent bespoke dashboards for the other 6 modules,
 tracked as their own specs (013-018) in the same pattern.
+[**DNS Dashboard**](specs/013-dns-dashboard/) is the second of those — upgrades the existing DNS
+page in place (zone tabs, Proxy/TTL columns, an ineffective-DMARC-policy warning, a platform-domain
+informational label), no new token scope.
 
 ## Prerequisites
 
