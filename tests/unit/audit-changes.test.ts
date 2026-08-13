@@ -77,7 +77,7 @@ Deno.test("computeChanges - a brand-new entity (no row at-or-before cutoff) has 
   assertEquals(changes[0].currentStatus, "warning");
 });
 
-Deno.test("computeChanges - a per-source read failure doesn't blank out the other thirteen", async () => {
+Deno.test("computeChanges - a per-source read failure doesn't blank out the other sixteen", async () => {
   const db = createMockD1(
     {
       ssl_tls_findings: [{ zone_id: "z1", zone_name: "example.com", status: "critical" }],

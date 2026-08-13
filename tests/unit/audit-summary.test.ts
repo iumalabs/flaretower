@@ -68,7 +68,7 @@ Deno.test("computePostureSummary - a source that has never run reports has_data 
   assertEquals(unavailableSources.some((s) => s.module === "dns"), false);
 });
 
-Deno.test("computePostureSummary - always returns all fourteen sources, even on a per-source read failure", async () => {
+Deno.test("computePostureSummary - always returns all seventeen sources, even on a per-source read failure", async () => {
   const db = createMockD1(
     { ssl_tls_findings: { run_id: "r1" } },
     { r1: [{ status: "safe", count: 1 }] },
@@ -77,7 +77,7 @@ Deno.test("computePostureSummary - always returns all fourteen sources, even on 
 
   const { modules } = await computePostureSummary(db);
 
-  assertEquals(modules.length, 14);
+  assertEquals(modules.length, 17);
   const exposureEntry = modules.find((e) => e.module === "exposure" && e.kind === "hostname");
   assertEquals(exposureEntry?.hasData, false);
   assertEquals(exposureEntry?.counts, { safe: 0, warning: 0, critical: 0, not_evaluated: 0 });
