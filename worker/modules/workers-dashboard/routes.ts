@@ -55,9 +55,19 @@ export async function buildWorkersDashboard(env: Env): Promise<WorkersDashboard>
   const now = new Date();
   const unavailable: UnavailableSource[] = [];
 
-  const [inventory, exposureByWorker, lastDeployTimesResult, analyticsResult, auditLogResult] =
-    await Promise.all([
-      buildWorkerInventory(creds),
+  // buildWorkerInventory() has its own internal fan-out (an initial 3-way
+  // Promise.all, then up to 5 concurrent per-script fetches —
+  // worker/concurrency.ts) — awaited to completion here rather than
+  // included in the Promise.all below. Running it alongside the other 4
+  // Cloudflare API calls (1 + 2 + 1 = 4 concurrent connections) would peak
+  // at up to 3 + 4 = 7 simultaneous connections, over the Workers runtime's
+  // 6-concurrent-connection-per-invocation limit — the same failure mode
+  // issue #292 confirmed live for the Security module, fixed there with an
+  // equivalent two-batch split.
+  const inventory = await buildWorkerInventory(creds);
+
+  const [exposureByWorker, lastDeployTimesResult, analyticsResult, auditLogResult] = await Promise
+    .all([
       getExposureStatusByWorker(env.DB).catch((err: unknown) => {
         unavailable.push({ source: "exposure", error: errorMessage(err) });
         return new Map<string, ExposureStatus[]>();
