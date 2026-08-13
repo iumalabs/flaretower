@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { JSX, ReactNode } from "react";
+import type { JSX, KeyboardEvent, ReactNode } from "react";
 import { type ExposureStatus, ExposureStatusBadge } from "./ExposureStatusBadge.tsx";
 import { EmptyState } from "./EmptyState.tsx";
 import { LoadingSkeleton } from "./LoadingSkeleton.tsx";
@@ -87,6 +87,21 @@ export function FindingsTable<Row>(
     }
   }
 
+  // The column-sort header and row-expand toggle below are plain <div>s
+  // (not <button>) for layout reasons, so neither gets keyboard focus or
+  // Enter/Space activation for free — this makes them behave like real
+  // buttons for keyboard-only and screen-reader users, not just mouse
+  // users. Space is included alongside Enter since that's the native
+  // activation key for a button role.
+  function activateOnKey(onActivate: () => void) {
+    return (e: KeyboardEvent<HTMLDivElement>) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        onActivate();
+      }
+    };
+  }
+
   return (
     <div style={{ border: "1px solid var(--border)", background: "var(--bg-canvas)" }}>
       <div style={{ display: "flex", gap: 8, padding: "10px 12px", flexWrap: "wrap" }}>
@@ -148,7 +163,14 @@ export function FindingsTable<Row>(
         {columns.map((c) => (
           <div
             key={c.key}
+            data-testid={`sort-header-${c.key}`}
+            role={c.sortValue ? "button" : undefined}
+            tabIndex={c.sortValue ? 0 : undefined}
+            aria-sort={c.sortValue && sortKey === c.key
+              ? (sortDir === 1 ? "ascending" : "descending")
+              : undefined}
             onClick={() => c.sortValue && toggleSort(c.key)}
+            onKeyDown={c.sortValue ? activateOnKey(() => toggleSort(c.key)) : undefined}
             style={{
               width: c.width,
               flex: c.width ? "none" : 1,
@@ -194,7 +216,13 @@ export function FindingsTable<Row>(
               }}
             >
               <div
+                role={row.detail ? "button" : undefined}
+                tabIndex={row.detail ? 0 : undefined}
+                aria-expanded={row.detail ? open : undefined}
                 onClick={() => row.detail && setExpanded(open ? null : row.id)}
+                onKeyDown={row.detail
+                  ? activateOnKey(() => setExpanded(open ? null : row.id))
+                  : undefined}
                 style={{
                   display: "flex",
                   alignItems: "center",
