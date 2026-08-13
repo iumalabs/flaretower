@@ -128,7 +128,7 @@ export async function buildWorkersDashboard(env: Env): Promise<WorkersDashboard>
   };
 }
 
-function buildAccountSummary(
+export function buildAccountSummary(
   workers: WorkerDashboardRow[],
   analyticsResult: Awaited<ReturnType<typeof fetchWorkersAnalytics>> | null,
 ): AccountSummary {
@@ -175,7 +175,7 @@ function errorMessage(reason: unknown): string {
   return reason instanceof Error ? reason.message : "unknown error";
 }
 
-function serializeDashboard(dashboard: WorkersDashboard) {
+export function serializeDashboard(dashboard: WorkersDashboard) {
   return {
     generated_at: dashboard.generatedAt,
     summary: {
