@@ -3,7 +3,7 @@
 // Exact response field names pinned against Cloudflare's documented API
 // shapes; final verification against a live account happens when Module 2's
 // T023 (quickstart.md) runs.
-import { mapWithConcurrency } from "../../concurrency.ts";
+import { mapWithConcurrency, withGlobalFetchSlot } from "../../concurrency.ts";
 import type { DanglingInsight, DnsRecord, Zone } from "./types.ts";
 
 export interface CloudflareDnsCredentials {
@@ -31,9 +31,16 @@ async function cfFetch<T>(
   creds: CloudflareDnsCredentials,
   fetchImpl: typeof fetch,
 ): Promise<T> {
-  const res = await fetchImpl(`${CF_API_BASE}${path}`, {
-    headers: { Authorization: `Bearer ${creds.apiToken}` },
-  });
+  // Gated by the invocation-wide semaphore (worker/concurrency.ts) — every
+  // module's cfFetch() goes through it, so the true total in-flight
+  // connection count across all of them together never exceeds the
+  // Workers runtime's 6-per-invocation limit, not just this one module's
+  // own fan-out.
+  const res = await withGlobalFetchSlot(() =>
+    fetchImpl(`${CF_API_BASE}${path}`, {
+      headers: { Authorization: `Bearer ${creds.apiToken}` },
+    })
+  );
 
   // Cloudflare's API returns its {success, errors} envelope as the body
   // even on 4xx/5xx responses — read it before deciding whether to throw,
