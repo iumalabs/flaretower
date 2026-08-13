@@ -4,6 +4,7 @@
 // established precedent (research.md, storage module's own Access-app
 // fetch) is local re-implementation over reaching into another module's
 // internals for an unrelated concern.
+import { withGlobalFetchSlot } from "../../concurrency.ts";
 import type { CloudflareCredentials } from "../workers-access-exposure/inventory.ts";
 
 const CF_API_BASE = "https://api.cloudflare.com/client/v4";
@@ -22,9 +23,16 @@ export async function getWorkerLastDeployTimes(
   creds: CloudflareCredentials,
   fetchImpl: typeof fetch = fetch,
 ): Promise<Map<string, string | null>> {
-  const res = await fetchImpl(`${CF_API_BASE}/accounts/${creds.accountId}/workers/scripts`, {
-    headers: { Authorization: `Bearer ${creds.apiToken}` },
-  });
+  // Gated by the invocation-wide semaphore (worker/concurrency.ts) — every
+  // module's cfFetch() goes through it, so the true total in-flight
+  // connection count across all of them together never exceeds the
+  // Workers runtime's 6-per-invocation limit, not just this one module's
+  // own fan-out.
+  const res = await withGlobalFetchSlot(() =>
+    fetchImpl(`${CF_API_BASE}/accounts/${creds.accountId}/workers/scripts`, {
+      headers: { Authorization: `Bearer ${creds.apiToken}` },
+    })
+  );
 
   if (!res.ok) {
     throw new Error(`Cloudflare Workers Scripts API returned HTTP ${res.status}`);

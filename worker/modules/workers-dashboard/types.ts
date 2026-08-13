@@ -31,7 +31,7 @@ export interface RecentChangeEntry {
   resultSummary: string | null;
 }
 
-export type UnavailableSourceName = "analytics" | "audit_log" | "exposure";
+export type UnavailableSourceName = "analytics" | "audit_log" | "exposure" | "last_deploy";
 
 export interface UnavailableSource {
   source: UnavailableSourceName;

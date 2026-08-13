@@ -60,10 +60,12 @@ Deno.test("buildAccountSummary - normal case computes change% and error rate fro
     current: {
       perScript: [{ scriptName: "worker-1", requests: 200, errors: 10, cpuTimeP50Ms: 5 }],
       cpuTimeP99Ms: 12,
+      truncated: false,
     },
     previous: {
       perScript: [{ scriptName: "worker-1", requests: 100, errors: 5, cpuTimeP50Ms: 4 }],
       cpuTimeP99Ms: 10,
+      truncated: false,
     },
   };
   const summary = buildAccountSummary(workers, analytics);
@@ -81,8 +83,9 @@ Deno.test("buildAccountSummary - zero previous requests yields null change%, not
     current: {
       perScript: [{ scriptName: "worker-1", requests: 50, errors: 0, cpuTimeP50Ms: 1 }],
       cpuTimeP99Ms: 3,
+      truncated: false,
     },
-    previous: { perScript: [], cpuTimeP99Ms: null },
+    previous: { perScript: [], cpuTimeP99Ms: null, truncated: false },
   };
   const summary = buildAccountSummary(workers, analytics);
   assertEquals(summary.requests24hChangePct, null);
@@ -91,8 +94,8 @@ Deno.test("buildAccountSummary - zero previous requests yields null change%, not
 Deno.test("buildAccountSummary - zero current requests yields null error rate, not NaN", () => {
   const workers = [worker()];
   const analytics: WorkersAnalyticsResult = {
-    current: { perScript: [], cpuTimeP99Ms: null },
-    previous: { perScript: [], cpuTimeP99Ms: null },
+    current: { perScript: [], cpuTimeP99Ms: null, truncated: false },
+    previous: { perScript: [], cpuTimeP99Ms: null, truncated: false },
   };
   const summary = buildAccountSummary(workers, analytics);
   assertEquals(summary.requests24hTotal, 0);

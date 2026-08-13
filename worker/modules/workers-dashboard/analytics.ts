@@ -6,6 +6,7 @@
 // dataset shape; final verification against a live account happens at
 // quickstart.md's end-to-end run, matching every other module's own
 // established pattern for pinning API shapes ahead of live verification.
+import { withGlobalFetchSlot } from "../../concurrency.ts";
 import type { CloudflareCredentials } from "../workers-access-exposure/inventory.ts";
 
 const GRAPHQL_ENDPOINT = "https://api.cloudflare.com/client/v4/graphql";
@@ -20,6 +21,13 @@ export interface ScriptAnalytics {
 export interface AnalyticsWindow {
   perScript: ScriptAnalytics[];
   cpuTimeP99Ms: number | null;
+  // True when the query's own `limit: 1000` cap was hit — Cloudflare's
+  // GraphQL API truncates server-side with no partial-data flag of its
+  // own, so an account with more than 1000 actively-invoked scripts in
+  // the window would otherwise have its totals silently understated with
+  // no way for a caller to tell (this project's own "no silent caps"
+  // convention).
+  truncated: boolean;
 }
 
 interface GraphQLResponse {
@@ -37,12 +45,18 @@ interface GraphQLResponse {
   errors?: Array<{ message: string }>;
 }
 
+// Not paginated — an account with more actively-invoked scripts than this
+// in the window has its result set silently truncated server-side by
+// Cloudflare; queryWindow() below surfaces that via AnalyticsWindow.truncated
+// rather than presenting a partial total as a complete one.
+const ANALYTICS_ROW_LIMIT = 1000;
+
 const QUERY = `
   query WorkersAnalytics($accountTag: String!, $start: Time!, $end: Time!) {
     viewer {
       accounts(filter: { accountTag: $accountTag }) {
         workersInvocationsAdaptive(
-          limit: 1000
+          limit: ${ANALYTICS_ROW_LIMIT}
           filter: { datetime_geq: $start, datetime_leq: $end }
         ) {
           dimensions { scriptName }
@@ -60,17 +74,24 @@ async function queryWindow(
   end: string,
   fetchImpl: typeof fetch,
 ): Promise<AnalyticsWindow> {
-  const res = await fetchImpl(GRAPHQL_ENDPOINT, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${creds.apiToken}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      query: QUERY,
-      variables: { accountTag: creds.accountId, start, end },
-    }),
-  });
+  // Gated by the invocation-wide semaphore (worker/concurrency.ts) — every
+  // module's cfFetch() goes through it, so the true total in-flight
+  // connection count across all of them together never exceeds the
+  // Workers runtime's 6-per-invocation limit, not just this one module's
+  // own fan-out.
+  const res = await withGlobalFetchSlot(() =>
+    fetchImpl(GRAPHQL_ENDPOINT, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${creds.apiToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        query: QUERY,
+        variables: { accountTag: creds.accountId, start, end },
+      }),
+    })
+  );
 
   if (!res.ok) {
     throw new Error(`Cloudflare GraphQL Analytics API returned HTTP ${res.status}`);
@@ -102,7 +123,7 @@ async function queryWindow(
     ? Math.max(...groups.map((g) => g.quantiles.cpuTimeP99))
     : null;
 
-  return { perScript, cpuTimeP99Ms };
+  return { perScript, cpuTimeP99Ms, truncated: groups.length >= ANALYTICS_ROW_LIMIT };
 }
 
 export interface WorkersAnalyticsResult {
