@@ -426,6 +426,40 @@ Deno.test("buildStorageInventory - bindingReferences preserves the referencing W
   assertEquals(inventory.bindingReferences.d1DatabaseBoundTo.get("db-unreferenced"), undefined);
 });
 
+// Regression coverage: a single Worker binding the same resource under two
+// different binding names must count once in "Bound to," not once per
+// binding.
+Deno.test("buildStorageInventory - bindingReferences dedupes a Worker that binds the same resource twice", async () => {
+  const fetchImpl = mockFetch([
+    ["/r2/buckets", () => jsonResponse({ success: true, result: { buckets: [] }, errors: [] })],
+    [
+      "/storage/kv/namespaces",
+      () => jsonResponse({ success: true, result: [], errors: [] }),
+    ],
+    ["/d1/database", () => jsonResponse({ success: true, result: [], errors: [] })],
+    R2_DEV_DISABLED,
+    NO_CUSTOM_DOMAINS,
+    EMPTY_ACCESS_APPS,
+    [
+      "/workers/scripts",
+      () => jsonResponse({ success: true, result: [{ id: "worker-a" }], errors: [] }),
+    ],
+    ["/worker-a/bindings", () =>
+      jsonResponse({
+        success: true,
+        result: [
+          { type: "d1", id: "db-shared" },
+          { type: "d1", id: "db-shared" },
+        ],
+        errors: [],
+      })],
+  ]);
+
+  const inventory = await buildStorageInventory(creds, fetchImpl);
+
+  assertEquals(inventory.bindingReferences.d1DatabaseBoundTo.get("db-shared"), ["worker-a"]);
+});
+
 Deno.test("buildStorageInventory - a per-script bindings-fetch failure marks allBindingsConfirmed false, other scripts' bindings still counted", async () => {
   const fetchImpl = mockFetch([
     ["/r2/buckets", () => jsonResponse({ success: true, result: { buckets: [] }, errors: [] })],
