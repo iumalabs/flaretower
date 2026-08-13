@@ -11,15 +11,29 @@ import type {
 } from "../../worker/modules/storage/types.ts";
 
 function bucketResult(status: BucketEvaluation["status"]): BucketEvaluation[] {
-  return [{ bucketName: "uploads", status, reason: "test" }];
+  return [{
+    bucketName: "uploads",
+    status,
+    reason: "test",
+    customDomain: null,
+    boundToWorkers: [],
+  }];
 }
 
 function kvResult(status: KvNamespaceEvaluation["status"]): KvNamespaceEvaluation[] {
-  return [{ namespaceId: "kv-1", title: "SESSIONS", status, reason: "test" }];
+  return [{ namespaceId: "kv-1", title: "SESSIONS", status, reason: "test", boundToWorkers: [] }];
 }
 
 function d1Result(status: D1DatabaseEvaluation["status"]): D1DatabaseEvaluation[] {
-  return [{ databaseUuid: "db-1", name: "flaretower", status, reason: "test" }];
+  return [{
+    databaseUuid: "db-1",
+    name: "flaretower",
+    status,
+    reason: "test",
+    boundToWorkers: [],
+    numTables: null,
+    fileSizeBytes: null,
+  }];
 }
 
 Deno.test("diffForBucketAlerts - first-ever critical alerts (no grace period)", () => {

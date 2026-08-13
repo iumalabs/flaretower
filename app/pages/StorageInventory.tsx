@@ -12,6 +12,8 @@ interface BucketFinding {
   bucket_name: string;
   status: ExposureStatus;
   reason: string;
+  custom_domain: string | null;
+  bound_to: string;
 }
 
 interface KvFinding {
@@ -19,6 +21,7 @@ interface KvFinding {
   title: string;
   status: ExposureStatus;
   reason: string;
+  bound_to: string;
 }
 
 interface D1Finding {
@@ -26,6 +29,9 @@ interface D1Finding {
   name: string;
   status: ExposureStatus;
   reason: string;
+  bound_to: string;
+  num_tables: number | null;
+  file_size: number | null;
 }
 
 interface StorageInventoryResponse {
@@ -44,45 +50,150 @@ async function fetchStorageInventory(): Promise<StorageInventoryResponse> {
   return await res.json();
 }
 
-function nameColumn<Row extends { reason: string }>(
-  label: string,
-  getName: (r: Row) => string,
-  getMeta: (r: Row) => string,
-): FindingsTableColumn<Row>[] {
-  return [
-    {
-      key: "name",
-      label,
-      sortValue: getName,
-      render: (r) => (
-        <span
-          style={{
-            fontFamily: "var(--font-mono)",
-            fontSize: "var(--text-code-size)",
-            color: "var(--fg-secondary)",
-          }}
-        >
-          {getName(r)}
-          <span style={{ color: "var(--fg-faint)" }}>· {getMeta(r)}</span>
-        </span>
-      ),
-    },
-    {
-      key: "reason",
-      label: "Reason",
-      width: "40%",
-      render: (r) => (
-        <span style={{ fontSize: "var(--text-body-size)", color: "var(--fg-muted)" }}>
-          {r.reason}
-        </span>
-      ),
-    },
-  ];
+// specs/016-storage-dashboard research.md §1 — deliberately coarse (no
+// fractional precision beyond one decimal), matching the mockup's own
+// "840 MB"/"2.8 GB" style. null = the D1 detail fetch failed.
+function formatBytes(bytes: number | null): string {
+  if (bytes === null) return "not available";
+  if (bytes < 1024) return `${bytes} B`;
+  const units = ["KB", "MB", "GB", "TB"];
+  let value = bytes / 1024;
+  let unitIndex = 0;
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024;
+    unitIndex++;
+  }
+  return `${value.toFixed(1)} ${units[unitIndex]}`;
 }
 
-const BUCKET_COLUMNS = nameColumn<BucketFinding>("Bucket", (r) => r.bucket_name, () => "bucket");
-const KV_COLUMNS = nameColumn<KvFinding>("Namespace", (r) => r.title, (r) => r.namespace_id);
-const D1_COLUMNS = nameColumn<D1Finding>("Database", (r) => r.name, (r) => r.database_uuid);
+function nameColumn<Row>(
+  label: string,
+  width: string,
+  getName: (r: Row) => string,
+  getMeta: (r: Row) => string,
+): FindingsTableColumn<Row> {
+  return {
+    key: "name",
+    label,
+    width,
+    sortValue: getName,
+    render: (r) => (
+      <span
+        style={{
+          fontFamily: "var(--font-mono)",
+          fontSize: "var(--text-code-size)",
+          color: "var(--fg-secondary)",
+        }}
+      >
+        {getName(r)}
+        <span style={{ color: "var(--fg-faint)" }}>· {getMeta(r)}</span>
+      </span>
+    ),
+  };
+}
+
+// Shared across all 3 tables (the mockup's "one grammar" — research.md
+// §2): which deployed Worker(s) reference this resource.
+function boundToColumn<Row extends { bound_to: string }>(): FindingsTableColumn<Row> {
+  return {
+    key: "bound_to",
+    label: "Bound to",
+    width: "16%",
+    sortValue: (r) => r.bound_to,
+    render: (r) => (
+      <span
+        style={{
+          fontFamily: "var(--font-mono)",
+          fontSize: "var(--text-code-size)",
+          color: r.bound_to === "none" ? "var(--fg-faint)" : "var(--fg-secondary)",
+        }}
+      >
+        {r.bound_to}
+      </span>
+    ),
+  };
+}
+
+function reasonColumn<Row extends { reason: string }>(): FindingsTableColumn<Row> {
+  return {
+    key: "reason",
+    label: "Reason",
+    render: (r) => (
+      <span style={{ fontSize: "var(--text-body-size)", color: "var(--fg-muted)" }}>
+        {r.reason}
+      </span>
+    ),
+  };
+}
+
+const BUCKET_COLUMNS: FindingsTableColumn<BucketFinding>[] = [
+  nameColumn<BucketFinding>("Bucket", "22%", (r) => r.bucket_name, () => "bucket"),
+  {
+    key: "custom_domain",
+    label: "Custom domain",
+    width: "18%",
+    sortValue: (r) => r.custom_domain ?? "",
+    render: (r) => (
+      <span
+        style={{
+          fontFamily: "var(--font-mono)",
+          fontSize: "var(--text-code-size)",
+          color: r.custom_domain ? "var(--fg-secondary)" : "var(--fg-faint)",
+        }}
+      >
+        {r.custom_domain ?? "none"}
+      </span>
+    ),
+  },
+  boundToColumn<BucketFinding>(),
+  reasonColumn<BucketFinding>(),
+];
+
+const KV_COLUMNS: FindingsTableColumn<KvFinding>[] = [
+  nameColumn<KvFinding>("Namespace", "26%", (r) => r.title, (r) => r.namespace_id),
+  boundToColumn<KvFinding>(),
+  reasonColumn<KvFinding>(),
+];
+
+const D1_COLUMNS: FindingsTableColumn<D1Finding>[] = [
+  nameColumn<D1Finding>("Database", "22%", (r) => r.name, (r) => r.database_uuid),
+  {
+    key: "num_tables",
+    label: "Tables",
+    width: "10%",
+    sortValue: (r) => r.num_tables ?? -1,
+    render: (r) => (
+      <span
+        style={{
+          fontFamily: "var(--font-mono)",
+          fontSize: "var(--text-code-size)",
+          color: r.num_tables === null ? "var(--fg-faint)" : "var(--fg-secondary)",
+        }}
+      >
+        {r.num_tables === null ? "not available" : r.num_tables}
+      </span>
+    ),
+  },
+  {
+    key: "file_size",
+    label: "Size",
+    width: "12%",
+    sortValue: (r) => r.file_size ?? -1,
+    render: (r) => (
+      <span
+        style={{
+          fontFamily: "var(--font-mono)",
+          fontSize: "var(--text-code-size)",
+          color: r.file_size === null ? "var(--fg-faint)" : "var(--fg-secondary)",
+        }}
+      >
+        {formatBytes(r.file_size)}
+      </span>
+    ),
+  },
+  boundToColumn<D1Finding>(),
+  reasonColumn<D1Finding>(),
+];
 
 function SectionHeading({ children }: { children: string }): JSX.Element {
   return (
@@ -151,6 +262,17 @@ export function StorageInventory(): JSX.Element {
     }
     : null;
 
+  // Real, computable numbers only (spec.md FR-006) — no total-size
+  // figure, since this project has no honest source for aggregate
+  // storage size across all 3 resource types (research.md §4).
+  const resourceCount = data
+    ? data.buckets.length + data.kv_namespaces.length + data.d1_databases.length
+    : 0;
+  const publiclyExposedCount = data
+    ? [...bucketRows ?? [], ...kvRows ?? [], ...d1Rows ?? []].filter((r) => r.status === "critical")
+      .length
+    : 0;
+
   return (
     <div>
       <h1
@@ -162,11 +284,12 @@ export function StorageInventory(): JSX.Element {
           margin: "0 0 8px",
         }}
       >
-        Storage inventory
+        Storage
       </h1>
       {data && (
         <p style={{ color: "var(--fg-faint)", fontSize: "var(--text-meta-size)", marginTop: 0 }}>
-          Last evaluated {data.evaluated_at} · run {data.run_id}
+          {resourceCount} resource{resourceCount === 1 ? "" : "s"} · {publiclyExposedCount}{" "}
+          publicly exposed · run {data.run_id}
         </p>
       )}
 

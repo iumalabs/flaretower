@@ -38,6 +38,11 @@ export interface KvNamespaceInventoryItem {
 export interface D1DatabaseInventoryItem {
   databaseUuid: string;
   name: string;
+  // specs/016-storage-dashboard research.md §1 — from the per-database
+  // detail endpoint, distinct from the list call above. undefined = the
+  // detail fetch failed or hasn't been attempted, never a fabricated 0.
+  numTables?: number;
+  fileSizeBytes?: number;
   evaluationError?: string;
 }
 
@@ -45,6 +50,10 @@ export interface BucketEvaluation {
   bucketName: string;
   status: BucketStatus;
   reason: string;
+  // specs/016-storage-dashboard research.md §2/§3 — pure pass-through,
+  // no bearing on `status`/`reason`.
+  customDomain: string | null;
+  boundToWorkers: string[];
 }
 
 export interface KvNamespaceEvaluation {
@@ -52,6 +61,7 @@ export interface KvNamespaceEvaluation {
   title: string;
   status: UsageStatus;
   reason: string;
+  boundToWorkers: string[];
 }
 
 export interface D1DatabaseEvaluation {
@@ -59,4 +69,7 @@ export interface D1DatabaseEvaluation {
   name: string;
   status: UsageStatus;
   reason: string;
+  boundToWorkers: string[];
+  numTables: number | null;
+  fileSizeBytes: number | null;
 }
