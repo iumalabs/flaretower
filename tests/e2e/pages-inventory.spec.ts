@@ -6,6 +6,13 @@ const MOCK_PAGES_INVENTORY = {
   projects: [
     {
       project_name: "marketing-site",
+      production_domain: "example.com",
+      production_branch: "main",
+      last_build_status: "safe",
+      last_build_reason: "latest production deployment succeeded",
+      last_build_created_at: "2026-08-08T11:00:00Z",
+      health_status: "safe",
+      health_reason: "covered by Access application(s): app-1",
       subdomain: {
         subdomain: "marketing-site.pages.dev",
         status: "safe",
@@ -15,6 +22,7 @@ const MOCK_PAGES_INVENTORY = {
         deployment_id: "dep-1",
         status: "safe",
         reason: "latest production deployment succeeded",
+        created_at: "2026-08-08T11:00:00Z",
       },
       domains: [
         { domain_name: "example.com", status: "safe", reason: "domain is active" },
@@ -27,6 +35,13 @@ const MOCK_PAGES_INVENTORY = {
     },
     {
       project_name: "empty-project",
+      production_domain: null,
+      production_branch: null,
+      last_build_status: "warning",
+      last_build_reason: "no production deployment exists yet",
+      last_build_created_at: null,
+      health_status: "critical",
+      health_reason: "no Access application covers this hostname",
       subdomain: {
         subdomain: "empty-project.pages.dev",
         status: "critical",
@@ -36,6 +51,7 @@ const MOCK_PAGES_INVENTORY = {
         deployment_id: null,
         status: "warning",
         reason: "no production deployment exists yet",
+        created_at: null,
       },
       domains: [],
     },
@@ -82,33 +98,42 @@ test.beforeEach(async ({ page }) => {
   await page.getByRole("button", { name: "Pages" }).click();
 });
 
-test("US1 — every project and every one of its custom domains appears, none omitted", async ({ page }) => {
-  await expect(page.getByText("marketing-site", { exact: true }).first()).toBeVisible();
-  await expect(page.getByText("empty-project", { exact: true }).first()).toBeVisible();
-  await expect(page.getByText("example.com", { exact: false }).first()).toBeVisible();
-  await expect(page.getByText("staging.example.com", { exact: false }).first()).toBeVisible();
+test("US1 — exactly one row per project, not one row per underlying check", async ({ page }) => {
+  await expect(page.getByTestId("findings-row-marketing-site")).toBeVisible();
+  await expect(page.getByTestId("findings-row-empty-project")).toBeVisible();
+  // Only 2 rows total — no separate subdomain/deployment/domain rows leak through.
+  await expect(page.locator("[data-testid^='findings-row-']")).toHaveCount(2);
 });
 
-test("US1 — an active domain renders safe, a non-active one renders warning", async ({ page }) => {
-  const activeRow = page.getByTestId("findings-row-marketing-site:domain:example.com");
-  await expect(activeRow.getByText("PROTECTED")).toBeVisible();
+test("US1 — production domain shows the real domain or an explicit none state", async ({ page }) => {
+  const withDomain = page.getByTestId("findings-row-marketing-site");
+  await expect(withDomain.getByText("example.com", { exact: true })).toBeVisible();
 
-  const pendingRow = page.getByTestId("findings-row-marketing-site:domain:staging.example.com");
-  await expect(pendingRow.getByText("WARNING")).toBeVisible();
+  const withoutDomain = page.getByTestId("findings-row-empty-project");
+  await expect(withoutDomain.getByText("none", { exact: true })).toBeVisible();
 });
 
-test("US2 — a covered pages.dev subdomain renders safe, an uncovered one renders critical", async ({ page }) => {
-  const coveredRow = page.getByTestId("findings-row-marketing-site:subdomain");
-  await expect(coveredRow.getByText("PROTECTED")).toBeVisible();
+test("US1 — branch shows the real branch or an explicit not-set state", async ({ page }) => {
+  const withBranch = page.getByTestId("findings-row-marketing-site");
+  await expect(withBranch.getByText("main", { exact: true })).toBeVisible();
 
-  const uncoveredRow = page.getByTestId("findings-row-empty-project:subdomain");
-  await expect(uncoveredRow.getByText("CRITICAL")).toBeVisible();
+  const withoutBranch = page.getByTestId("findings-row-empty-project");
+  await expect(withoutBranch.getByText("not set", { exact: true })).toBeVisible();
 });
 
-test("US3 — a successful production deployment renders safe, a missing one renders warning", async ({ page }) => {
-  const successRow = page.getByTestId("findings-row-marketing-site:deployment");
-  await expect(successRow.getByText("PROTECTED")).toBeVisible();
+test("US1 — last build shows success, failure, and no-deployment-yet as three distinct states", async ({ page }) => {
+  const succeeded = page.getByTestId("findings-row-marketing-site");
+  await expect(succeeded.getByText("success", { exact: false })).toBeVisible();
 
-  const missingRow = page.getByTestId("findings-row-empty-project:deployment");
-  await expect(missingRow.getByText("WARNING")).toBeVisible();
+  const noDeployment = page.getByTestId("findings-row-empty-project");
+  await expect(noDeployment.getByText("no production deployment yet", { exact: false }))
+    .toBeVisible();
+});
+
+test("US1 — health pill matches the existing subdomain-exposure status unchanged", async ({ page }) => {
+  const safeRow = page.getByTestId("findings-row-marketing-site");
+  await expect(safeRow.getByText("PROTECTED")).toBeVisible();
+
+  const criticalRow = page.getByTestId("findings-row-empty-project");
+  await expect(criticalRow.getByText("CRITICAL")).toBeVisible();
 });

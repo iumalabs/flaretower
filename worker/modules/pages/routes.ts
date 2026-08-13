@@ -108,8 +108,8 @@ export async function runPagesEvaluation(
 
   const subdomainStatements = subdomainResults.map((s) =>
     env.DB.prepare(
-      `INSERT INTO pages_subdomain_findings (id, project_name, subdomain, status, reason, evaluated_at, run_id, run_trigger)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO pages_subdomain_findings (id, project_name, subdomain, status, reason, evaluated_at, run_id, run_trigger, production_branch)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).bind(
       crypto.randomUUID(),
       s.projectName,
@@ -119,13 +119,14 @@ export async function runPagesEvaluation(
       evaluatedAt,
       runId,
       trigger,
+      s.productionBranch,
     )
   );
 
   const deploymentStatements = deploymentResults.map((d) =>
     env.DB.prepare(
-      `INSERT INTO pages_deployment_findings (id, project_name, deployment_id, status, reason, evaluated_at, run_id, run_trigger)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO pages_deployment_findings (id, project_name, deployment_id, status, reason, evaluated_at, run_id, run_trigger, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).bind(
       crypto.randomUUID(),
       d.projectName,
@@ -135,6 +136,7 @@ export async function runPagesEvaluation(
       evaluatedAt,
       runId,
       trigger,
+      d.createdAt,
     )
   );
 
@@ -231,6 +233,7 @@ interface SubdomainFindingRow {
   subdomain: string;
   status: string;
   reason: string;
+  production_branch: string | null;
 }
 
 interface DeploymentFindingRow {
@@ -238,6 +241,16 @@ interface DeploymentFindingRow {
   deployment_id: string | null;
   status: string;
   reason: string;
+  created_at: string | null;
+}
+
+// specs/015-pages-dashboard research.md §2 — the first *active* (safe)
+// domain among a project's already-evaluated custom domains, or null
+// ("none") if it has zero active domains. A project can have more than
+// one; the table shows exactly one, this is a display simplification, not
+// a claim it's the project's only domain (spec.md Edge Cases).
+export function deriveProductionDomain(domains: readonly DomainFindingRow[]): string | null {
+  return domains.find((d) => d.status === "safe")?.domain_name ?? null;
 }
 
 // Every project always produces exactly one pages_subdomain_findings row
@@ -255,10 +268,10 @@ pagesRoutes.get("/inventory", async (c) => {
   const [{ results: subdomainRows }, { results: deploymentRows }, { results: domainRows }] =
     await Promise.all([
       c.env.DB.prepare(
-        `SELECT project_name, subdomain, status, reason FROM pages_subdomain_findings WHERE run_id = ? ORDER BY project_name`,
+        `SELECT project_name, subdomain, status, reason, production_branch FROM pages_subdomain_findings WHERE run_id = ? ORDER BY project_name`,
       ).bind(latest.run_id).all<SubdomainFindingRow>(),
       c.env.DB.prepare(
-        `SELECT project_name, deployment_id, status, reason FROM pages_deployment_findings WHERE run_id = ?`,
+        `SELECT project_name, deployment_id, status, reason, created_at FROM pages_deployment_findings WHERE run_id = ?`,
       ).bind(latest.run_id).all<DeploymentFindingRow>(),
       c.env.DB.prepare(
         `SELECT project_name, domain_name, status, reason FROM pages_domain_findings WHERE run_id = ? ORDER BY domain_name`,
@@ -278,8 +291,19 @@ pagesRoutes.get("/inventory", async (c) => {
     evaluated_at: latest.evaluated_at,
     projects: subdomainRows.map((s) => {
       const deployment = deploymentByProject.get(s.project_name) ?? null;
+      const domains = domainsByProject.get(s.project_name) ?? [];
       return {
         project_name: s.project_name,
+        // New top-level convenience fields (contracts/api.md,
+        // data-model.md's PagesProjectRow) — additive alongside the
+        // existing subdomain/deployment/domains objects below, unchanged.
+        production_domain: deriveProductionDomain(domains),
+        production_branch: s.production_branch,
+        last_build_status: deployment?.status ?? null,
+        last_build_reason: deployment?.reason ?? null,
+        last_build_created_at: deployment?.created_at ?? null,
+        health_status: s.status,
+        health_reason: s.reason,
         subdomain: {
           subdomain: s.subdomain,
           status: s.status,
@@ -290,7 +314,7 @@ pagesRoutes.get("/inventory", async (c) => {
           status: deployment.status,
           reason: deployment.reason,
         },
-        domains: (domainsByProject.get(s.project_name) ?? []).map((d) => ({
+        domains: domains.map((d) => ({
           domain_name: d.domain_name,
           status: d.status,
           reason: d.reason,

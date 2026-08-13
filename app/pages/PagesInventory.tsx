@@ -8,42 +8,32 @@ import {
 } from "../components/FindingsTable.tsx";
 import { AlertBanner } from "../components/AlertBanner.tsx";
 
-interface SubdomainFinding {
-  subdomain: string;
-  status: ExposureStatus;
-  reason: string;
-}
-
-interface DeploymentFinding {
-  deployment_id: string | null;
-  status: ExposureStatus;
-  reason: string;
-}
-
-interface DomainFinding {
-  domain_name: string;
-  status: ExposureStatus;
-  reason: string;
-}
-
-interface ProjectFinding {
+interface ProjectRow {
   project_name: string;
-  subdomain: SubdomainFinding;
-  deployment: DeploymentFinding | null;
-  domains: DomainFinding[];
+  production_domain: string | null;
+  production_branch: string | null;
+  last_build_status: ExposureStatus;
+  last_build_reason: string;
+  last_build_created_at: string | null;
+  health_status: ExposureStatus;
+  health_reason: string;
+  deployment: { deployment_id: string | null } | null;
 }
 
 interface PagesInventoryResponse {
   run_id: string | null;
   evaluated_at: string | null;
-  projects: ProjectFinding[];
+  projects: ProjectRow[];
 }
 
 interface FlatFinding {
   project_name: string;
-  check: string;
-  label: string;
-  reason: string;
+  production_domain: string | null;
+  production_branch: string | null;
+  last_build_status: ExposureStatus;
+  last_build_deployment_id: string | null;
+  last_build_created_at: string | null;
+  health_reason: string;
 }
 
 async function fetchPagesInventory(): Promise<PagesInventoryResponse> {
@@ -54,11 +44,38 @@ async function fetchPagesInventory(): Promise<PagesInventoryResponse> {
   return await res.json();
 }
 
+// Deliberately coarse (spec.md Assumptions — build duration/stage timing is
+// out of scope); this only answers "how long ago", not "how long did it
+// take".
+function formatRelativeTime(iso: string | null): string {
+  if (!iso) return "not available";
+  const then = new Date(iso).getTime();
+  if (Number.isNaN(then)) return "not available";
+  const diffSec = Math.round((Date.now() - then) / 1000);
+  if (diffSec < 60) return `${diffSec}s ago`;
+  const diffMin = Math.round(diffSec / 60);
+  if (diffMin < 60) return `${diffMin}m ago`;
+  const diffHr = Math.round(diffMin / 60);
+  if (diffHr < 24) return `${diffHr}h ago`;
+  const diffDay = Math.round(diffHr / 24);
+  return `${diffDay}d ago`;
+}
+
+// A project with no production deployment yet (deployment_id null) is a
+// distinct state from a build that ran and failed (spec.md Edge Cases) —
+// both would otherwise read as last_build_status "warning".
+function lastBuildText(r: FlatFinding): string {
+  if (r.last_build_deployment_id === null) return "no production deployment yet";
+  if (r.last_build_status === "safe") return "success";
+  if (r.last_build_status === "not_evaluated") return "not evaluated";
+  return "failed";
+}
+
 const COLUMNS: FindingsTableColumn<FlatFinding>[] = [
   {
     key: "project",
     label: "Project",
-    width: "20%",
+    width: "18%",
     sortValue: (r) => r.project_name,
     render: (r) => (
       <span
@@ -73,28 +90,60 @@ const COLUMNS: FindingsTableColumn<FlatFinding>[] = [
     ),
   },
   {
-    key: "check",
-    label: "Check",
+    key: "domain",
+    label: "Production domain",
+    width: "20%",
+    sortValue: (r) => r.production_domain ?? "",
     render: (r) => (
       <span
         style={{
           fontFamily: "var(--font-mono)",
           fontSize: "var(--text-code-size)",
-          color: "var(--fg-secondary)",
+          color: r.production_domain ? "var(--fg-secondary)" : "var(--fg-faint)",
         }}
       >
-        {r.label}
-        <span style={{ color: "var(--fg-faint)" }}>· {r.check}</span>
+        {r.production_domain ?? "none"}
+      </span>
+    ),
+  },
+  {
+    key: "branch",
+    label: "Branch",
+    width: "14%",
+    sortValue: (r) => r.production_branch ?? "",
+    render: (r) => (
+      <span
+        style={{
+          fontFamily: "var(--font-mono)",
+          fontSize: "var(--text-code-size)",
+          color: r.production_branch ? "var(--fg-secondary)" : "var(--fg-faint)",
+        }}
+      >
+        {r.production_branch && r.production_branch.length > 0 ? r.production_branch : "not set"}
+      </span>
+    ),
+  },
+  {
+    key: "last_build",
+    label: "Last build",
+    width: "20%",
+    render: (r) => (
+      <span style={{ fontSize: "var(--text-body-size)", color: "var(--fg-secondary)" }}>
+        {lastBuildText(r)}
+        {r.last_build_deployment_id !== null && (
+          <span style={{ color: "var(--fg-faint)" }}>
+            &nbsp;· {formatRelativeTime(r.last_build_created_at)}
+          </span>
+        )}
       </span>
     ),
   },
   {
     key: "reason",
     label: "Reason",
-    width: "34%",
     render: (r) => (
       <span style={{ fontSize: "var(--text-body-size)", color: "var(--fg-muted)" }}>
-        {r.reason}
+        {r.health_reason}
       </span>
     ),
   },
@@ -117,45 +166,19 @@ export function PagesInventory(): JSX.Element {
   }
 
   const rows: FindingsTableRow<FlatFinding>[] | null = data
-    ? data.projects.flatMap((project) => {
-      const out: FindingsTableRow<FlatFinding>[] = [
-        {
-          id: `${project.project_name}:subdomain`,
-          status: project.subdomain.status,
-          data: {
-            project_name: project.project_name,
-            check: "pages.dev exposure",
-            label: project.subdomain.subdomain,
-            reason: project.subdomain.reason,
-          },
-        },
-      ];
-      if (project.deployment) {
-        out.push({
-          id: `${project.project_name}:deployment`,
-          status: project.deployment.status,
-          data: {
-            project_name: project.project_name,
-            check: "production deployment",
-            label: project.deployment.deployment_id ?? "no production deployment",
-            reason: project.deployment.reason,
-          },
-        });
-      }
-      for (const d of project.domains) {
-        out.push({
-          id: `${project.project_name}:domain:${d.domain_name}`,
-          status: d.status,
-          data: {
-            project_name: project.project_name,
-            check: "custom domain",
-            label: d.domain_name,
-            reason: d.reason,
-          },
-        });
-      }
-      return out;
-    })
+    ? data.projects.map((p) => ({
+      id: p.project_name,
+      status: p.health_status,
+      data: {
+        project_name: p.project_name,
+        production_domain: p.production_domain,
+        production_branch: p.production_branch,
+        last_build_status: p.last_build_status,
+        last_build_deployment_id: p.deployment?.deployment_id ?? null,
+        last_build_created_at: p.last_build_created_at,
+        health_reason: p.health_reason,
+      },
+    }))
     : null;
 
   const criticalRow = rows?.find((r) => r.status === "critical");
@@ -171,11 +194,11 @@ export function PagesInventory(): JSX.Element {
           margin: "0 0 8px",
         }}
       >
-        Pages inventory
+        Pages projects
       </h1>
       {data && (
         <p style={{ color: "var(--fg-faint)", fontSize: "var(--text-meta-size)", marginTop: 0 }}>
-          Last evaluated {data.evaluated_at} · run {data.run_id}
+          {data.projects.length} project{data.projects.length === 1 ? "" : "s"} · run {data.run_id}
         </p>
       )}
 
@@ -185,8 +208,8 @@ export function PagesInventory(): JSX.Element {
           finding={{
             severity: "critical",
             title: "A Pages project is publicly reachable with no Access policy",
-            target: `${criticalRow.data.project_name} · ${criticalRow.data.label}`,
-            description: criticalRow.data.reason,
+            target: criticalRow.data.project_name,
+            description: criticalRow.data.health_reason,
           }}
         />
       )}

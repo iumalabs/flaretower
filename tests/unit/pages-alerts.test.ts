@@ -21,11 +21,18 @@ function subdomainResult(status: SubdomainEvaluation["status"]): SubdomainEvalua
     subdomain: "marketing-site.pages.dev",
     status,
     reason: "test",
+    productionBranch: "main",
   }];
 }
 
 function deploymentResult(status: DeploymentEvaluation["status"]): DeploymentEvaluation[] {
-  return [{ projectName: "marketing-site", deploymentId: "dep-1", status, reason: "test" }];
+  return [{
+    projectName: "marketing-site",
+    deploymentId: "dep-1",
+    status,
+    reason: "test",
+    createdAt: "2026-08-13T00:00:00Z",
+  }];
 }
 
 Deno.test("diffForDomainAlerts - first-ever warning alerts (no grace period)", () => {

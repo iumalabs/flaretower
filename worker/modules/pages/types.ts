@@ -29,12 +29,18 @@ export interface ProductionDeployment {
   // Raw Cloudflare latest_stage.status: "success" | "idle" | "active" |
   // "failure" | "canceled".
   status: string;
+  // ISO 8601, the deployment's own `created_on` (specs/015-pages-dashboard
+  // research.md §1) — undefined when not available.
+  createdOn?: string;
   evaluationError?: string;
 }
 
 export interface PagesProjectInventoryItem {
   projectName: string;
   subdomain: string; // "<project_name>.pages.dev"
+  // Cloudflare's own project-level field (research.md §1) — undefined when
+  // not returned (never a fabricated branch name).
+  productionBranch?: string;
   customDomains: CustomDomain[];
   // null = confirmed no production deployment exists yet.
   latestProductionDeployment: ProductionDeployment | null;
@@ -56,6 +62,9 @@ export interface SubdomainEvaluation {
   subdomain: string;
   status: SubdomainStatus;
   reason: string;
+  // Pure pass-through (specs/015-pages-dashboard research.md §1) — not an
+  // input to `status`/`reason` above.
+  productionBranch: string | null;
 }
 
 export interface DeploymentEvaluation {
@@ -63,4 +72,5 @@ export interface DeploymentEvaluation {
   deploymentId: string | null;
   status: DeploymentStatus;
   reason: string;
+  createdAt: string | null;
 }

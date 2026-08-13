@@ -90,12 +90,17 @@ export function evaluateSubdomainExposure(
   // A project-level evaluationError means the project itself is a
   // sentinel entry (e.g. the whole projects list failed to fetch) — its
   // subdomain is a placeholder, not a real hostname to evaluate.
+  // Pure pass-through (specs/015-pages-dashboard research.md §1) — not an
+  // input to any branch below.
+  const productionBranch = project.productionBranch ?? null;
+
   if (project.evaluationError) {
     return {
       projectName: project.projectName,
       subdomain: project.subdomain,
       status: "not_evaluated",
       reason: project.evaluationError,
+      productionBranch,
     };
   }
 
@@ -105,6 +110,7 @@ export function evaluateSubdomainExposure(
       subdomain: project.subdomain,
       status: "not_evaluated",
       reason: "could not evaluate Access coverage (Access applications API error)",
+      productionBranch,
     };
   }
 
@@ -116,6 +122,7 @@ export function evaluateSubdomainExposure(
       subdomain: project.subdomain,
       status: "critical",
       reason: "no Access application covers this hostname",
+      productionBranch,
     };
   }
 
@@ -133,6 +140,7 @@ export function evaluateSubdomainExposure(
       reason: `covering Access application(s) do not meaningfully restrict access: ${
         reasons.join("; ")
       }`,
+      productionBranch,
     };
   }
 
@@ -141,6 +149,7 @@ export function evaluateSubdomainExposure(
     subdomain: project.subdomain,
     status: "safe",
     reason: `covered by Access application(s): ${covering.map((a) => a.appId).join(", ")}`,
+    productionBranch,
   };
 }
 
@@ -154,8 +163,11 @@ export function evaluateDeployment(
       deploymentId: null,
       status: "warning",
       reason: "no production deployment exists yet",
+      createdAt: null,
     };
   }
+
+  const createdAt = deployment.createdOn ?? null;
 
   if (deployment.evaluationError) {
     return {
@@ -163,6 +175,7 @@ export function evaluateDeployment(
       deploymentId: deployment.deploymentId,
       status: "not_evaluated",
       reason: deployment.evaluationError,
+      createdAt,
     };
   }
 
@@ -172,6 +185,7 @@ export function evaluateDeployment(
       deploymentId: deployment.deploymentId,
       status: "safe",
       reason: "latest production deployment succeeded",
+      createdAt,
     };
   }
 
@@ -180,6 +194,7 @@ export function evaluateDeployment(
     deploymentId: deployment.deploymentId,
     status: "warning",
     reason: `latest production deployment did not succeed (status: ${deployment.status})`,
+    createdAt,
   };
 }
 
@@ -211,6 +226,7 @@ export function evaluateDeployments(
         deploymentId: null,
         status: "not_evaluated",
         reason: project.evaluationError,
+        createdAt: null,
       };
     }
     return evaluateDeployment(project.projectName, project.latestProductionDeployment);

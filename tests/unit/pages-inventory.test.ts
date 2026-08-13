@@ -98,14 +98,22 @@ Deno.test("listProjectProductionDeployment - returns the newest (index 0) produc
     ["/deployments", () =>
       jsonResponse({
         success: true,
-        result: [{ id: "dep-2", latest_stage: { status: "success" } }],
+        result: [{
+          id: "dep-2",
+          latest_stage: { status: "success" },
+          created_on: "2026-08-13T00:00:00Z",
+        }],
         errors: [],
       })],
   ]);
 
   const deployment = await listProjectProductionDeployment(creds, "marketing-site", fetchImpl);
 
-  assertEquals(deployment, { deploymentId: "dep-2", status: "success" });
+  assertEquals(deployment, {
+    deploymentId: "dep-2",
+    status: "success",
+    createdOn: "2026-08-13T00:00:00Z",
+  });
 });
 
 Deno.test("listProjectProductionDeployment - null when no production deployment exists yet", async () => {
@@ -156,6 +164,34 @@ Deno.test("buildPagesInventory - every project and every one of its custom domai
   assertEquals(inventory.projects[0].customDomains.length, 1);
   assertEquals(inventory.projects[1].customDomains, []);
   assertEquals(inventory.accessApplications, []);
+});
+
+// specs/015-pages-dashboard research.md §1
+Deno.test("buildPagesInventory - captures production_branch from the existing projects fetch", async () => {
+  const fetchImpl = mockFetch([
+    ["/pages/projects", () =>
+      jsonResponse({
+        success: true,
+        result: [
+          {
+            name: "marketing-site",
+            subdomain: "marketing-site.pages.dev",
+            production_branch: "release",
+          },
+          { name: "no-branch-project", subdomain: "no-branch-project.pages.dev" },
+        ],
+        errors: [],
+      })],
+    ["/marketing-site/domains", () => jsonResponse({ success: true, result: [], errors: [] })],
+    ["/no-branch-project/domains", () => jsonResponse({ success: true, result: [], errors: [] })],
+    EMPTY_ACCESS_APPS,
+    NO_DEPLOYMENTS,
+  ]);
+
+  const inventory = await buildPagesInventory(creds, fetchImpl);
+
+  assertEquals(inventory.projects[0].productionBranch, "release");
+  assertEquals(inventory.projects[1].productionBranch, undefined);
 });
 
 Deno.test("buildPagesInventory - a total failure to list projects surfaces a sentinel entry, not an empty (confirmed-zero) list", async () => {

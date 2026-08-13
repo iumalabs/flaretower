@@ -66,6 +66,7 @@ async function cfFetch<T>(
 interface RawPagesProject {
   name: string;
   subdomain: string;
+  production_branch?: string;
 }
 
 interface RawCustomDomain {
@@ -87,6 +88,7 @@ interface RawAccessApp {
 interface RawDeployment {
   id: string;
   latest_stage: { status: string };
+  created_on?: string;
 }
 
 function errorMessage(reason: unknown): string {
@@ -162,7 +164,11 @@ export async function listProjectProductionDeployment(
   );
   if (deployments.length === 0) return null;
   const latest = deployments[0];
-  return { deploymentId: latest.id, status: latest.latest_stage.status };
+  return {
+    deploymentId: latest.id,
+    status: latest.latest_stage.status,
+    createdOn: latest.created_on,
+  };
 }
 
 // A total failure to list projects at all surfaces as one sentinel entry
@@ -217,6 +223,7 @@ async function fetchProjectsWithDomains(
     return {
       projectName: project.name,
       subdomain: project.subdomain,
+      productionBranch: project.production_branch,
       customDomains,
       latestProductionDeployment,
     };
