@@ -2,12 +2,36 @@
 // Principle III) so the fetch and scheduled entry points share this
 // identically.
 import type {
+  AlwaysHttpsEvaluation,
+  BotFightModeEvaluation,
+  CertificateCandidate,
+  CustomWafRuleCandidate,
   DnssecEvaluation,
+  ExposureStatus,
+  MinTlsVersionEvaluation,
   RateLimitingEvaluation,
+  SettingStatus,
   SslTlsEvaluation,
   WafEvaluation,
   ZoneInventoryItem,
 } from "./types.ts";
+
+// specs/017-security-dashboard research.md §2 — identical ranking and
+// reduce-to-worst logic to worker/modules/workers-dashboard/classify.ts's
+// rollUpExposureStatus() (duplicated locally per this rollout's
+// established "duplication beats premature cross-module coupling"
+// precedent).
+const SEVERITY: Record<ExposureStatus, number> = {
+  critical: 3,
+  warning: 2,
+  not_evaluated: 1,
+  safe: 0,
+};
+
+export function rollUpZoneStatus(statuses: readonly ExposureStatus[]): ExposureStatus {
+  if (statuses.length === 0) return "safe";
+  return statuses.reduce((worst, status) => (SEVERITY[status] > SEVERITY[worst] ? status : worst));
+}
 
 // research.md §2 — direct enum-to-status mapping, no Access-coverage
 // logic needed (SSL/TLS mode is a single zone-wide setting, not a
@@ -198,6 +222,111 @@ export function evaluateRateLimiting(zone: ZoneInventoryItem): RateLimitingEvalu
   };
 }
 
+// research.md §3 — on = safe, off = warning (a free, no-tradeoff
+// setting; off is a real, actionable gap).
+export function evaluateBotFightMode(zone: ZoneInventoryItem): BotFightModeEvaluation {
+  if (zone.evaluationError) {
+    return {
+      zoneId: zone.zoneId,
+      zoneName: zone.zoneName,
+      status: "not_evaluated",
+      reason: zone.evaluationError,
+    };
+  }
+  if (zone.botFightMode.evaluationError) {
+    return {
+      zoneId: zone.zoneId,
+      zoneName: zone.zoneName,
+      status: "not_evaluated",
+      reason: zone.botFightMode.evaluationError,
+    };
+  }
+  if (zone.botFightMode.value === "on") {
+    return {
+      zoneId: zone.zoneId,
+      zoneName: zone.zoneName,
+      status: "safe",
+      reason: "Bot Fight Mode is on",
+    };
+  }
+  return {
+    zoneId: zone.zoneId,
+    zoneName: zone.zoneName,
+    status: "warning",
+    reason: "Bot Fight Mode is off",
+  };
+}
+
+// research.md §3 — structurally identical to evaluateBotFightMode().
+export function evaluateAlwaysUseHttps(zone: ZoneInventoryItem): AlwaysHttpsEvaluation {
+  if (zone.evaluationError) {
+    return {
+      zoneId: zone.zoneId,
+      zoneName: zone.zoneName,
+      status: "not_evaluated",
+      reason: zone.evaluationError,
+    };
+  }
+  if (zone.alwaysUseHttps.evaluationError) {
+    return {
+      zoneId: zone.zoneId,
+      zoneName: zone.zoneName,
+      status: "not_evaluated",
+      reason: zone.alwaysUseHttps.evaluationError,
+    };
+  }
+  if (zone.alwaysUseHttps.value === "on") {
+    return {
+      zoneId: zone.zoneId,
+      zoneName: zone.zoneName,
+      status: "safe",
+      reason: "Always Use HTTPS is on",
+    };
+  }
+  return {
+    zoneId: zone.zoneId,
+    zoneName: zone.zoneName,
+    status: "warning",
+    reason: "Always Use HTTPS is off",
+  };
+}
+
+// research.md §3 — 1.2/1.3 = safe, 1.0/1.1 = warning (TLS 1.0/1.1 are
+// formally deprecated).
+export function evaluateMinTlsVersion(zone: ZoneInventoryItem): MinTlsVersionEvaluation {
+  if (zone.evaluationError) {
+    return {
+      zoneId: zone.zoneId,
+      zoneName: zone.zoneName,
+      status: "not_evaluated",
+      reason: zone.evaluationError,
+    };
+  }
+  if (zone.minTlsVersion.evaluationError) {
+    return {
+      zoneId: zone.zoneId,
+      zoneName: zone.zoneName,
+      status: "not_evaluated",
+      reason: zone.minTlsVersion.evaluationError,
+    };
+  }
+  const version = zone.minTlsVersion.value;
+  if (version === "1.2" || version === "1.3") {
+    return {
+      zoneId: zone.zoneId,
+      zoneName: zone.zoneName,
+      status: "safe",
+      reason: `minimum TLS version is ${version}`,
+    };
+  }
+  return {
+    zoneId: zone.zoneId,
+    zoneName: zone.zoneName,
+    status: "warning",
+    reason: `minimum TLS version is ${version} — TLS 1.0/1.1 are deprecated`,
+  };
+}
+
 export function evaluateSslTlsModes(zones: ZoneInventoryItem[]): SslTlsEvaluation[] {
   return zones.map(evaluateSslTlsMode);
 }
@@ -212,4 +341,46 @@ export function evaluateWafs(zones: ZoneInventoryItem[]): WafEvaluation[] {
 
 export function evaluateRateLimitings(zones: ZoneInventoryItem[]): RateLimitingEvaluation[] {
   return zones.map(evaluateRateLimiting);
+}
+
+export function evaluateBotFightModes(zones: ZoneInventoryItem[]): BotFightModeEvaluation[] {
+  return zones.map(evaluateBotFightMode);
+}
+
+export function evaluateAlwaysUseHttpses(zones: ZoneInventoryItem[]): AlwaysHttpsEvaluation[] {
+  return zones.map(evaluateAlwaysUseHttps);
+}
+
+export function evaluateMinTlsVersions(zones: ZoneInventoryItem[]): MinTlsVersionEvaluation[] {
+  return zones.map(evaluateMinTlsVersion);
+}
+
+// research.md §5 — among certificates belonging to an active pack, the
+// one expiring soonest is the one that would actually cause a problem
+// first. null (no active pack) is a legitimate state, not an error.
+export function selectActiveCertificate(
+  certificates: readonly CertificateCandidate[],
+): CertificateCandidate | null {
+  const active = certificates.filter((c) => c.packStatus === "active");
+  if (active.length === 0) return null;
+  return active.reduce((soonest, c) =>
+    new Date(c.expiresOn).getTime() < new Date(soonest.expiresOn).getTime() ? c : soonest
+  );
+}
+
+// research.md §5 — <30 days = warning, else safe, null (no active
+// certificate found) = not_evaluated, never a fabricated expiry.
+export function classifyCertificateExpiry(expiresOn: string | null): SettingStatus {
+  if (expiresOn === null) return "not_evaluated";
+  const daysUntilExpiry = (new Date(expiresOn).getTime() - Date.now()) / (1000 * 60 * 60 * 24);
+  return daysUntilExpiry < 30 ? "warning" : "safe";
+}
+
+// research.md §6 — disabled = not_evaluated (parked, no risk judgment to
+// make), enabled+skip = warning (bypasses WAF protection for matching
+// traffic), any other enabled action = safe.
+export function classifyCustomWafRule(rule: CustomWafRuleCandidate): SettingStatus {
+  if (!rule.enabled) return "not_evaluated";
+  if (rule.action === "skip") return "warning";
+  return "safe";
 }

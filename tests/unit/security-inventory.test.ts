@@ -1,9 +1,12 @@
 import { assertEquals } from "@std/assert";
 import {
   buildSecurityInventory,
+  getZoneCertificatePacks,
+  getZoneCustomWafRules,
   getZoneDnssecStatus,
   getZoneHasEnabledRateLimitingRule,
   getZoneHasEnabledWafRule,
+  getZoneSetting,
   getZoneSslSetting,
   listTurnstileWidgets,
   listZones,
@@ -58,6 +61,34 @@ Deno.test("getZoneSslSetting - returns the raw mode value", async () => {
   const mode = await getZoneSslSetting(creds, "zone-1", fetchImpl);
 
   assertEquals(mode, "flexible");
+});
+
+// specs/017-security-dashboard research.md §3 — same generic per-setting
+// endpoint as getZoneSslSetting(), parameterized by setting id.
+Deno.test("getZoneSetting - returns the raw value for bot_fight_mode", async () => {
+  const fetchImpl = mockFetch([
+    [
+      "/settings/bot_fight_mode",
+      () => jsonResponse({ success: true, result: { value: "on" }, errors: [] }),
+    ],
+  ]);
+
+  const value = await getZoneSetting(creds, "zone-1", "bot_fight_mode", fetchImpl);
+
+  assertEquals(value, "on");
+});
+
+Deno.test("getZoneSetting - returns the raw value for min_tls_version", async () => {
+  const fetchImpl = mockFetch([
+    [
+      "/settings/min_tls_version",
+      () => jsonResponse({ success: true, result: { value: "1.0" }, errors: [] }),
+    ],
+  ]);
+
+  const value = await getZoneSetting(creds, "zone-1", "min_tls_version", fetchImpl);
+
+  assertEquals(value, "1.0");
 });
 
 Deno.test("getZoneDnssecStatus - returns the raw status value", async () => {
@@ -117,6 +148,88 @@ Deno.test("getZoneHasEnabledRateLimitingRule - true when the entrypoint has an e
   const hasRule = await getZoneHasEnabledRateLimitingRule(creds, "zone-1", fetchImpl);
 
   assertEquals(hasRule, true);
+});
+
+// specs/017-security-dashboard research.md §5
+Deno.test("getZoneCertificatePacks - flattens every pack's certificates, carrying the pack's own status", async () => {
+  const fetchImpl = mockFetch([
+    ["/ssl/certificate_packs", () =>
+      jsonResponse({
+        success: true,
+        result: [
+          {
+            status: "active",
+            certificates: [
+              {
+                hosts: ["example.com"],
+                issuer: "Let's Encrypt",
+                expires_on: "2026-10-01T00:00:00Z",
+              },
+            ],
+          },
+          {
+            status: "pending_validation",
+            certificates: [
+              {
+                hosts: ["example.com"],
+                issuer: "Google Trust",
+                expires_on: "2026-11-01T00:00:00Z",
+              },
+            ],
+          },
+        ],
+        errors: [],
+      })],
+  ]);
+
+  const certs = await getZoneCertificatePacks(creds, "zone-1", fetchImpl);
+
+  assertEquals(certs.length, 2);
+  assertEquals(certs[0].packStatus, "active");
+  assertEquals(certs[1].packStatus, "pending_validation");
+});
+
+// specs/017-security-dashboard research.md §6
+Deno.test("getZoneCustomWafRules - maps description/expression/action/enabled", async () => {
+  const fetchImpl = mockFetch([
+    ["/rulesets/phases/http_request_firewall_custom/entrypoint", () =>
+      jsonResponse({
+        success: true,
+        result: {
+          rules: [
+            {
+              description: "block-admin-paths",
+              expression: 'http.request.uri.path contains "/admin"',
+              action: "block",
+              enabled: true,
+            },
+          ],
+        },
+        errors: [],
+      })],
+  ]);
+
+  const rules = await getZoneCustomWafRules(creds, "zone-1", fetchImpl);
+
+  assertEquals(rules, [{
+    description: "block-admin-paths",
+    expression: 'http.request.uri.path contains "/admin"',
+    action: "block",
+    enabled: true,
+  }]);
+});
+
+Deno.test("getZoneCustomWafRules - a 404 (no custom ruleset deployed) yields zero rules, not an error", async () => {
+  const fetchImpl = mockFetch([
+    [
+      "/rulesets/phases/http_request_firewall_custom/entrypoint",
+      () => new Response(null, { status: 404 }),
+    ],
+  ]);
+
+  const rules = await getZoneCustomWafRules(creds, "zone-1", fetchImpl);
+
+  assertEquals(rules, []);
 });
 
 Deno.test("listTurnstileWidgets - maps sitekey, name, domains", async () => {

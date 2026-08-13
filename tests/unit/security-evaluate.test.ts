@@ -1,11 +1,21 @@
 import { assertEquals } from "@std/assert";
 import {
+  classifyCertificateExpiry,
+  classifyCustomWafRule,
+  evaluateAlwaysUseHttps,
+  evaluateBotFightMode,
   evaluateDnssec,
+  evaluateMinTlsVersion,
   evaluateRateLimiting,
   evaluateSslTlsMode,
   evaluateWaf,
+  rollUpZoneStatus,
+  selectActiveCertificate,
 } from "../../worker/modules/security/evaluate.ts";
-import type { ZoneInventoryItem } from "../../worker/modules/security/types.ts";
+import type {
+  CertificateCandidate,
+  ZoneInventoryItem,
+} from "../../worker/modules/security/types.ts";
 
 function zone(overrides: Partial<ZoneInventoryItem> = {}): ZoneInventoryItem {
   return {
@@ -15,6 +25,9 @@ function zone(overrides: Partial<ZoneInventoryItem> = {}): ZoneInventoryItem {
     dnssec: { status: "active" },
     waf: { hasEnabledRule: true },
     rateLimiting: { hasEnabledRule: true },
+    botFightMode: { value: "on" },
+    alwaysUseHttps: { value: "on" },
+    minTlsVersion: { value: "1.2" },
     ...overrides,
   };
 }
@@ -134,4 +147,113 @@ Deno.test("evaluateDnssec/evaluateWaf/evaluateRateLimiting - not_evaluated when 
   assertEquals(evaluateDnssec(sentinel).status, "not_evaluated");
   assertEquals(evaluateWaf(sentinel).status, "not_evaluated");
   assertEquals(evaluateRateLimiting(sentinel).status, "not_evaluated");
+});
+
+// specs/017-security-dashboard research.md §3
+Deno.test("evaluateBotFightMode - safe when on, warning when off", () => {
+  assertEquals(evaluateBotFightMode(zone({ botFightMode: { value: "on" } })).status, "safe");
+  assertEquals(evaluateBotFightMode(zone({ botFightMode: { value: "off" } })).status, "warning");
+});
+
+Deno.test("evaluateBotFightMode - not_evaluated when the setting itself has an evaluationError", () => {
+  const result = evaluateBotFightMode(
+    zone({
+      botFightMode: { value: null, evaluationError: "could not read Bot Fight Mode setting" },
+    }),
+  );
+  assertEquals(result.status, "not_evaluated");
+});
+
+Deno.test("evaluateAlwaysUseHttps - safe when on, warning when off", () => {
+  assertEquals(evaluateAlwaysUseHttps(zone({ alwaysUseHttps: { value: "on" } })).status, "safe");
+  assertEquals(
+    evaluateAlwaysUseHttps(zone({ alwaysUseHttps: { value: "off" } })).status,
+    "warning",
+  );
+});
+
+Deno.test("evaluateMinTlsVersion - safe when 1.2 or 1.3, warning when 1.0 or 1.1", () => {
+  assertEquals(evaluateMinTlsVersion(zone({ minTlsVersion: { value: "1.2" } })).status, "safe");
+  assertEquals(evaluateMinTlsVersion(zone({ minTlsVersion: { value: "1.3" } })).status, "safe");
+  assertEquals(
+    evaluateMinTlsVersion(zone({ minTlsVersion: { value: "1.0" } })).status,
+    "warning",
+  );
+  assertEquals(
+    evaluateMinTlsVersion(zone({ minTlsVersion: { value: "1.1" } })).status,
+    "warning",
+  );
+});
+
+Deno.test("evaluateBotFightMode/evaluateAlwaysUseHttps/evaluateMinTlsVersion - not_evaluated when the zone itself is a sentinel entry", () => {
+  const sentinel = zone({ evaluationError: "could not list zones: network error" });
+  assertEquals(evaluateBotFightMode(sentinel).status, "not_evaluated");
+  assertEquals(evaluateAlwaysUseHttps(sentinel).status, "not_evaluated");
+  assertEquals(evaluateMinTlsVersion(sentinel).status, "not_evaluated");
+});
+
+// specs/017-security-dashboard research.md §2
+Deno.test("rollUpZoneStatus - critical outranks everything", () => {
+  assertEquals(rollUpZoneStatus(["safe", "warning", "critical", "not_evaluated"]), "critical");
+});
+
+Deno.test("rollUpZoneStatus - warning outranks safe and not_evaluated", () => {
+  assertEquals(rollUpZoneStatus(["safe", "not_evaluated", "warning"]), "warning");
+});
+
+Deno.test("rollUpZoneStatus - not_evaluated outranks safe (never silently present as safe)", () => {
+  assertEquals(rollUpZoneStatus(["safe", "not_evaluated"]), "not_evaluated");
+});
+
+Deno.test("rollUpZoneStatus - all safe -> safe", () => {
+  assertEquals(rollUpZoneStatus(["safe", "safe", "safe"]), "safe");
+});
+
+Deno.test("rollUpZoneStatus - empty array -> safe (no checks to roll up)", () => {
+  assertEquals(rollUpZoneStatus([]), "safe");
+});
+
+function daysFromNow(days: number): string {
+  return new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
+}
+
+function cert(overrides: Partial<CertificateCandidate> = {}): CertificateCandidate {
+  return {
+    packStatus: "active",
+    hosts: ["example.com"],
+    issuer: "Let's Encrypt",
+    expiresOn: daysFromNow(60),
+    ...overrides,
+  };
+}
+
+// specs/017-security-dashboard research.md §5
+Deno.test("selectActiveCertificate - picks the soonest-expiring certificate among active packs", () => {
+  const soonest = cert({ expiresOn: daysFromNow(10) });
+  const later = cert({ expiresOn: daysFromNow(90) });
+  assertEquals(selectActiveCertificate([later, soonest]), soonest);
+});
+
+Deno.test("selectActiveCertificate - ignores non-active packs", () => {
+  const active = cert({ packStatus: "active", expiresOn: daysFromNow(90) });
+  const pending = cert({ packStatus: "pending_validation", expiresOn: daysFromNow(1) });
+  assertEquals(selectActiveCertificate([pending, active]), active);
+});
+
+Deno.test("selectActiveCertificate - null when no pack is active", () => {
+  assertEquals(selectActiveCertificate([cert({ packStatus: "pending_validation" })]), null);
+});
+
+Deno.test("classifyCertificateExpiry - warning within 30 days, safe beyond, not_evaluated when null", () => {
+  assertEquals(classifyCertificateExpiry(daysFromNow(10)), "warning");
+  assertEquals(classifyCertificateExpiry(daysFromNow(60)), "safe");
+  assertEquals(classifyCertificateExpiry(null), "not_evaluated");
+});
+
+// specs/017-security-dashboard research.md §6
+Deno.test("classifyCustomWafRule - disabled is not_evaluated, enabled+skip is warning, other enabled actions are safe", () => {
+  assertEquals(classifyCustomWafRule({ enabled: false, action: "block" }), "not_evaluated");
+  assertEquals(classifyCustomWafRule({ enabled: true, action: "skip" }), "warning");
+  assertEquals(classifyCustomWafRule({ enabled: true, action: "block" }), "safe");
+  assertEquals(classifyCustomWafRule({ enabled: true, action: "challenge" }), "safe");
 });

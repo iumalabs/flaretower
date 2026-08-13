@@ -7,6 +7,7 @@ const MOCK_SECURITY_INVENTORY = {
     {
       zone_id: "zone-1",
       zone_name: "safe-strict-zone.test",
+      overall_status: "safe",
       ssl_tls: { status: "safe", reason: "SSL/TLS mode is Full (strict)" },
       dnssec: { status: "safe", reason: "DNSSEC is active" },
       waf: {
@@ -17,10 +18,14 @@ const MOCK_SECURITY_INVENTORY = {
         status: "safe",
         reason: "a rate-limiting ruleset is deployed with at least one enabled rule",
       },
+      bot_fight_mode: { status: "safe", reason: "Bot Fight Mode is on" },
+      always_use_https: { status: "safe", reason: "Always Use HTTPS is on" },
+      min_tls_version: { status: "safe", reason: "minimum TLS version is 1.2" },
     },
     {
       zone_id: "zone-2",
       zone_name: "insecure.example.com",
+      overall_status: "critical",
       ssl_tls: {
         status: "critical",
         reason:
@@ -38,6 +43,59 @@ const MOCK_SECURITY_INVENTORY = {
         status: "warning",
         reason: "no rate-limiting ruleset deployed, or every rule in it is disabled",
       },
+      bot_fight_mode: { status: "warning", reason: "Bot Fight Mode is off" },
+      always_use_https: { status: "warning", reason: "Always Use HTTPS is off" },
+      min_tls_version: {
+        status: "warning",
+        reason: "minimum TLS version is 1.0 — TLS 1.0/1.1 are deprecated",
+      },
+    },
+  ],
+  certificates: [
+    {
+      zone_id: "zone-1",
+      zone_name: "safe-strict-zone.test",
+      hosts: ["safe-strict-zone.test"],
+      issuer: "Let's Encrypt",
+      expires_on: "2026-10-13T00:00:00Z",
+      status: "safe",
+    },
+    {
+      zone_id: "zone-2",
+      zone_name: "insecure.example.com",
+      hosts: [],
+      issuer: "",
+      expires_on: null,
+      status: "not_evaluated",
+    },
+  ],
+  waf_custom_rules: [
+    {
+      zone_id: "zone-1",
+      zone_name: "safe-strict-zone.test",
+      description: "block-admin-paths",
+      expression: 'http.request.uri.path contains "/admin"',
+      action: "block",
+      enabled: true,
+      status: "safe",
+    },
+    {
+      zone_id: "zone-2",
+      zone_name: "insecure.example.com",
+      description: "allow-ci-egress",
+      expression: "ip.src in $ci_ranges",
+      action: "skip",
+      enabled: true,
+      status: "warning",
+    },
+    {
+      zone_id: "zone-2",
+      zone_name: "insecure.example.com",
+      description: "legacy-ua-block",
+      expression: 'http.user_agent contains "MSIE"',
+      action: "block",
+      enabled: false,
+      status: "not_evaluated",
     },
   ],
   turnstile_widgets: [
@@ -103,32 +161,73 @@ test.beforeEach(async ({ page }) => {
   await page.getByRole("button", { name: "Security Posture" }).click();
 });
 
-test("US1 — every zone's four checks and every Turnstile widget appear, none omitted", async ({ page }) => {
-  await expect(page.getByText("safe-strict-zone.test").first()).toBeVisible();
-  await expect(page.getByText("insecure.example.com").first()).toBeVisible();
-  for (const kind of ["ssl_tls", "dnssec", "waf", "rate_limiting"]) {
-    await expect(page.getByTestId(`findings-row-zone-1:${kind}`)).toBeVisible();
-    await expect(page.getByTestId(`findings-row-zone-2:${kind}`)).toBeVisible();
-  }
+test("US1 — exactly one row per zone, not one row per underlying check", async ({ page }) => {
+  await expect(page.getByTestId("findings-row-zone-1")).toBeVisible();
+  await expect(page.getByTestId("findings-row-zone-2")).toBeVisible();
+  // Only the zone table's own rows — not the Certificates/WAF Custom
+  // Rules panels' rows, which share the same "findings-row-" testid
+  // prefix but a distinct "cert:"/"waf-rule:" infix.
+  await expect(
+    page.locator(
+      "[data-testid^='findings-row-']:not([data-testid*='cert:']):not([data-testid*='waf-rule:'])",
+    ),
+  ).toHaveCount(2);
   await expect(page.getByText("login-widget")).toBeVisible();
 });
 
-test("US2 — a fully strict zone's SSL/TLS mode renders safe, a flexible one renders critical", async ({ page }) => {
-  await expect(page.getByTestId("findings-row-zone-1:ssl_tls").getByText("PROTECTED"))
+test("US1 — a zone's overall status is the worst of its checks: all-safe renders safe, one critical renders critical", async ({ page }) => {
+  await expect(page.getByTestId("findings-row-zone-1").getByText("PROTECTED").first())
     .toBeVisible();
-  await expect(page.getByTestId("findings-row-zone-2:ssl_tls").getByText("CRITICAL")).toBeVisible();
+  await expect(page.getByTestId("findings-row-zone-2").getByText("CRITICAL").first())
+    .toBeVisible();
 });
 
-test("US3 — DNSSEC/WAF/rate-limiting gaps render warning, protected zone renders safe", async ({ page }) => {
-  await expect(page.getByTestId("findings-row-zone-1:dnssec").getByText("PROTECTED")).toBeVisible();
-  await expect(page.getByTestId("findings-row-zone-1:waf").getByText("PROTECTED")).toBeVisible();
-  await expect(page.getByTestId("findings-row-zone-1:rate_limiting").getByText("PROTECTED"))
-    .toBeVisible();
+test("US1 — each zone row shows a pill per check", async ({ page }) => {
+  const safeZone = page.getByTestId("findings-row-zone-1");
+  // 1 leftmost overall-status badge + 7 per-check badges, all PROTECTED.
+  await expect(safeZone.getByText("PROTECTED")).toHaveCount(8);
 
-  await expect(page.getByTestId("findings-row-zone-2:dnssec").getByText("WARNING")).toBeVisible();
-  await expect(page.getByTestId("findings-row-zone-2:waf").getByText("WARNING")).toBeVisible();
-  await expect(page.getByTestId("findings-row-zone-2:rate_limiting").getByText("WARNING"))
-    .toBeVisible();
+  const gapZone = page.getByTestId("findings-row-zone-2");
+  await expect(gapZone.getByText("CRITICAL")).toHaveCount(2); // overall + ssl_tls
+  await expect(gapZone.getByText("WARNING")).toHaveCount(6); // the other 6 checks
+});
+
+test("US2 — Bot Fight Mode/Always Use HTTPS/Minimum TLS Version render per zone", async ({ page }) => {
+  const safeZone = page.getByTestId("findings-row-zone-1");
+  await safeZone.click();
+  await expect(safeZone.getByText("Bot Fight Mode is on")).toBeVisible();
+  await expect(safeZone.getByText("Always Use HTTPS is on")).toBeVisible();
+  await expect(safeZone.getByText("minimum TLS version is 1.2")).toBeVisible();
+
+  const gapZone = page.getByTestId("findings-row-zone-2");
+  await gapZone.click();
+  await expect(gapZone.getByText("Bot Fight Mode is off")).toBeVisible();
+  await expect(gapZone.getByText("Always Use HTTPS is off")).toBeVisible();
+  await expect(gapZone.getByText("TLS 1.0/1.1 are deprecated", { exact: false })).toBeVisible();
+});
+
+test("US3 — Certificates panel shows real host/issuer/expiry, or an explicit not-available state", async ({ page }) => {
+  const withCert = page.getByTestId("findings-row-cert:zone-1");
+  await expect(withCert.getByText("safe-strict-zone.test", { exact: true }).first()).toBeVisible();
+  await expect(withCert.getByText("Let's Encrypt", { exact: true })).toBeVisible();
+  await expect(withCert.getByText("expires in", { exact: false })).toBeVisible();
+
+  const noCert = page.getByTestId("findings-row-cert:zone-2");
+  await expect(noCert.getByText("not available", { exact: true }).first()).toBeVisible();
+});
+
+test("US3 — WAF Custom Rules panel labels every rule with its real zone; a skip rule is warning, a disabled rule is not-evaluated", async ({ page }) => {
+  const skipRule = page.getByTestId("findings-row-waf-rule:zone-2:1");
+  await expect(skipRule.getByText("allow-ci-egress", { exact: true })).toBeVisible();
+  await expect(skipRule.getByText("WARNING")).toBeVisible();
+
+  const disabledRule = page.getByTestId("findings-row-waf-rule:zone-2:2");
+  await expect(disabledRule.getByText("legacy-ua-block", { exact: true })).toBeVisible();
+  await expect(disabledRule.getByText("N/A")).toBeVisible();
+
+  const blockRule = page.getByTestId("findings-row-waf-rule:zone-1:0");
+  await expect(blockRule.getByText("block-admin-paths", { exact: true })).toBeVisible();
+  await expect(blockRule.getByText("PROTECTED")).toBeVisible();
 });
 
 // Regression coverage for the spec's "account has zero zones" edge case
@@ -146,6 +245,8 @@ test("a completed run against a zero-zone account renders confirmed-empty, not '
         run_id: "run-2",
         evaluated_at: "2026-08-12T00:00:00Z",
         zones: [],
+        certificates: [],
+        waf_custom_rules: [],
         turnstile_widgets: [],
       }),
     }));
@@ -153,7 +254,7 @@ test("a completed run against a zero-zone account renders confirmed-empty, not '
   await page.getByRole("button", { name: "Security Posture" }).click();
 
   await expect(page.getByText("No evaluation runs yet", { exact: false })).not.toBeVisible();
-  await expect(page.getByText("Security posture inventory")).toBeVisible();
+  await expect(page.getByText("Security posture", { exact: true })).toBeVisible();
   await expect(page.getByText("run run-2", { exact: false })).toBeVisible();
   await expect(page.getByText("No Turnstile widgets configured.")).toBeVisible();
 });
@@ -172,5 +273,5 @@ test("no evaluation run yet (run_id null) still renders the 'trigger one' messag
   // The page heading now renders in every state (including "not yet
   // evaluated"), matching the design shell's consistent page-identity
   // pattern — only the body content below it differs.
-  await expect(page.getByText("Security posture inventory")).toBeVisible();
+  await expect(page.getByText("Security posture", { exact: true })).toBeVisible();
 });
