@@ -61,6 +61,10 @@ informational label), no new token scope. [**Access Dashboard**](specs/014-acces
 third — upgrades the Applications half of the existing Zero Trust page in place (Covers/Policies/
 Identity/Session columns, a plain-language Policy detail panel, an Access Groups panel), reusing the
 existing Application health-status semantics unchanged; Service Tokens is untouched.
+[**Pages Dashboard**](specs/015-pages-dashboard/) is the fourth — upgrades the existing Pages page
+in place, one row per project (production domain, production branch, last build status + recency,
+unchanged exposure health) instead of the prior 3-or-more rows per project (one per underlying
+check), no new token scope.
 
 ## Prerequisites
 
