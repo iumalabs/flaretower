@@ -8,6 +8,25 @@ import {
 } from "../components/FindingsTable.tsx";
 import { AlertBanner } from "../components/AlertBanner.tsx";
 
+interface AuditLogEntry {
+  occurred_at: string;
+  actor: string;
+  actor_source: string;
+  action: string;
+  target: string;
+  result_summary: string | null;
+}
+
+interface AuditLogResponse {
+  since: string;
+  until: string;
+  entries: AuditLogEntry[];
+  // true = the underlying Cloudflare Audit Logs API call itself failed —
+  // distinct from a successful call that confirmed zero activity in the
+  // window (spec.md FR-003).
+  unavailable: boolean;
+}
+
 interface UnifiedAlert {
   id: string;
   module: string;
@@ -65,6 +84,14 @@ interface PostureSummaryEntry {
 interface SummaryResponse {
   modules: PostureSummaryEntry[];
   unavailable_sources: UnavailableSource[];
+}
+
+async function fetchAuditLog(): Promise<AuditLogResponse> {
+  const res = await fetch("/api/audit/log");
+  if (!res.ok) {
+    throw new Error(`GET /api/audit/log failed: ${res.status}`);
+  }
+  return await res.json();
 }
 
 async function fetchAlerts(): Promise<AlertsResponse> {
@@ -273,6 +300,217 @@ function SummaryRow(
   );
 }
 
+// specs/018-audit-dashboard research.md §2 — only the 2 real source
+// values Cloudflare's Audit Logs API actually returns; no Wrangler/
+// Terraform option, since Cloudflare's own records can't distinguish
+// those from any other API caller.
+type SourceFilter = "all" | "dashboard" | "api";
+
+const SOURCE_FILTERS: Array<{ value: SourceFilter; label: string }> = [
+  { value: "all", label: "All sources" },
+  { value: "dashboard", label: "Dashboard" },
+  { value: "api", label: "API" },
+];
+
+function filterEntriesBySource(
+  entries: readonly AuditLogEntry[],
+  filter: SourceFilter,
+): AuditLogEntry[] {
+  if (filter === "all") return [...entries];
+  return entries.filter((e) => e.actor_source === filter);
+}
+
+// research.md §5 — pure serialization; the actual browser download
+// trigger (a temporary <a> click) is the only side-effecting part,
+// kept separate so this part stays trivially testable.
+function entriesToJsonl(entries: readonly AuditLogEntry[]): string {
+  return entries.map((e) => JSON.stringify(e)).join("\n");
+}
+
+function downloadJsonl(entries: readonly AuditLogEntry[]): void {
+  const blob = new Blob([entriesToJsonl(entries)], { type: "application/x-ndjson" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "audit-log.jsonl";
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+const AUDIT_LOG_COLUMNS: Array<{ key: string; label: string }> = [
+  { key: "time", label: "Time" },
+  { key: "actor", label: "Actor" },
+  { key: "action", label: "Action" },
+  { key: "target", label: "Target" },
+  { key: "result", label: "Result" },
+];
+
+// A plain table, not FindingsTable — a raw account-activity entry has no
+// natural safe/warning/critical judgment the way every other table on
+// this page does (research.md §3), so there's no status pill to drive.
+function AuditLogPanel({ data, error }: { data: AuditLogResponse | null; error: string | null }) {
+  const [filter, setFilter] = useState<SourceFilter>("all");
+
+  if (error) {
+    return <p style={{ color: "var(--status-critical-fg)" }}>{error}</p>;
+  }
+  if (!data) {
+    return <p style={{ color: "var(--fg-muted)" }}>Loading audit log…</p>;
+  }
+  if (data.unavailable) {
+    return (
+      <p style={{ color: "var(--status-critical-fg)" }}>
+        Audit log could not be retrieved.
+      </p>
+    );
+  }
+
+  const filtered = filterEntriesBySource(data.entries, filter);
+
+  return (
+    <div>
+      <div style={{ display: "flex", gap: 8, marginBottom: 12, alignItems: "center" }}>
+        {SOURCE_FILTERS.map((f) => (
+          <button
+            key={f.value}
+            type="button"
+            onClick={() => setFilter(f.value)}
+            aria-pressed={filter === f.value}
+            style={{
+              fontFamily: "var(--font-mono)",
+              fontSize: "var(--text-label-size)",
+              letterSpacing: "var(--text-label-ls)",
+              color: filter === f.value ? "var(--brand-primary)" : "var(--fg-faint)",
+              background: filter === f.value ? "var(--brand-wash)" : "transparent",
+              border: `1px solid ${filter === f.value ? "var(--brand-primary)" : "var(--border)"}`,
+              padding: "5px 9px",
+              cursor: "pointer",
+            }}
+          >
+            {f.label.toUpperCase()}
+          </button>
+        ))}
+        <button
+          type="button"
+          onClick={() => downloadJsonl(filtered)}
+          style={{
+            marginLeft: "auto",
+            fontFamily: "var(--font-mono)",
+            fontSize: "var(--text-label-size)",
+            letterSpacing: "var(--text-label-ls)",
+            color: "var(--fg-secondary)",
+            background: "transparent",
+            border: "1px solid var(--border)",
+            padding: "5px 9px",
+            cursor: "pointer",
+          }}
+        >
+          EXPORT JSONL
+        </button>
+      </div>
+
+      {filtered.length === 0
+        ? (
+          <p style={{ color: "var(--fg-muted)" }}>
+            No account activity in the last 7 days{filter !== "all" ? " for this source" : ""}.
+          </p>
+        )
+        : (
+          <div style={{ border: "1px solid var(--border)", overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <thead>
+                <tr
+                  style={{
+                    background: "var(--surface-1)",
+                    borderBottom: "1px solid var(--border)",
+                  }}
+                >
+                  {AUDIT_LOG_COLUMNS.map((c) => (
+                    <th
+                      key={c.key}
+                      style={{
+                        textAlign: "left",
+                        padding: "8px",
+                        fontFamily: "var(--font-mono)",
+                        fontSize: "var(--text-label-size)",
+                        letterSpacing: "var(--text-label-ls)",
+                        color: "var(--fg-faint)",
+                        textTransform: "uppercase",
+                      }}
+                    >
+                      {c.label}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((e, i) => (
+                  <tr
+                    key={`${e.occurred_at}:${i}`}
+                    data-testid={`audit-log-row-${i}`}
+                    style={{ borderBottom: "1px solid var(--rule-hairline)" }}
+                  >
+                    <td
+                      style={{
+                        padding: "8px",
+                        fontFamily: "var(--font-mono)",
+                        fontSize: "var(--text-code-size)",
+                        color: "var(--fg-secondary)",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {e.occurred_at}
+                    </td>
+                    <td
+                      style={{
+                        padding: "8px",
+                        fontFamily: "var(--font-mono)",
+                        fontSize: "var(--text-code-size)",
+                        color: "var(--fg-secondary)",
+                      }}
+                    >
+                      {e.actor}
+                      <span style={{ color: "var(--fg-faint)" }}>· {e.actor_source}</span>
+                    </td>
+                    <td
+                      style={{
+                        padding: "8px",
+                        fontSize: "var(--text-body-size)",
+                        color: "var(--fg-muted)",
+                      }}
+                    >
+                      {e.action}
+                    </td>
+                    <td
+                      style={{
+                        padding: "8px",
+                        fontFamily: "var(--font-mono)",
+                        fontSize: "var(--text-code-size)",
+                        color: "var(--fg-secondary)",
+                      }}
+                    >
+                      {e.target}
+                    </td>
+                    <td
+                      style={{
+                        padding: "8px",
+                        fontFamily: "var(--font-mono)",
+                        fontSize: "var(--text-code-size)",
+                        color: "var(--fg-muted)",
+                      }}
+                    >
+                      {e.result_summary ?? "—"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+    </div>
+  );
+}
+
 function SectionHeading({ children }: { children: string }): JSX.Element {
   return (
     <h2
@@ -289,6 +527,8 @@ function SectionHeading({ children }: { children: string }): JSX.Element {
 }
 
 export function AuditInventory(): JSX.Element {
+  const [auditLogData, setAuditLogData] = useState<AuditLogResponse | null>(null);
+  const [auditLogError, setAuditLogError] = useState<string | null>(null);
   const [data, setData] = useState<AlertsResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [changesData, setChangesData] = useState<ChangesResponse | null>(null);
@@ -297,6 +537,11 @@ export function AuditInventory(): JSX.Element {
   const [summaryError, setSummaryError] = useState<string | null>(null);
 
   useEffect(() => {
+    fetchAuditLog()
+      .then(setAuditLogData)
+      .catch((err: unknown) =>
+        setAuditLogError(err instanceof Error ? err.message : "failed to load audit log")
+      );
     fetchAlerts()
       .then(setData)
       .catch((err: unknown) =>
@@ -353,6 +598,9 @@ export function AuditInventory(): JSX.Element {
       >
         Audit & Drift
       </h1>
+
+      <SectionHeading>Audit log</SectionHeading>
+      <AuditLogPanel data={auditLogData} error={auditLogError} />
 
       {criticalAlert && (
         <AlertBanner

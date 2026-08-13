@@ -1,5 +1,29 @@
 import { expect, test } from "@playwright/test";
 
+const MOCK_AUDIT_LOG = {
+  since: "2026-08-06T12:00:00Z",
+  until: "2026-08-13T12:00:00Z",
+  unavailable: false,
+  entries: [
+    {
+      occurred_at: "2026-08-13T09:04:12Z",
+      actor: "@ilse",
+      actor_source: "dashboard",
+      action: "Bound route to Access application",
+      target: "internal.acme.dev/gateway/*",
+      result_summary: '"—" -> "platform-core"',
+    },
+    {
+      occurred_at: "2026-08-13T08:00:00Z",
+      actor: "wrangler · deploy",
+      actor_source: "api",
+      action: "Enabled workers.dev subdomain",
+      target: "api-gateway",
+      result_summary: '"false" -> "true"',
+    },
+  ],
+};
+
 const MOCK_AUDIT_ALERTS = {
   alerts: [
     {
@@ -119,6 +143,12 @@ test.beforeEach(async ({ page }) => {
       contentType: "application/json",
       body: JSON.stringify({ run_id: null, evaluated_at: null, zones: [], turnstile_widgets: [] }),
     }));
+  await page.route("**/api/audit/log", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(MOCK_AUDIT_LOG),
+    }));
   await page.route("**/api/audit/alerts", (route) =>
     route.fulfill({
       status: 200,
@@ -139,6 +169,95 @@ test.beforeEach(async ({ page }) => {
     }));
   await page.goto("/");
   await page.getByRole("button", { name: "Audit & Drift" }).click();
+});
+
+test("specs/018 US1 — the Audit log panel shows real account activity, alongside the existing unchanged sections", async ({ page }) => {
+  await expect(page.getByRole("heading", { name: "Audit log" })).toBeVisible();
+
+  const row0 = page.getByTestId("audit-log-row-0");
+  await expect(row0.getByText("@ilse", { exact: false })).toBeVisible();
+  await expect(row0.getByText("Bound route to Access application")).toBeVisible();
+  await expect(row0.getByText("internal.acme.dev/gateway/*")).toBeVisible();
+
+  // The existing 3 sections are still present and unchanged.
+  await expect(page.getByRole("heading", { name: "Unified alerts inbox" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "What changed" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Account-wide posture summary" })).toBeVisible();
+});
+
+test("specs/018 US1 — a confirmed-empty window renders distinctly from an unavailable Audit Logs API", async ({ page }) => {
+  await page.route("**/api/audit/log", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        since: "2026-08-06T12:00:00Z",
+        until: "2026-08-13T12:00:00Z",
+        unavailable: false,
+        entries: [],
+      }),
+    }));
+  await page.goto("/");
+  await page.getByRole("button", { name: "Audit & Drift" }).click();
+
+  await expect(page.getByText("No account activity in the last 7 days.")).toBeVisible();
+  await expect(page.getByText("Audit log could not be retrieved.")).not.toBeVisible();
+});
+
+test("specs/018 US1 — an unavailable Audit Logs API shows an explicit unavailable state", async ({ page }) => {
+  await page.route("**/api/audit/log", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        since: "2026-08-06T12:00:00Z",
+        until: "2026-08-13T12:00:00Z",
+        unavailable: true,
+        entries: [],
+      }),
+    }));
+  await page.goto("/");
+  await page.getByRole("button", { name: "Audit & Drift" }).click();
+
+  await expect(page.getByText("Audit log could not be retrieved.")).toBeVisible();
+});
+
+test("specs/018 US2 — the source filter narrows the Audit log to Dashboard-only or API-only entries", async ({ page }) => {
+  await expect(page.getByText("Bound route to Access application")).toBeVisible();
+  await expect(page.getByText("Enabled workers.dev subdomain")).toBeVisible();
+
+  await page.getByRole("button", { name: "DASHBOARD" }).click();
+  await expect(page.getByText("Bound route to Access application")).toBeVisible();
+  await expect(page.getByText("Enabled workers.dev subdomain")).not.toBeVisible();
+
+  await page.getByRole("button", { name: "API" }).click();
+  await expect(page.getByText("Bound route to Access application")).not.toBeVisible();
+  await expect(page.getByText("Enabled workers.dev subdomain")).toBeVisible();
+
+  await page.getByRole("button", { name: "All sources" }).click();
+  await expect(page.getByText("Bound route to Access application")).toBeVisible();
+  await expect(page.getByText("Enabled workers.dev subdomain")).toBeVisible();
+});
+
+test("specs/018 US3 — exporting a filtered view downloads only the currently-visible entries as JSONL", async ({ page }) => {
+  await page.getByRole("button", { name: "API" }).click();
+
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "EXPORT JSONL" }).click();
+  const download = await downloadPromise;
+
+  const stream = await download.createReadStream();
+  const decoder = new TextDecoder();
+  let content = "";
+  for await (const chunk of stream!) {
+    content += decoder.decode(chunk as Uint8Array, { stream: true });
+  }
+  const lines = content.trim().split("\n");
+
+  expect(lines.length).toBe(1);
+  const entry = JSON.parse(lines[0]);
+  expect(entry.actor_source).toBe("api");
+  expect(entry.target).toBe("api-gateway");
 });
 
 test("US1 — alerts from multiple modules appear in the unified inbox, each labeled with its source", async ({ page }) => {
