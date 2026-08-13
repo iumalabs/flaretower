@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.6.1](https://github.com/iumalabs/flaretower/compare/v1.6.0...v1.6.1) (2026-08-13)
+
+
+### Bug Fixes
+
+* **a11y:** make FindingsTable's sort headers and row expansion keyboard-operable ([#372](https://github.com/iumalabs/flaretower/issues/372)) ([e16797c](https://github.com/iumalabs/flaretower/commit/e16797c9b19b17e5944b8e08316044cf6bcb4ee4))
+* **app:** add an error boundary around the active page ([#373](https://github.com/iumalabs/flaretower/issues/373)) ([451da10](https://github.com/iumalabs/flaretower/commit/451da1029b941ce52281f2544b9a8cbb55f57e63))
+* **audit:** reject a malformed since query param on GET /changes ([#374](https://github.com/iumalabs/flaretower/issues/374)) ([e6ef600](https://github.com/iumalabs/flaretower/commit/e6ef600b4bb757caf0c90068aa725a0a5ecf3571))
+* **concurrency:** add an invocation-wide semaphore across all modules' cfFetch ([#371](https://github.com/iumalabs/flaretower/issues/371)) ([a510dae](https://github.com/iumalabs/flaretower/commit/a510daec1046022d1c389cd1f1001067a320c824))
+* **storage:** avoid exceeding the 6-connection concurrency limit ([#370](https://github.com/iumalabs/flaretower/issues/370)) ([e5ef1f1](https://github.com/iumalabs/flaretower/commit/e5ef1f1524a0d2adcb309c365fea4e283c997da8))
+* **workers-dashboard:** avoid exceeding the 6-connection concurrency limit ([#368](https://github.com/iumalabs/flaretower/issues/368)) ([3aa6f74](https://github.com/iumalabs/flaretower/commit/3aa6f74a92619421ee6574e3dc27090426e89437))
+
 ## [1.6.0](https://github.com/iumalabs/flaretower/compare/v1.5.0...v1.6.0) (2026-08-13)
 
 
