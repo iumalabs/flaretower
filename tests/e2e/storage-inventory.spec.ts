@@ -26,6 +26,20 @@ const MOCK_STORAGE_INVENTORY = {
       custom_domain: "assets.example.com",
       bound_to: "3 workers",
     },
+    {
+      bucket_name: "uncovered-domain-assets",
+      status: "critical",
+      reason: "enabled custom domain(s) not covered by any Access application: exports.example.com",
+      custom_domain: "exports.example.com",
+      bound_to: "none",
+    },
+    {
+      bucket_name: "scoped-domain-assets",
+      status: "safe",
+      reason: "every enabled custom domain is covered by a meaningfully scoped Access policy",
+      custom_domain: "reports.example.com",
+      bound_to: "none",
+    },
   ],
   kv_namespaces: [
     {
@@ -137,6 +151,17 @@ test("US2/T012 — a bucket with a custom domain covered by an open Access polic
 
   const looselyCoveredRow = page.getByTestId("findings-row-loosely-covered-assets");
   await expect(looselyCoveredRow.getByText("WARNING")).toBeVisible();
+});
+
+test("US2/AC2 — an enabled custom domain not covered by any Access application renders critical", async ({ page }) => {
+  const row = page.getByTestId("findings-row-uncovered-domain-assets");
+  await expect(row.getByText("CRITICAL")).toBeVisible();
+  await expect(row.getByText("not covered by any Access application")).toBeVisible();
+});
+
+test("US2/AC4 — an enabled custom domain covered by a meaningfully scoped Access policy renders safe", async ({ page }) => {
+  const row = page.getByTestId("findings-row-scoped-domain-assets");
+  await expect(row.getByText("PROTECTED")).toBeVisible();
 });
 
 test("US3 — a namespace referenced by a Worker renders safe, an unreferenced one renders warning", async ({ page }) => {

@@ -32,6 +32,18 @@ const MOCK_INVENTORY = {
         },
       ],
     },
+    {
+      worker_name: "checkout-api",
+      hostnames: [
+        {
+          hostname: "checkout.example.com",
+          kind: "custom_domain",
+          status: "warning",
+          reason:
+            "covering Access application(s) do not meaningfully restrict access: checkout-app has no policies attached",
+        },
+      ],
+    },
   ],
 };
 
@@ -152,4 +164,10 @@ test("US2 — filtering to critical narrows the table, no reload", async ({ page
   await expect(page.getByText("billing-api.acct.workers.dev").first()).toBeVisible();
   await expect(page.getByText("status.example.com")).not.toBeVisible();
   await expect(page.getByText("billing.example.com")).not.toBeVisible();
+});
+
+test("US3/AC3 — an Access application with zero policies attached renders warning, not safe", async ({ page }) => {
+  const zeroPolicyRow = row(page, "checkout-api", "custom_domain", "checkout.example.com");
+  await expect(zeroPolicyRow.getByText("WARNING")).toBeVisible();
+  await expect(zeroPolicyRow.getByText("PROTECTED")).not.toBeVisible();
 });

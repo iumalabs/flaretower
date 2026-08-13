@@ -36,6 +36,30 @@ const MOCK_ZT_INVENTORY = {
         ],
       ],
     },
+    {
+      app_id: "app-bypass",
+      app_name: "legacy-bypass",
+      app_domain: "bypass-tool.example.com",
+      status: "warning",
+      reason: "a policy allows Everyone or bypasses identity verification",
+      policy_count: 1,
+      covered_hostname_count: 1,
+      identity_summary: "— none —",
+      session_duration: null,
+      policy_rules: [[{ verb: "ALLOW", label: "bypass (skips identity verification)" }]],
+    },
+    {
+      app_id: "app-no-policies",
+      app_name: "unconfigured-tool",
+      app_domain: "unconfigured-tool.example.com",
+      status: "warning",
+      reason: "no policies attached",
+      policy_count: 0,
+      covered_hostname_count: 1,
+      identity_summary: "— none —",
+      session_duration: null,
+      policy_rules: [],
+    },
   ],
   service_tokens: [
     {
@@ -121,6 +145,18 @@ test("US2 — the open-policy application renders as warning, the scoped one as 
 
   const scopedRow = page.getByTestId("findings-row-app-scoped");
   await expect(scopedRow.getByText("PROTECTED")).toBeVisible();
+});
+
+test("US2/AC3 — a Bypass-policy application is flagged as open, the same as an Allow-Everyone one", async ({ page }) => {
+  const bypassRow = page.getByTestId("findings-row-app-bypass");
+  await expect(bypassRow.getByText("WARNING")).toBeVisible();
+  await expect(bypassRow.getByText("bypasses identity verification")).toBeVisible();
+});
+
+test("US2/AC4 — an application with zero policies attached is flagged, not silently treated as safe", async ({ page }) => {
+  const noPoliciesRow = page.getByTestId("findings-row-app-no-policies");
+  await expect(noPoliciesRow.getByText("WARNING")).toBeVisible();
+  await expect(noPoliciesRow.getByText("no policies attached")).toBeVisible();
 });
 
 test("US3 — service token statuses render distinctly: critical, warning, safe", async ({ page }) => {
