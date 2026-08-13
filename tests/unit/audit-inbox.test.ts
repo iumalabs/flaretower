@@ -13,10 +13,10 @@ function createMockD1(
   return {
     prepare(sql: string) {
       const table = sql.match(/FROM\s+(\w+)/i)?.[1] ?? sql.match(/UPDATE\s+(\w+)/i)?.[1] ?? "";
-      let boundId: string | undefined;
+      let bound: unknown[] = [];
       const statement = {
         bind(...args: unknown[]) {
-          boundId = args[0] as string | undefined;
+          bound = args;
           return statement;
         },
         all<T>() {
@@ -30,13 +30,23 @@ function createMockD1(
             return Promise.reject(new Error(`mock failure for ${table}`));
           }
           const rows = tableRows[table] ?? [];
-          const row = rows.find((r) => r.id === boundId);
+          const id = bound[0] as string | undefined;
+          const row = rows.find((r) => r.id === id);
           return Promise.resolve((row ?? null) as T | null);
         },
+        // Only ever called for acknowledgeAlert()'s UPDATE, whose real bind
+        // order is (acknowledgedAt, id) — worker/modules/audit/inbox.ts.
+        // Previously this assumed bind()'s first arg was always the id
+        // (true for the SELECT above, false here), so it silently never
+        // matched any row and the UPDATE simulation was a no-op — the one
+        // test exercising this path only checked the function's own
+        // independently-computed return value, so the mock bug went
+        // unnoticed rather than failing.
         run() {
+          const [acknowledgedAt, id] = bound as [string, string];
           const rows = tableRows[table];
-          const row = rows?.find((r) => r.id === boundId);
-          if (row) row.acknowledged_at = "2026-08-10T12:00:00Z";
+          const row = rows?.find((r) => r.id === id);
+          if (row) row.acknowledged_at = acknowledgedAt;
           return Promise.resolve({} as D1Result);
         },
       };
@@ -150,14 +160,17 @@ Deno.test("acknowledgeAlert - unknown id returns not_found", async () => {
 });
 
 Deno.test("acknowledgeAlert - acknowledges an unacknowledged alert", async () => {
-  const db = createMockD1({
-    exposure_alerts: [{ id: "a1", acknowledged_at: null }],
-  });
+  const alerts: Record<string, unknown>[] = [{ id: "a1", acknowledged_at: null }];
+  const db = createMockD1({ exposure_alerts: alerts });
   const result = await acknowledgeAlert(db, "exposure", "hostname", "a1");
   assertEquals(result.outcome, "ok");
   if (result.outcome === "ok") {
     assertEquals(result.id, "a1");
     assertEquals(typeof result.acknowledgedAt, "string");
+    // The write actually persisted — not just the function's own
+    // independently-computed return value, which (before the mock fix
+    // above) could stay "ok" even if the real UPDATE never matched a row.
+    assertEquals(alerts[0].acknowledged_at, result.acknowledgedAt);
   }
 });
 
