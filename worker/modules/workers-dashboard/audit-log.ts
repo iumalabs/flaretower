@@ -6,6 +6,7 @@
 // reuses this as-is rather than re-implementing (research.md §3's
 // sequencing note), so keep this module's own interface generic rather
 // than narrowed to only what this page's own panel needs.
+import { withGlobalFetchSlot } from "../../concurrency.ts";
 import type { CloudflareCredentials } from "../workers-access-exposure/inventory.ts";
 import type { RecentChangeEntry } from "./types.ts";
 
@@ -37,9 +38,16 @@ export async function fetchAccountAuditLog(
   url.searchParams.set("since", since.toISOString());
   url.searchParams.set("per_page", "100");
 
-  const res = await fetchImpl(url.toString(), {
-    headers: { Authorization: `Bearer ${creds.apiToken}` },
-  });
+  // Gated by the invocation-wide semaphore (worker/concurrency.ts) — every
+  // module's cfFetch() goes through it, so the true total in-flight
+  // connection count across all of them together never exceeds the
+  // Workers runtime's 6-per-invocation limit, not just this one module's
+  // own fan-out.
+  const res = await withGlobalFetchSlot(() =>
+    fetchImpl(url.toString(), {
+      headers: { Authorization: `Bearer ${creds.apiToken}` },
+    })
+  );
 
   if (!res.ok) {
     throw new Error(`Cloudflare Audit Logs API returned HTTP ${res.status}`);

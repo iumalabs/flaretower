@@ -6,6 +6,7 @@
 // dataset shape; final verification against a live account happens at
 // quickstart.md's end-to-end run, matching every other module's own
 // established pattern for pinning API shapes ahead of live verification.
+import { withGlobalFetchSlot } from "../../concurrency.ts";
 import type { CloudflareCredentials } from "../workers-access-exposure/inventory.ts";
 
 const GRAPHQL_ENDPOINT = "https://api.cloudflare.com/client/v4/graphql";
@@ -60,17 +61,24 @@ async function queryWindow(
   end: string,
   fetchImpl: typeof fetch,
 ): Promise<AnalyticsWindow> {
-  const res = await fetchImpl(GRAPHQL_ENDPOINT, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${creds.apiToken}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      query: QUERY,
-      variables: { accountTag: creds.accountId, start, end },
-    }),
-  });
+  // Gated by the invocation-wide semaphore (worker/concurrency.ts) — every
+  // module's cfFetch() goes through it, so the true total in-flight
+  // connection count across all of them together never exceeds the
+  // Workers runtime's 6-per-invocation limit, not just this one module's
+  // own fan-out.
+  const res = await withGlobalFetchSlot(() =>
+    fetchImpl(GRAPHQL_ENDPOINT, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${creds.apiToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        query: QUERY,
+        variables: { accountTag: creds.accountId, start, end },
+      }),
+    })
+  );
 
   if (!res.ok) {
     throw new Error(`Cloudflare GraphQL Analytics API returned HTTP ${res.status}`);
