@@ -252,9 +252,13 @@ spec.md.
       account (not production) and record results.
 - [x] T034 [P] Document the exact required API token scopes (research.md §3's table) in the
       repository README, per constitution Principle VIII.
-- [ ] T035 Verify quickstart.md Scenario 6 explicitly: no `/api/exposure/*` endpoint returns any
+- [x] T035 Verify quickstart.md Scenario 6 explicitly: no `/api/exposure/*` endpoint returns any
       exposure data without a valid Access JWT, for both a missing header and a tampered/expired
-      one.
+      one. Closed via `tests/unit/exposure-auth.test.ts`: mounts `worker/index.ts`'s exact
+      `accessAuth` + `exposureRoutes` wiring against a D1 mock seeded with real findings/alerts, so
+      a regression that skipped or misordered `accessAuth` would surface as leaked data, not just a
+      wrong status code (verified by temporarily removing the `accessAuth` mount — all 12 cases
+      fail as expected).
 - [x] T036 [P] `deno fmt` + `deno lint` pass across `worker/` and `app/`.
 
 ---
