@@ -1,14 +1,14 @@
 name: E2E
 
-# Unlike a schedule-only setup, this runs on every PR/push: the whole suite
-# mocks every /api/* call via Playwright's own network layer (page.route())
-# rather than exercising a real Cloudflare account or even real local D1, so
-# there's no live-infra flake risk and no per-run cost beyond CI minutes —
-# runs in well under a minute locally. Revisit if that stops being true.
+# Runs once a day rather than on every PR/push — locally, `deno task test:e2e`
+# stays the way to get pre-merge feedback. `workflow_dispatch` lets anyone
+# trigger an out-of-band run from the Actions tab without waiting for the
+# schedule.
 on:
-  pull_request:
-  push:
-    branches: [main]
+  schedule:
+    # 21:00 Asia/Bishkek (UTC+6, no DST) == 15:00 UTC.
+    - cron: "0 15 * * *"
+  workflow_dispatch:
 
 permissions:
   contents: read
