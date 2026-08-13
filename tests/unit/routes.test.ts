@@ -191,3 +191,85 @@ Deno.test("GET /inventory - a Worker with zero public hostnames still appears, w
   const billingWorker = body.workers.find((w) => w.worker_name === "billing-api");
   assertEquals(billingWorker?.hostnames.length, 1);
 });
+
+// A separate, minimal mock focused only on exposure_alerts' SELECT/UPDATE
+// shape (POST /alerts/:id/acknowledge) — the mock above is purpose-built for
+// GET /inventory's exposure_findings queries and explicitly ignores
+// exposure_alerts. Mirrors tests/unit/audit-inbox.test.ts's mock (fixed in
+// that file after a bug there: bind()'s arg order differs between the
+// SELECT — .bind(id) — and the UPDATE — .bind(acknowledgedAt, id) — so the
+// mock must track which one it's simulating, not assume the id is always
+// the first bound arg).
+interface AlertRow {
+  id: string;
+  acknowledged_at: string | null;
+}
+
+function createAlertMockD1(alerts: AlertRow[]): D1Database {
+  return {
+    prepare(_sql: string) {
+      let bound: unknown[] = [];
+      const statement = {
+        bind(...args: unknown[]) {
+          bound = args;
+          return statement;
+        },
+        first<T>() {
+          const id = bound[0] as string;
+          const row = alerts.find((a) => a.id === id);
+          return Promise.resolve((row ?? null) as T | null);
+        },
+        run() {
+          const [acknowledgedAt, id] = bound as [string, string];
+          const row = alerts.find((a) => a.id === id);
+          if (row) row.acknowledged_at = acknowledgedAt;
+          return Promise.resolve({} as D1Result);
+        },
+      };
+      return statement;
+    },
+  } as unknown as D1Database;
+}
+
+function appAsAdmin(db: D1Database) {
+  const app = new Hono<
+    { Bindings: { DB: D1Database }; Variables: { identity: { role: "admin" | "member" } } }
+  >();
+  app.use("*", async (c, next) => {
+    c.set("identity", { role: "admin" });
+    await next();
+  });
+  app.route("/", exposureRoutes);
+  return (path: string, init?: RequestInit) => app.request(path, init, { DB: db });
+}
+
+Deno.test("POST /alerts/:id/acknowledge - acknowledges an unacknowledged alert and persists it", async () => {
+  const alerts: AlertRow[] = [{ id: "a1", acknowledged_at: null }];
+  const request = appAsAdmin(createAlertMockD1(alerts));
+
+  const res = await request("/alerts/a1/acknowledge", { method: "POST" });
+
+  assertEquals(res.status, 200);
+  const body = await res.json() as { id: string; acknowledged_at: string };
+  assertEquals(body.id, "a1");
+  assertEquals(typeof body.acknowledged_at, "string");
+  // The write actually persisted, not just the response shape.
+  assertEquals(alerts[0].acknowledged_at, body.acknowledged_at);
+});
+
+Deno.test("POST /alerts/:id/acknowledge - idempotent on an already-acknowledged alert", async () => {
+  const alerts: AlertRow[] = [{ id: "a1", acknowledged_at: "2026-08-09T00:00:00Z" }];
+  const request = appAsAdmin(createAlertMockD1(alerts));
+
+  const res = await request("/alerts/a1/acknowledge", { method: "POST" });
+
+  assertEquals(res.status, 200);
+  const body = await res.json() as { acknowledged_at: string };
+  assertEquals(body.acknowledged_at, "2026-08-09T00:00:00Z");
+});
+
+Deno.test("POST /alerts/:id/acknowledge - 404 on an unknown id", async () => {
+  const request = appAsAdmin(createAlertMockD1([]));
+  const res = await request("/alerts/missing/acknowledge", { method: "POST" });
+  assertEquals(res.status, 404);
+});
