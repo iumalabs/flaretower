@@ -18,6 +18,26 @@ function app(db: D1Database) {
 
 const NOOP_DB = {} as unknown as D1Database;
 
+// computeChanges() (changes.ts) queries all 17 AUDIT_SOURCES regardless of
+// `since` — this mock just needs every query to resolve to zero rows,
+// enough to prove a well-formed `since` reaches computeChanges() at all
+// (as opposed to being rejected by the validation added below).
+function createEmptyMockD1(): D1Database {
+  return {
+    prepare() {
+      const statement = {
+        bind() {
+          return statement;
+        },
+        all<T>() {
+          return Promise.resolve({ results: [] as T[] });
+        },
+      };
+      return statement;
+    },
+  } as unknown as D1Database;
+}
+
 Deno.test("GET /log - maps real entries, since defaults to 7 days before now", async () => {
   let capturedUrl = "";
   globalThis.fetch = ((input: RequestInfo | URL) => {
@@ -84,6 +104,25 @@ Deno.test("GET /log - unavailable: true when the Cloudflare API responds with a 
 
   assertEquals(body.unavailable, true);
   assertEquals(body.entries, []);
+});
+
+Deno.test("GET /changes - 400 on a malformed since value", async () => {
+  const res = await app(NOOP_DB)("/changes?since=banana");
+  assertEquals(res.status, 400);
+  const body = await res.json() as { error: string };
+  assertEquals(body.error.includes("banana"), true);
+});
+
+Deno.test("GET /changes - a well-formed ISO8601 since value is accepted", async () => {
+  const res = await app(createEmptyMockD1())("/changes?since=2026-08-01T00:00:00.000Z");
+  assertEquals(res.status, 200);
+  const body = await res.json() as { since: string };
+  assertEquals(body.since, "2026-08-01T00:00:00.000Z");
+});
+
+Deno.test("GET /changes - a missing since defaults to 24 hours ago rather than 400ing", async () => {
+  const res = await app(createEmptyMockD1())("/changes");
+  assertEquals(res.status, 200);
 });
 
 // POST /alerts/:module/:kind/:id/acknowledge is a thin wrapper over
