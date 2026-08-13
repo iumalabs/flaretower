@@ -325,6 +325,14 @@ export function DnsInventory(): JSX.Element {
         )
         : (
           <FindingsTable
+            // Remounts on every zone switch so FindingsTable's own local
+            // filter/sort/expanded state resets — without this, a status
+            // filter set on one zone (e.g. "critical") silently persists
+            // into a zone with zero matches for it, hiding that zone's real
+            // records behind an un-clearable "no findings match" message
+            // (its filter chip doesn't render either, since it's derived
+            // from the new zone's own status counts).
+            key={selectedZone ?? undefined}
             columns={COLUMNS}
             rows={rows}
             loadingLabel="Loading DNS inventory…"
