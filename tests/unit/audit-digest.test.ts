@@ -38,7 +38,10 @@ Deno.test("runAuditDigest - returns the correct change count for a known set of 
     },
   );
 
-  const { changeCount } = await runAuditDigest({ DB: db }, "scheduled");
+  const { changeCount } = await runAuditDigest(
+    { DB: db, CF_ACCOUNT_ID: "acct-1", CF_API_TOKEN: "tok" },
+    "scheduled",
+  );
 
   assertEquals(changeCount, 2);
 });
@@ -49,7 +52,10 @@ Deno.test("runAuditDigest - returns zero when nothing changed", async () => {
     { ssl_tls_findings: [{ zone_id: "z1", zone_name: "example.com", status: "safe" }] },
   );
 
-  const { changeCount } = await runAuditDigest({ DB: db }, "scheduled");
+  const { changeCount } = await runAuditDigest(
+    { DB: db, CF_ACCOUNT_ID: "acct-1", CF_API_TOKEN: "tok" },
+    "scheduled",
+  );
 
   assertEquals(changeCount, 0);
 });

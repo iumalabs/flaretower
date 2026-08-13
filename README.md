@@ -73,6 +73,12 @@ the sixth — upgrades the existing Security Posture page in place, one row per 
 WAF, Rate Limiting, plus 3 new checks: Bot Fight Mode, Always Use HTTPS, Minimum TLS Version)
 instead of the prior one-row-per-check flattening, plus live-fetched Certificates and WAF Custom
 Rules panels; Turnstile widgets is untouched. No new token scope.
+[**Audit Dashboard**](specs/018-audit-dashboard/) is the seventh and last of this rollout — adds a
+real "Audit log" panel to the existing Audit & Drift page, a chronological feed of real Cloudflare
+account activity (who did what, when, what changed), filterable by source and exportable as JSONL,
+reusing spec 012's `fetchAccountAuditLog()` integration unmodified; no new token scope. The existing
+Unified alerts inbox / What changed / Account-wide posture summary sections are untouched. This
+completes the 7-spec per-module dashboard rollout (012-018).
 
 ## Prerequisites
 
