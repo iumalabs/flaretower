@@ -7,12 +7,24 @@ import {
   type FindingsTableRow,
 } from "../components/FindingsTable.tsx";
 import { AlertBanner } from "../components/AlertBanner.tsx";
+import { EmptyState } from "../components/EmptyState.tsx";
+
+interface PolicyRuleLine {
+  verb: "ALLOW" | "REQUIRE" | "DENY";
+  label: string;
+}
 
 interface AppFinding {
   app_id: string;
+  app_name: string | null;
   app_domain: string;
   status: ExposureStatus;
   reason: string;
+  policy_count: number | null;
+  covered_hostname_count: number | null;
+  identity_summary: string | null;
+  session_duration: string | null;
+  policy_rules: PolicyRuleLine[][];
 }
 
 interface TokenFinding {
@@ -23,11 +35,19 @@ interface TokenFinding {
   reason: string;
 }
 
+interface AccessGroupEntry {
+  group_id: string;
+  name: string;
+  rule_summary: string;
+  referenced_by_app_count: number;
+}
+
 interface ZeroTrustInventoryResponse {
   run_id: string | null;
   evaluated_at: string | null;
   applications: AppFinding[];
   service_tokens: TokenFinding[];
+  access_groups: AccessGroupEntry[] | null;
 }
 
 async function fetchZeroTrustInventory(): Promise<ZeroTrustInventoryResponse> {
@@ -38,10 +58,13 @@ async function fetchZeroTrustInventory(): Promise<ZeroTrustInventoryResponse> {
   return await res.json();
 }
 
+const NOT_AVAILABLE = "not available";
+
 const APP_COLUMNS: FindingsTableColumn<AppFinding>[] = [
   {
-    key: "domain",
-    label: "Domain",
+    key: "application",
+    label: "Application",
+    width: "18%",
     sortValue: (r) => r.app_domain,
     render: (r) => (
       <span
@@ -51,15 +74,67 @@ const APP_COLUMNS: FindingsTableColumn<AppFinding>[] = [
           color: "var(--fg-secondary)",
         }}
       >
+        {r.app_name ?? r.app_id}
+      </span>
+    ),
+  },
+  {
+    key: "covers",
+    label: "Covers",
+    width: "20%",
+    render: (r) => (
+      <span
+        style={{
+          fontFamily: "var(--font-mono)",
+          fontSize: "var(--text-code-size)",
+          color: "var(--fg-secondary)",
+        }}
+      >
         {r.app_domain}
-        <span style={{ color: "var(--fg-faint)" }}>· {r.app_id}</span>
+        {r.covered_hostname_count !== null && r.covered_hostname_count > 1 && (
+          <span style={{ color: "var(--fg-faint)" }}>+{r.covered_hostname_count - 1}</span>
+        )}
+      </span>
+    ),
+  },
+  {
+    key: "policies",
+    label: "Policies",
+    width: "8%",
+    sortValue: (r) => r.policy_count ?? -1,
+    render: (r) => (
+      <span style={{ color: "var(--fg-muted)" }}>{r.policy_count ?? NOT_AVAILABLE}</span>
+    ),
+  },
+  {
+    key: "identity",
+    label: "Identity",
+    width: "16%",
+    render: (r) => (
+      <span style={{ fontSize: "var(--text-body-size)", color: "var(--fg-muted)" }}>
+        {r.identity_summary ?? NOT_AVAILABLE}
+      </span>
+    ),
+  },
+  {
+    key: "session",
+    label: "Session",
+    width: "10%",
+    render: (r) => (
+      <span
+        style={{
+          fontFamily: "var(--font-mono)",
+          fontSize: "var(--text-code-size)",
+          color: "var(--fg-faint)",
+        }}
+      >
+        {r.session_duration ?? "not set"}
       </span>
     ),
   },
   {
     key: "reason",
     label: "Reason",
-    width: "40%",
     render: (r) => (
       <span style={{ fontSize: "var(--text-body-size)", color: "var(--fg-muted)" }}>
         {r.reason}
@@ -113,13 +188,174 @@ function SectionHeading({ children }: { children: string }): JSX.Element {
   );
 }
 
+const VERB_COLOR: Record<PolicyRuleLine["verb"], string> = {
+  ALLOW: "var(--status-safe)",
+  REQUIRE: "var(--brand-primary)",
+  DENY: "var(--status-critical-fg)",
+};
+
+function PolicyDetailPanel({ app }: { app: AppFinding | undefined }): JSX.Element {
+  return (
+    <div
+      style={{
+        flex: "1.4 1 0",
+        minWidth: 0,
+        border: "1px solid var(--border)",
+        background: "var(--bg-canvas)",
+        padding: 16,
+      }}
+    >
+      <div
+        style={{
+          fontFamily: "var(--font-mono)",
+          fontSize: "var(--text-label-size)",
+          letterSpacing: "var(--text-label-ls)",
+          color: "var(--fg-faint)",
+          textTransform: "uppercase",
+          marginBottom: 12,
+        }}
+      >
+        Policy detail{app ? ` — ${app.app_name ?? app.app_id}` : ""}
+      </div>
+      {!app && (
+        <div style={{ color: "var(--fg-faint)", fontSize: "var(--text-code-size)" }}>
+          No application selected.
+        </div>
+      )}
+      {app && app.policy_rules.length === 0 && (
+        <div style={{ color: "var(--fg-faint)", fontSize: "var(--text-code-size)" }}>
+          No policies attached to this application.
+        </div>
+      )}
+      {app && app.policy_rules.map((lines, i) => (
+        <div
+          key={i}
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: 6,
+            padding: "10px 0",
+            borderTop: i > 0 ? "1px solid var(--rule-hairline)" : undefined,
+          }}
+        >
+          {lines.map((line, j) => (
+            <div key={j} style={{ display: "flex", gap: 10, alignItems: "baseline" }}>
+              <span
+                style={{
+                  fontFamily: "var(--font-mono)",
+                  fontSize: "var(--text-label-size)",
+                  letterSpacing: "var(--text-label-ls)",
+                  color: VERB_COLOR[line.verb],
+                  width: 60,
+                  flex: "none",
+                }}
+              >
+                {line.verb}
+              </span>
+              <span
+                style={{
+                  fontFamily: "var(--font-mono)",
+                  fontSize: "var(--text-code-size)",
+                  color: "var(--fg-secondary)",
+                }}
+              >
+                {line.label}
+              </span>
+            </div>
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function GroupsPanel({ groups }: { groups: AccessGroupEntry[] | null }): JSX.Element {
+  return (
+    <div
+      style={{
+        flex: "1 1 0",
+        minWidth: 0,
+        border: "1px solid var(--border)",
+        background: "var(--bg-canvas)",
+        display: "flex",
+        flexDirection: "column",
+      }}
+    >
+      <div
+        style={{
+          padding: "10px 12px",
+          borderBottom: "1px solid var(--border)",
+          fontFamily: "var(--font-mono)",
+          fontSize: "var(--text-label-size)",
+          letterSpacing: "var(--text-label-ls)",
+          color: "var(--fg-faint)",
+          textTransform: "uppercase",
+        }}
+      >
+        Groups
+      </div>
+      {groups === null && (
+        <div style={{ padding: 14, color: "var(--fg-faint)", fontSize: "var(--text-code-size)" }}>
+          {NOT_AVAILABLE}
+        </div>
+      )}
+      {groups !== null && groups.length === 0 && (
+        <div style={{ padding: 14, color: "var(--fg-faint)", fontSize: "var(--text-code-size)" }}>
+          No Access Groups in this account.
+        </div>
+      )}
+      {groups !== null && groups.map((g) => (
+        <div
+          key={g.group_id}
+          data-testid={`access-group-${g.group_id}`}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            padding: "10px 12px",
+            borderBottom: "1px solid var(--rule-hairline)",
+          }}
+        >
+          <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+            <span
+              style={{
+                fontFamily: "var(--font-mono)",
+                fontSize: "var(--text-code-size)",
+                color: "var(--fg-secondary)",
+              }}
+            >
+              {g.name}
+            </span>
+            <span style={{ fontSize: "var(--text-meta-size)", color: "var(--fg-faint)" }}>
+              {g.rule_summary}
+            </span>
+          </div>
+          <span
+            style={{
+              fontFamily: "var(--font-mono)",
+              fontSize: "var(--text-label-size)",
+              color: "var(--fg-faint)",
+            }}
+          >
+            {g.referenced_by_app_count} app{g.referenced_by_app_count === 1 ? "" : "s"}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function ZeroTrustInventory(): JSX.Element {
   const [data, setData] = useState<ZeroTrustInventoryResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [selectedAppId, setSelectedAppId] = useState<string | null>(null);
 
   useEffect(() => {
     fetchZeroTrustInventory()
-      .then(setData)
+      .then((res) => {
+        setData(res);
+        setSelectedAppId((prev) => prev ?? res.applications[0]?.app_id ?? null);
+      })
       .catch((err: unknown) =>
         setError(err instanceof Error ? err.message : "failed to load Zero Trust inventory")
       );
@@ -168,6 +404,8 @@ export function ZeroTrustInventory(): JSX.Element {
   const criticalApp = appRows?.find((r) => r.status === "critical");
   const criticalToken = tokenRows?.find((r) => r.status === "critical");
 
+  const selectedApp = data?.applications.find((a) => a.app_id === selectedAppId);
+
   return (
     <div>
       <h1
@@ -207,15 +445,50 @@ export function ZeroTrustInventory(): JSX.Element {
       )}
 
       <SectionHeading>Access applications</SectionHeading>
-      <FindingsTable
-        columns={APP_COLUMNS}
-        rows={appRows}
-        loadingLabel="Loading applications…"
-        emptyState={{
-          heading: "No Access applications",
-          description: "This account has no Access applications configured.",
-        }}
-      />
+      {appRows && appRows.length === 0
+        ? (
+          <EmptyState
+            heading="No Access applications"
+            description="This account has no Access applications configured."
+          />
+        )
+        : (
+          <FindingsTable
+            columns={APP_COLUMNS}
+            rows={appRows}
+            loadingLabel="Loading applications…"
+          />
+        )}
+
+      {appRows && appRows.length > 0 && (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, margin: "10px 0" }}>
+          {data!.applications.map((a) => (
+            <button
+              key={a.app_id}
+              type="button"
+              onClick={() => setSelectedAppId(a.app_id)}
+              style={{
+                fontFamily: "var(--font-mono)",
+                fontSize: "var(--text-label-size)",
+                color: a.app_id === selectedAppId ? "var(--fg-primary)" : "var(--fg-faint)",
+                border: `1px solid ${
+                  a.app_id === selectedAppId ? "var(--brand-primary)" : "var(--border)"
+                }`,
+                background: a.app_id === selectedAppId ? "var(--brand-wash)" : "transparent",
+                padding: "4px 9px",
+                cursor: "pointer",
+              }}
+            >
+              {a.app_name ?? a.app_id}
+            </button>
+          ))}
+        </div>
+      )}
+
+      <div style={{ display: "flex", gap: 16, alignItems: "flex-start", marginTop: 12 }}>
+        <PolicyDetailPanel app={selectedApp} />
+        <GroupsPanel groups={data?.access_groups ?? null} />
+      </div>
 
       <SectionHeading>Service tokens</SectionHeading>
       <FindingsTable

@@ -57,7 +57,10 @@ per-module dashboard mockups. Adds two new token scopes (`Account Analytics Read
 tracked as their own specs (013-018) in the same pattern.
 [**DNS Dashboard**](specs/013-dns-dashboard/) is the second of those — upgrades the existing DNS
 page in place (zone tabs, Proxy/TTL columns, an ineffective-DMARC-policy warning, a platform-domain
-informational label), no new token scope.
+informational label), no new token scope. [**Access Dashboard**](specs/014-access-dashboard/) is the
+third — upgrades the Applications half of the existing Zero Trust page in place (Covers/Policies/
+Identity/Session columns, a plain-language Policy detail panel, an Access Groups panel), reusing the
+existing Application health-status semantics unchanged; Service Tokens is untouched.
 
 ## Prerequisites
 

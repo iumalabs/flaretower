@@ -3,7 +3,19 @@ import { diffForAppAlerts, diffForTokenAlerts } from "../../worker/modules/zero-
 import type { AppEvaluation, TokenEvaluation } from "../../worker/modules/zero-trust/types.ts";
 
 function appResult(status: AppEvaluation["status"]): AppEvaluation[] {
-  return [{ appId: "app-1", appDomain: "example.com", status, reason: "test" }];
+  return [{
+    appId: "app-1",
+    appName: "test-app",
+    appDomain: "example.com",
+    status,
+    reason: "test",
+    policyCount: 0,
+    coveredHostnameCount: 1,
+    identitySummary: "— none —",
+    sessionDuration: null,
+    policyRules: [],
+    referencedGroupIds: [],
+  }];
 }
 
 function tokenResult(status: TokenEvaluation["status"]): TokenEvaluation[] {

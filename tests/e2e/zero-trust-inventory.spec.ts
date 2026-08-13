@@ -6,15 +6,35 @@ const MOCK_ZT_INVENTORY = {
   applications: [
     {
       app_id: "app-open",
+      app_name: "status-public",
       app_domain: "internal-tool.example.com",
       status: "warning",
       reason: "policy allows Everyone",
+      policy_count: 1,
+      covered_hostname_count: 1,
+      identity_summary: "— none —",
+      session_duration: null,
+      policy_rules: [[{ verb: "ALLOW", label: "everyone" }]],
     },
     {
       app_id: "app-scoped",
+      app_name: "gateway-admin",
       app_domain: "scoped-tool.example.com",
       status: "safe",
       reason: "policy scoped to group finance",
+      policy_count: 2,
+      covered_hostname_count: 2,
+      identity_summary: "Okta",
+      session_duration: "24h",
+      policy_rules: [
+        [
+          { verb: "ALLOW", label: "emails ending in @acme.dev" },
+          { verb: "REQUIRE", label: "identity provider · Okta" },
+        ],
+        [
+          { verb: "ALLOW", label: "an unrecognized rule (custom_future_rule)" },
+        ],
+      ],
     },
   ],
   service_tokens: [
@@ -38,6 +58,20 @@ const MOCK_ZT_INVENTORY = {
       expires_at: "2027-01-01T00:00:00Z",
       status: "safe",
       reason: "expiration healthy",
+    },
+  ],
+  access_groups: [
+    {
+      group_id: "grp-platform",
+      name: "platform",
+      rule_summary: "Okta group",
+      referenced_by_app_count: 4,
+    },
+    {
+      group_id: "grp-unused",
+      name: "unused-group",
+      rule_summary: "everyone",
+      referenced_by_app_count: 0,
     },
   ],
 };
@@ -100,6 +134,57 @@ test("US3 — service token statuses render distinctly: critical, warning, safe"
   await expect(healthyRow.getByText("PROTECTED")).toBeVisible();
 });
 
+test("specs/014 US1 — the applications table shows real name, covers, policies, identity, and session data", async ({ page }) => {
+  const row = page.getByTestId("findings-row-app-scoped");
+  await expect(row.getByText("gateway-admin")).toBeVisible();
+  await expect(row.getByText("scoped-tool.example.com")).toBeVisible();
+  await expect(row.getByText("+1")).toBeVisible();
+  await expect(row.getByText("2", { exact: true })).toBeVisible();
+  await expect(row.getByText("Okta")).toBeVisible();
+  await expect(row.getByText("24h")).toBeVisible();
+
+  const openRow = page.getByTestId("findings-row-app-open");
+  await expect(openRow.getByText("— none —")).toBeVisible();
+  await expect(openRow.getByText("not set")).toBeVisible();
+});
+
+test("specs/014 US2 — selecting an application shows its policy rules in plain language, including an unrecognized-rule fallback", async ({ page }) => {
+  // status-public (app-open) is selected by default (first application).
+  await expect(page.getByText("Policy detail — status-public")).toBeVisible();
+  await expect(page.getByText("everyone", { exact: true }).first()).toBeVisible();
+
+  await page.getByRole("button", { name: "gateway-admin" }).click();
+  await expect(page.getByText("Policy detail — gateway-admin")).toBeVisible();
+  await expect(page.getByText("emails ending in @acme.dev")).toBeVisible();
+  await expect(page.getByText("identity provider · Okta")).toBeVisible();
+  await expect(page.getByText("an unrecognized rule (custom_future_rule)")).toBeVisible();
+});
+
+test("specs/014 US3 — the Groups panel shows real reference counts, including a group referenced by zero applications", async ({ page }) => {
+  const platform = page.getByTestId("access-group-grp-platform");
+  await expect(platform.getByText("4 apps")).toBeVisible();
+  await expect(platform.getByText("Okta group")).toBeVisible();
+
+  const unused = page.getByTestId("access-group-grp-unused");
+  await expect(unused.getByText("0 apps")).toBeVisible();
+});
+
+test("specs/014 US3 — a Groups-fetch failure shows an explicit 'not available' state without blocking the table", async ({ page }) => {
+  await page.unroute("**/api/zero-trust/inventory");
+  await page.route("**/api/zero-trust/inventory", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ ...MOCK_ZT_INVENTORY, access_groups: null }),
+    }));
+  await page.reload();
+  await page.getByRole("button", { name: "Zero Trust" }).click();
+
+  await expect(page.getByText("not available")).toBeVisible();
+  // The applications table is unaffected by the Groups failure.
+  await expect(page.getByTestId("findings-row-app-scoped")).toBeVisible();
+});
+
 // Regression coverage for specs/003-zero-trust/tasks.md T025/T026 — the
 // empty-state message must be driven by `run_id`, not by array emptiness,
 // so "never evaluated" and "evaluated, found nothing" read differently.
@@ -113,6 +198,7 @@ test("T026 — a completed run with zero apps and zero tokens shows a distinct m
         evaluated_at: "2026-08-12T00:00:00Z",
         applications: [],
         service_tokens: [],
+        access_groups: [],
       }),
     }));
   await page.reload();
@@ -133,6 +219,7 @@ test("T026 — a run_id of null renders the 'never evaluated' message, not the e
         evaluated_at: null,
         applications: [],
         service_tokens: [],
+        access_groups: [],
       }),
     }));
   await page.reload();

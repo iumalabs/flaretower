@@ -2,6 +2,17 @@ import { assertEquals } from "@std/assert";
 import { Hono } from "hono";
 import { zeroTrustRoutes } from "../../worker/modules/zero-trust/routes.ts";
 
+// specs/014-access-dashboard: GET /inventory now also live-fetches Access
+// Groups/Identity Providers (routes.ts's fetchAccessGroupsPanel), which use
+// the ambient global `fetch` (same as every module's Cloudflare API calls)
+// rather than an injectable parameter these route-level tests can pass in.
+// Stubbed to fail fast rather than making a real network call during unit
+// tests — exercises the same graceful-degradation path
+// (`access_groups: null`, spec.md FR-008) a real credential/network
+// failure would.
+globalThis.fetch =
+  (() => Promise.reject(new Error("network disabled in this unit test"))) as typeof fetch;
+
 // Regression coverage for specs/003-zero-trust/tasks.md T025/T026 — see
 // worker/db/migrations/0008_zero_trust_run_log.sql for the run-log table
 // these tests seed directly (bypassing runZeroTrustEvaluation's Cloudflare
@@ -18,6 +29,7 @@ interface AppFindingRow {
   status: string;
   reason: string;
   run_id: string;
+  referenced_group_ids?: string;
 }
 
 interface TokenFindingRow {
@@ -103,12 +115,16 @@ Deno.test("GET /inventory - service token findings survive when the latest run h
     run_id: string | null;
     applications: unknown[];
     service_tokens: { token_id: string }[];
+    access_groups: unknown;
   };
 
   assertEquals(body.run_id, "run-1");
   assertEquals(body.applications, []);
   assertEquals(body.service_tokens.length, 1);
   assertEquals(body.service_tokens[0].token_id, "tok-1");
+  // specs/014-access-dashboard FR-008 — a Groups-fetch failure (network
+  // disabled in this test) never blocks the rest of the response above.
+  assertEquals(body.access_groups, null);
 });
 
 Deno.test("GET /inventory - run_id is null when the evaluation has never run", async () => {
@@ -182,4 +198,70 @@ Deno.test("GET /inventory - picks the most recently evaluated run when multiple 
   assertEquals(body.run_id, "run-new");
   assertEquals(body.applications.length, 1);
   assertEquals(body.applications[0].app_domain, "new.example.com");
+});
+
+Deno.test("GET /inventory - Access Groups panel: real reference counts and rule summaries when the fetch succeeds (specs/014-access-dashboard)", async () => {
+  const originalFetch = globalThis.fetch;
+  try {
+    globalThis.fetch = ((input: RequestInfo | URL) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      if (url.includes("/access/groups")) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              success: true,
+              result: [
+                { id: "grp-1", name: "platform", include: [{ everyone: {} }] },
+                { id: "grp-2", name: "unused", include: [{ everyone: {} }] },
+              ],
+              errors: [],
+            }),
+            { status: 200, headers: { "Content-Type": "application/json" } },
+          ),
+        );
+      }
+      if (url.includes("/access/identity_providers")) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({ success: true, result: [], errors: [] }),
+            { status: 200, headers: { "Content-Type": "application/json" } },
+          ),
+        );
+      }
+      return Promise.reject(new Error(`unexpected fetch: ${url}`));
+    }) as typeof fetch;
+
+    const request = app(createMockD1({
+      runs: [{ run_id: "run-1", evaluated_at: "2026-08-12T00:00:00Z" }],
+      appFindings: [
+        {
+          app_id: "app-1",
+          app_domain: "api.example.com",
+          status: "safe",
+          reason: "n/a",
+          run_id: "run-1",
+          referenced_group_ids: JSON.stringify(["grp-1"]),
+        },
+      ],
+      tokenFindings: [],
+    }));
+
+    const res = await request("/inventory");
+    const body = await res.json() as {
+      access_groups: {
+        group_id: string;
+        name: string;
+        referenced_by_app_count: number;
+        rule_summary: string;
+      }[];
+    };
+
+    const platform = body.access_groups.find((g) => g.group_id === "grp-1")!;
+    const unused = body.access_groups.find((g) => g.group_id === "grp-2")!;
+    assertEquals(platform.referenced_by_app_count, 1);
+    assertEquals(unused.referenced_by_app_count, 0);
+    assertEquals(platform.rule_summary, "everyone");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
