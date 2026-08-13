@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.6.0](https://github.com/iumalabs/flaretower/compare/v1.5.0...v1.6.0) (2026-08-13)
+
+
+### Features
+
+* **identity:** audit operator role changes (spec 019) ([#360](https://github.com/iumalabs/flaretower/issues/360)) ([664869d](https://github.com/iumalabs/flaretower/commit/664869dfdfe0d9d701c6106259db1e31d353c5f5))
+
+
+### Bug Fixes
+
+* **audit:** register the 3 security checks migration 0013 added ([#362](https://github.com/iumalabs/flaretower/issues/362)) ([5898d2a](https://github.com/iumalabs/flaretower/commit/5898d2ad7bb136c38224dd27d124ce7241c36121))
+* **dns:** reset FindingsTable's filter state on zone switch ([#363](https://github.com/iumalabs/flaretower/issues/363)) ([a240135](https://github.com/iumalabs/flaretower/commit/a240135af6185e23734386af6b534a976102a96f))
+
 ## [1.5.0](https://github.com/iumalabs/flaretower/compare/v1.4.0...v1.5.0) (2026-08-13)
 
 
