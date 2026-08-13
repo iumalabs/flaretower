@@ -61,6 +61,15 @@ auditRoutes.post("/alerts/:module/:kind/:id/acknowledge", requireRole("admin"), 
 auditRoutes.get("/changes", async (c) => {
   const now = new Date();
   const sinceParam = c.req.query("since");
+
+  // contracts/api.md documents `since` as ISO8601 — an unvalidated
+  // malformed value (e.g. `?since=banana`) wouldn't error, it would just
+  // silently bind a non-date string into evaluated_at's `<=` comparison
+  // (changes.ts), producing a confusing, undocumented result set instead
+  // of the clear 400 a caller passing a bad value should get.
+  if (sinceParam !== undefined && Number.isNaN(new Date(sinceParam).getTime())) {
+    return c.json({ error: `invalid since: must be an ISO8601 date, got "${sinceParam}"` }, 400);
+  }
   const since = sinceParam ?? new Date(now.getTime() - TWENTY_FOUR_HOURS_MS).toISOString();
 
   const { changes, unavailableSources } = await computeChanges(c.env.DB, since);
