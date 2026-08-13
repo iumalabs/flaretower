@@ -273,8 +273,8 @@ const WAF_CUSTOM_RULE_COLUMNS: FindingsTableColumn<CustomWafRule>[] = [
   },
 ];
 
-function zoneDetail(zone: ZoneFinding): JSX.Element {
-  const rows: Array<[string, CheckFinding | undefined]> = [
+function zoneChecks(zone: ZoneFinding): Array<[string, CheckFinding | undefined]> {
+  return [
     ["SSL/TLS", zone.ssl_tls],
     ["DNSSEC", zone.dnssec],
     ["WAF", zone.waf],
@@ -283,6 +283,19 @@ function zoneDetail(zone: ZoneFinding): JSX.Element {
     ["Always HTTPS", zone.always_use_https],
     ["Min TLS version", zone.min_tls_version],
   ];
+}
+
+// The check whose own status actually made the zone's overall_status
+// "critical" — a zone can be critical via any one of its checks, not just
+// SSL/TLS, so the banner must describe whichever one it really was.
+function criticalCheckDescription(zone: ZoneFinding): string {
+  const [label, check] = zoneChecks(zone).find(([, c]) => c?.status === "critical") ??
+    ["SSL/TLS", zone.ssl_tls];
+  return `${label}: ${check!.reason}`;
+}
+
+function zoneDetail(zone: ZoneFinding): JSX.Element {
+  const rows = zoneChecks(zone);
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
       {rows.filter(([, c]) => c !== undefined).map(([label, c]) => (
@@ -401,7 +414,7 @@ export function SecurityPostureInventory(): JSX.Element {
             severity: "critical",
             title: "A zone has a critical security gap",
             target: criticalRow.data.zone_name,
-            description: criticalRow.data.ssl_tls.reason,
+            description: criticalCheckDescription(criticalRow.data),
           }}
         />
       )}

@@ -259,6 +259,52 @@ test("a completed run against a zero-zone account renders confirmed-empty, not '
   await expect(page.getByText("No Turnstile widgets configured.")).toBeVisible();
 });
 
+// Regression coverage: the critical-alert banner must describe whichever
+// check actually made the zone critical, not always SSL/TLS — a zone can
+// be critical via any one of its 7 checks.
+test("critical-alert banner describes the check that's actually critical, not always SSL/TLS", async ({ page }) => {
+  await page.route("**/api/security/inventory", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        run_id: "run-3",
+        evaluated_at: "2026-08-13T00:00:00Z",
+        zones: [
+          {
+            zone_id: "zone-3",
+            zone_name: "waf-gap.example.com",
+            overall_status: "critical",
+            ssl_tls: { status: "safe", reason: "SSL/TLS mode is Full (strict)" },
+            dnssec: { status: "safe", reason: "DNSSEC is active" },
+            waf: {
+              status: "critical",
+              reason: "no WAF managed ruleset deployed, or every rule in it is disabled",
+            },
+            rate_limiting: {
+              status: "safe",
+              reason: "a rate-limiting ruleset is deployed with at least one enabled rule",
+            },
+            bot_fight_mode: { status: "safe", reason: "Bot Fight Mode is on" },
+            always_use_https: { status: "safe", reason: "Always Use HTTPS is on" },
+            min_tls_version: { status: "safe", reason: "minimum TLS version is 1.2" },
+          },
+        ],
+        certificates: [],
+        waf_custom_rules: [],
+        turnstile_widgets: [],
+      }),
+    }));
+  await page.goto("/");
+  await page.getByRole("button", { name: "Security Posture" }).click();
+
+  await expect(page.getByText("A zone has a critical security gap")).toBeVisible();
+  await expect(
+    page.getByText("WAF: no WAF managed ruleset deployed, or every rule in it is disabled"),
+  ).toBeVisible();
+  await expect(page.getByText("SSL/TLS mode is Full (strict)", { exact: false })).not.toBeVisible();
+});
+
 test("no evaluation run yet (run_id null) still renders the 'trigger one' message", async ({ page }) => {
   await page.route("**/api/security/inventory", (route) =>
     route.fulfill({
