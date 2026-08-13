@@ -2,6 +2,8 @@ import { assertEquals } from "@std/assert";
 import {
   buildZeroTrustInventory,
   listAccessApplications,
+  listAccessGroups,
+  listIdentityProviders,
   listServiceTokens,
 } from "../../worker/modules/zero-trust/inventory.ts";
 
@@ -51,6 +53,121 @@ Deno.test("listAccessApplications - maps apps and policies, including a zero-pol
   assertEquals(apps[0].policies.length, 1);
   assertEquals(apps[0].policies[0].hasScopedInclude, true);
   assertEquals(apps[1].policies, []);
+});
+
+// specs/014-access-dashboard research.md §1
+Deno.test("listAccessApplications - captures session_duration and self_hosted_domains", async () => {
+  const fetchImpl = mockFetch([
+    ["/access/apps", () =>
+      jsonResponse({
+        success: true,
+        result: [
+          {
+            id: "app-1",
+            domain: "api.example.com",
+            self_hosted_domains: ["api.example.com", "api-internal.example.com"],
+            session_duration: "24h",
+            policies: [],
+          },
+          { id: "app-2", domain: "legacy.example.com", policies: [] },
+        ],
+        errors: [],
+      })],
+  ]);
+
+  const apps = await listAccessApplications(creds, fetchImpl);
+
+  assertEquals(apps[0].coveredHostnames, ["api.example.com", "api-internal.example.com"]);
+  assertEquals(apps[0].sessionDuration, "24h");
+  // Legacy single-domain app falls back to a one-element list.
+  assertEquals(apps[1].coveredHostnames, ["legacy.example.com"]);
+  assertEquals(apps[1].sessionDuration, null);
+});
+
+Deno.test("listAccessApplications - captures the app's real name; falls back to domain when absent", async () => {
+  const fetchImpl = mockFetch([
+    ["/access/apps", () =>
+      jsonResponse({
+        success: true,
+        result: [
+          { id: "app-1", name: "gateway-admin", domain: "api.example.com", policies: [] },
+          { id: "app-2", domain: "no-name.example.com", policies: [] },
+        ],
+        errors: [],
+      })],
+  ]);
+
+  const apps = await listAccessApplications(creds, fetchImpl);
+
+  assertEquals(apps[0].appName, "gateway-admin");
+  assertEquals(apps[1].appName, "no-name.example.com");
+});
+
+Deno.test("listAccessApplications - policies carry their raw include/require rule arrays", async () => {
+  const fetchImpl = mockFetch([
+    ["/access/apps", () =>
+      jsonResponse({
+        success: true,
+        result: [{
+          id: "app-1",
+          domain: "api.example.com",
+          policies: [{
+            decision: "allow",
+            include: [{ email_domain: { domain: "example.com" } }],
+            require: [{ login_method: { id: "idp-1" } }],
+          }],
+        }],
+        errors: [],
+      })],
+  ]);
+
+  const apps = await listAccessApplications(creds, fetchImpl);
+
+  assertEquals(apps[0].policies[0].include, [{ email_domain: { domain: "example.com" } }]);
+  assertEquals(apps[0].policies[0].require, [{ login_method: { id: "idp-1" } }]);
+});
+
+// specs/014-access-dashboard research.md §2
+Deno.test("listIdentityProviders - maps id/name", async () => {
+  const fetchImpl = mockFetch([
+    ["/access/identity_providers", () =>
+      jsonResponse({
+        success: true,
+        result: [{ id: "idp-1", name: "Okta" }],
+        errors: [],
+      })],
+  ]);
+
+  const providers = await listIdentityProviders(creds, fetchImpl);
+  assertEquals(providers, [{ id: "idp-1", name: "Okta" }]);
+});
+
+// specs/014-access-dashboard research.md §3
+Deno.test("listAccessGroups - maps groups including their raw include rules", async () => {
+  const fetchImpl = mockFetch([
+    ["/access/groups", () =>
+      jsonResponse({
+        success: true,
+        result: [{ id: "grp-1", name: "platform", include: [{ login_method: { id: "idp-1" } }] }],
+        errors: [],
+      })],
+  ]);
+
+  const groups = await listAccessGroups(creds, fetchImpl);
+  assertEquals(groups, [{
+    groupId: "grp-1",
+    name: "platform",
+    include: [{ login_method: { id: "idp-1" } }],
+  }]);
+});
+
+Deno.test("listAccessGroups - a total failure returns null, not an empty (confirmed-zero) list", async () => {
+  const fetchImpl = mockFetch([
+    ["/access/groups", () => jsonResponse({ success: false, result: null, errors: [] }, 403)],
+  ]);
+
+  const groups = await listAccessGroups(creds, fetchImpl);
+  assertEquals(groups, null);
 });
 
 Deno.test("listServiceTokens - maps tokens, including one with no expires_at", async () => {

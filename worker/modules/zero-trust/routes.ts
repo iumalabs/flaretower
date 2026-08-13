@@ -1,9 +1,17 @@
 import { Hono } from "hono";
 import { requireRole } from "../../auth/access-jwt.ts";
-import { buildZeroTrustInventory } from "./inventory.ts";
+import { buildZeroTrustInventory, listAccessGroups, listIdentityProviders } from "./inventory.ts";
 import { evaluateApplications, evaluateServiceTokens } from "./evaluate.ts";
 import { diffForAppAlerts, diffForTokenAlerts } from "./alerts.ts";
-import type { AppEvaluation, AppStatus, TokenEvaluation, TokenStatus } from "./types.ts";
+import { summarizeGroupRules } from "./rule-humanizer.ts";
+import type {
+  AccessGroup,
+  AppEvaluation,
+  AppStatus,
+  PolicyRuleLine,
+  TokenEvaluation,
+  TokenStatus,
+} from "./types.ts";
 
 interface Env {
   DB: D1Database;
@@ -46,13 +54,30 @@ export async function runZeroTrustEvaluation(
   }
 > {
   const creds = { accountId: env.CF_ACCOUNT_ID, apiToken: env.CF_API_TOKEN };
-  const [{ applications, serviceTokens }, previousAppStatuses, previousTokenStatuses] =
-    await Promise.all([
-      buildZeroTrustInventory(creds),
-      getPreviousAppStatuses(env),
-      getPreviousTokenStatuses(env),
-    ]);
-  const appResults = evaluateApplications(applications);
+  // Identity providers and groups are fetched here too (not persisted
+  // themselves, research.md §3) purely to resolve login_method/group rule
+  // names into policyRules at evaluation time — GET /inventory separately
+  // live-fetches groups again for the Groups panel itself (routes.ts
+  // below), so a group renamed between evaluation runs may briefly show a
+  // stale name in a persisted policy line until the next run, matching
+  // this project's existing "findings are as of the last evaluation run"
+  // convention everywhere else.
+  const [
+    { applications, serviceTokens },
+    previousAppStatuses,
+    previousTokenStatuses,
+    identityProviders,
+    groups,
+  ] = await Promise.all([
+    buildZeroTrustInventory(creds),
+    getPreviousAppStatuses(env),
+    getPreviousTokenStatuses(env),
+    listIdentityProviders(creds).catch(() => []),
+    listAccessGroups(creds),
+  ]);
+  const identityProviderNames = new Map(identityProviders.map((p) => [p.id, p.name]));
+  const groupNames = new Map((groups ?? []).map((g) => [g.groupId, g.name]));
+  const appResults = evaluateApplications(applications, identityProviderNames, groupNames);
   const tokenResults = evaluateServiceTokens(serviceTokens);
 
   const runId = crypto.randomUUID();
@@ -60,8 +85,11 @@ export async function runZeroTrustEvaluation(
 
   const appStatements = appResults.map((a) =>
     env.DB.prepare(
-      `INSERT INTO zt_app_findings (id, app_id, app_domain, status, reason, evaluated_at, run_id, run_trigger)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO zt_app_findings
+         (id, app_id, app_domain, status, reason, evaluated_at, run_id, run_trigger,
+          app_name, policy_count, covered_hostname_count, identity_summary, session_duration, policy_rules_json,
+          referenced_group_ids)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).bind(
       crypto.randomUUID(),
       a.appId,
@@ -71,6 +99,13 @@ export async function runZeroTrustEvaluation(
       evaluatedAt,
       runId,
       trigger,
+      a.appName,
+      a.policyCount,
+      a.coveredHostnameCount,
+      a.identitySummary,
+      a.sessionDuration,
+      JSON.stringify(a.policyRules),
+      JSON.stringify(a.referencedGroupIds),
     )
   );
 
@@ -161,6 +196,40 @@ interface AppFindingRow {
   app_domain: string;
   status: string;
   reason: string;
+  app_name: string | null;
+  policy_count: number | null;
+  covered_hostname_count: number | null;
+  identity_summary: string | null;
+  session_duration: string | null;
+  policy_rules_json: string | null;
+  referenced_group_ids: string | null;
+}
+
+function serializeAccessGroup(
+  g: AccessGroup,
+  identityProviderNames: ReadonlyMap<string, string>,
+  groupNames: ReadonlyMap<string, string>,
+  referencedByAppCount: number,
+) {
+  return {
+    group_id: g.groupId,
+    name: g.name,
+    rule_summary: summarizeGroupRules(g.include, identityProviderNames, groupNames),
+    referenced_by_app_count: referencedByAppCount,
+  };
+}
+
+// Exact id match against every application's persisted referenced_group_ids
+// (research.md §3) — an unreferenced group correctly counts 0 (spec.md
+// FR-005), never omitted from the caller's loop over the live groups list.
+function countAppReferences(groupId: string, appRows: AppFindingRow[]): number {
+  let count = 0;
+  for (const row of appRows) {
+    if (!row.referenced_group_ids) continue;
+    const ids = JSON.parse(row.referenced_group_ids) as string[];
+    if (ids.includes(groupId)) count++;
+  }
+  return count;
 }
 
 interface TokenFindingRow {
@@ -169,6 +238,33 @@ interface TokenFindingRow {
   expires_at: string | null;
   status: string;
   reason: string;
+}
+
+// specs/014-access-dashboard research.md §3 — Access Groups are live-read
+// on every request, independent of the evaluate/persist pipeline above;
+// a total fetch failure surfaces as `access_groups: null` (spec.md FR-008),
+// and MUST NOT block the applications/tokens part of this same response.
+async function fetchAccessGroupsPanel(
+  env: Env,
+  appRows: AppFindingRow[],
+): Promise<ReturnType<typeof serializeAccessGroup>[] | null> {
+  const creds = { accountId: env.CF_ACCOUNT_ID, apiToken: env.CF_API_TOKEN };
+  const [groups, identityProviders] = await Promise.all([
+    listAccessGroups(creds),
+    listIdentityProviders(creds).catch(() => []),
+  ]);
+  if (groups === null) return null;
+
+  const identityProviderNames = new Map(identityProviders.map((p) => [p.id, p.name]));
+  const groupNames = new Map(groups.map((g) => [g.groupId, g.name]));
+  return groups.map((g) =>
+    serializeAccessGroup(
+      g,
+      identityProviderNames,
+      groupNames,
+      countAppReferences(g.groupId, appRows),
+    )
+  );
 }
 
 zeroTrustRoutes.get("/inventory", async (c) => {
@@ -184,26 +280,45 @@ zeroTrustRoutes.get("/inventory", async (c) => {
   ).first<{ run_id: string; evaluated_at: string }>();
 
   if (!latestRun) {
-    return c.json({ run_id: null, evaluated_at: null, applications: [], service_tokens: [] });
+    const accessGroups = await fetchAccessGroupsPanel(c.env, []);
+    return c.json({
+      run_id: null,
+      evaluated_at: null,
+      applications: [],
+      service_tokens: [],
+      access_groups: accessGroups,
+    });
   }
 
   const [{ results: appRows }, { results: tokenRows }] = await Promise.all([
     c.env.DB.prepare(
-      `SELECT app_id, app_domain, status, reason FROM zt_app_findings WHERE run_id = ? ORDER BY app_domain`,
+      `SELECT app_id, app_domain, status, reason, app_name, policy_count, covered_hostname_count,
+              identity_summary, session_duration, policy_rules_json, referenced_group_ids
+       FROM zt_app_findings WHERE run_id = ? ORDER BY app_domain`,
     ).bind(latestRun.run_id).all<AppFindingRow>(),
     c.env.DB.prepare(
       `SELECT token_id, token_name, expires_at, status, reason FROM zt_token_findings WHERE run_id = ? ORDER BY token_name`,
     ).bind(latestRun.run_id).all<TokenFindingRow>(),
   ]);
 
+  const accessGroups = await fetchAccessGroupsPanel(c.env, appRows);
+
   return c.json({
     run_id: latestRun.run_id,
     evaluated_at: latestRun.evaluated_at,
     applications: appRows.map((a) => ({
       app_id: a.app_id,
+      app_name: a.app_name,
       app_domain: a.app_domain,
       status: a.status,
       reason: a.reason,
+      policy_count: a.policy_count,
+      covered_hostname_count: a.covered_hostname_count,
+      identity_summary: a.identity_summary,
+      session_duration: a.session_duration,
+      policy_rules: a.policy_rules_json
+        ? JSON.parse(a.policy_rules_json) as PolicyRuleLine[][]
+        : [],
     })),
     service_tokens: tokenRows.map((t) => ({
       token_id: t.token_id,
@@ -212,6 +327,7 @@ zeroTrustRoutes.get("/inventory", async (c) => {
       status: t.status,
       reason: t.reason,
     })),
+    access_groups: accessGroups,
   });
 });
 

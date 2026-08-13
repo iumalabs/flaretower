@@ -7,6 +7,11 @@ import type {
   ServiceToken,
   TokenEvaluation,
 } from "./types.ts";
+import {
+  extractReferencedGroupIds,
+  humanizePolicies,
+  summarizeIdentity,
+} from "./rule-humanizer.ts";
 
 // Local re-implementation of the same decision logic Module 1's
 // evaluate.ts already established (research.md §2) — an "allow"-type
@@ -24,13 +29,32 @@ function isAppOpenOrUnconfigured(app: AccessApplication): boolean {
   return app.policies.some(isPolicyEffectivelyOpen);
 }
 
-export function evaluateApplication(app: AccessApplication): AppEvaluation {
+// identityProviderNames/groupNames: id -> name maps (specs/014-access-dashboard
+// research.md §2/§3), threaded through by routes.ts's runZeroTrustEvaluation —
+// used only for the new descriptive fields below, never for the
+// safe/warning/not_evaluated status logic above (spec.md FR-002: unchanged).
+export function evaluateApplication(
+  app: AccessApplication,
+  identityProviderNames: ReadonlyMap<string, string> = new Map(),
+  groupNames: ReadonlyMap<string, string> = new Map(),
+): AppEvaluation {
+  const descriptive = {
+    appName: app.appName,
+    policyCount: app.policies.length,
+    coveredHostnameCount: app.coveredHostnames.length,
+    identitySummary: summarizeIdentity(app.policies, identityProviderNames),
+    sessionDuration: app.sessionDuration,
+    policyRules: humanizePolicies(app.policies, identityProviderNames, groupNames),
+    referencedGroupIds: extractReferencedGroupIds(app.policies),
+  };
+
   if (app.evaluationError) {
     return {
       appId: app.appId,
       appDomain: app.appDomain,
       status: "not_evaluated",
       reason: app.evaluationError,
+      ...descriptive,
     };
   }
 
@@ -38,7 +62,13 @@ export function evaluateApplication(app: AccessApplication): AppEvaluation {
     const reason = app.policies.length === 0
       ? "no policies attached"
       : "a policy allows Everyone or bypasses identity verification";
-    return { appId: app.appId, appDomain: app.appDomain, status: "warning", reason };
+    return {
+      appId: app.appId,
+      appDomain: app.appDomain,
+      status: "warning",
+      reason,
+      ...descriptive,
+    };
   }
 
   return {
@@ -46,6 +76,7 @@ export function evaluateApplication(app: AccessApplication): AppEvaluation {
     appDomain: app.appDomain,
     status: "safe",
     reason: "policies meaningfully restrict access",
+    ...descriptive,
   };
 }
 
@@ -90,8 +121,12 @@ export function evaluateServiceToken(token: ServiceToken, now: Date = new Date()
   return { ...base, status: "safe", reason: "expiration healthy" };
 }
 
-export function evaluateApplications(apps: AccessApplication[]): AppEvaluation[] {
-  return apps.map(evaluateApplication);
+export function evaluateApplications(
+  apps: AccessApplication[],
+  identityProviderNames: ReadonlyMap<string, string> = new Map(),
+  groupNames: ReadonlyMap<string, string> = new Map(),
+): AppEvaluation[] {
+  return apps.map((app) => evaluateApplication(app, identityProviderNames, groupNames));
 }
 
 export function evaluateServiceTokens(

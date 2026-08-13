@@ -2,7 +2,13 @@
 // prior module's inventory.ts shape. Exact response field names pinned
 // against Cloudflare's documented API shapes; final verification against
 // a live account happens in T022 (quickstart.md).
-import type { AccessApplication, AccessPolicy, ServiceToken } from "./types.ts";
+import type {
+  AccessApplication,
+  AccessGroup,
+  AccessPolicy,
+  IdentityProvider,
+  ServiceToken,
+} from "./types.ts";
 
 export interface CloudflareZtCredentials {
   accountId: string;
@@ -59,11 +65,15 @@ async function cfFetch<T>(
 interface RawAccessPolicy {
   decision: string;
   include?: Array<Record<string, unknown>>;
+  require?: Array<Record<string, unknown>>;
 }
 
 interface RawAccessApp {
   id: string;
+  name?: string;
   domain: string;
+  self_hosted_domains?: string[];
+  session_duration?: string;
   policies?: RawAccessPolicy[];
 }
 
@@ -73,13 +83,35 @@ interface RawServiceToken {
   expires_at?: string;
 }
 
+interface RawIdentityProvider {
+  id: string;
+  name: string;
+}
+
+interface RawAccessGroup {
+  id: string;
+  name: string;
+  include?: Array<Record<string, unknown>>;
+}
+
 function summarizePolicy(policy: RawAccessPolicy): AccessPolicy {
   const include = policy.include ?? [];
   return {
     decision: policy.decision,
     includesEveryone: include.some((rule) => "everyone" in rule),
     hasScopedInclude: include.some((rule) => !("everyone" in rule)),
+    include,
+    require: policy.require ?? [],
   };
+}
+
+// self_hosted_domains covers a multi-hostname app (specs/014-access-dashboard
+// research.md §1); a legacy app with only the singular `domain` field falls
+// back to a one-element list equal to it.
+function coveredHostnames(app: RawAccessApp): string[] {
+  return app.self_hosted_domains && app.self_hosted_domains.length > 0
+    ? app.self_hosted_domains
+    : [app.domain];
 }
 
 export async function listAccessApplications(
@@ -93,9 +125,50 @@ export async function listAccessApplications(
   );
   return apps.map((app) => ({
     appId: app.id,
+    // Falls back to the domain when Cloudflare's API doesn't return a name
+    // for a given app (older apps predating the `name` field) — never a
+    // raw UUID shown to the operator as if it were a name.
+    appName: app.name && app.name.length > 0 ? app.name : app.domain,
     appDomain: app.domain,
     policies: (app.policies ?? []).map(summarizePolicy),
+    coveredHostnames: coveredHostnames(app),
+    sessionDuration: app.session_duration ?? null,
   }));
+}
+
+// specs/014-access-dashboard research.md §2 — resolves a policy's
+// login_method rule (which only carries an id) into a readable name.
+export async function listIdentityProviders(
+  creds: CloudflareZtCredentials,
+  fetchImpl: typeof fetch = fetch,
+): Promise<IdentityProvider[]> {
+  const providers = await cfFetch<RawIdentityProvider[]>(
+    `/accounts/${creds.accountId}/access/identity_providers`,
+    creds,
+    fetchImpl,
+  );
+  return providers.map((p) => ({ id: p.id, name: p.name }));
+}
+
+// specs/014-access-dashboard research.md §3 — live-read, not persisted
+// (see routes.ts). Returns null (not throws) on total failure, matching
+// every other module's "not_evaluated, never a silent confirmed-empty
+// list" convention (spec.md FR-008).
+export async function listAccessGroups(
+  creds: CloudflareZtCredentials,
+  fetchImpl: typeof fetch = fetch,
+): Promise<AccessGroup[] | null> {
+  try {
+    const groups = await cfFetch<RawAccessGroup[]>(
+      `/accounts/${creds.accountId}/access/groups`,
+      creds,
+      fetchImpl,
+    );
+    return groups.map((g) => ({ groupId: g.id, name: g.name, include: g.include ?? [] }));
+  } catch (err) {
+    console.error(`listAccessGroups failed: ${errorMessage(err)}`);
+    return null;
+  }
 }
 
 export async function listServiceTokens(
@@ -140,8 +213,11 @@ export async function buildZeroTrustInventory(
     ? appsResult.value
     : [{
       appId: "(unavailable)",
+      appName: "(unavailable)",
       appDomain: "(unavailable)",
       policies: [],
+      coveredHostnames: [],
+      sessionDuration: null,
       evaluationError: `could not list Access applications: ${errorMessage(appsResult.reason)}`,
     }];
 
