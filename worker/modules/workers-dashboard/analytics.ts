@@ -21,6 +21,13 @@ export interface ScriptAnalytics {
 export interface AnalyticsWindow {
   perScript: ScriptAnalytics[];
   cpuTimeP99Ms: number | null;
+  // True when the query's own `limit: 1000` cap was hit — Cloudflare's
+  // GraphQL API truncates server-side with no partial-data flag of its
+  // own, so an account with more than 1000 actively-invoked scripts in
+  // the window would otherwise have its totals silently understated with
+  // no way for a caller to tell (this project's own "no silent caps"
+  // convention).
+  truncated: boolean;
 }
 
 interface GraphQLResponse {
@@ -38,12 +45,18 @@ interface GraphQLResponse {
   errors?: Array<{ message: string }>;
 }
 
+// Not paginated — an account with more actively-invoked scripts than this
+// in the window has its result set silently truncated server-side by
+// Cloudflare; queryWindow() below surfaces that via AnalyticsWindow.truncated
+// rather than presenting a partial total as a complete one.
+const ANALYTICS_ROW_LIMIT = 1000;
+
 const QUERY = `
   query WorkersAnalytics($accountTag: String!, $start: Time!, $end: Time!) {
     viewer {
       accounts(filter: { accountTag: $accountTag }) {
         workersInvocationsAdaptive(
-          limit: 1000
+          limit: ${ANALYTICS_ROW_LIMIT}
           filter: { datetime_geq: $start, datetime_leq: $end }
         ) {
           dimensions { scriptName }
@@ -110,7 +123,7 @@ async function queryWindow(
     ? Math.max(...groups.map((g) => g.quantiles.cpuTimeP99))
     : null;
 
-  return { perScript, cpuTimeP99Ms };
+  return { perScript, cpuTimeP99Ms, truncated: groups.length >= ANALYTICS_ROW_LIMIT };
 }
 
 export interface WorkersAnalyticsResult {

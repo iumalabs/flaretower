@@ -54,6 +54,27 @@ Deno.test("fetchWorkersAnalytics - zero groups -> empty perScript, null P99", as
   const result = await fetchWorkersAnalytics(creds, now, fetchImpl);
   assertEquals(result.current.perScript, []);
   assertEquals(result.current.cpuTimeP99Ms, null);
+  assertEquals(result.current.truncated, false);
+});
+
+Deno.test("fetchWorkersAnalytics - exactly 1000 groups -> truncated", async () => {
+  const groups = Array.from(
+    { length: 1000 },
+    (_, i) => ({ scriptName: `script-${i}`, requests: 1, errors: 0, p50: 1, p99: 1 }),
+  );
+  const fetchImpl = (() => Promise.resolve(graphqlResponse(groups))) as typeof fetch;
+  const result = await fetchWorkersAnalytics(creds, now, fetchImpl);
+  assertEquals(result.current.truncated, true);
+});
+
+Deno.test("fetchWorkersAnalytics - under 1000 groups -> not truncated", async () => {
+  const groups = Array.from(
+    { length: 999 },
+    (_, i) => ({ scriptName: `script-${i}`, requests: 1, errors: 0, p50: 1, p99: 1 }),
+  );
+  const fetchImpl = (() => Promise.resolve(graphqlResponse(groups))) as typeof fetch;
+  const result = await fetchWorkersAnalytics(creds, now, fetchImpl);
+  assertEquals(result.current.truncated, false);
 });
 
 Deno.test("fetchWorkersAnalytics - HTTP failure throws (caller degrades, not this function)", async () => {

@@ -101,6 +101,18 @@ export async function buildWorkersDashboard(env: Env): Promise<WorkersDashboard>
   }
   const workerItems = inventoryFailed ? [] : inventory;
 
+  // The GraphQL query's own row cap (analytics.ts) was hit — current-window
+  // totals are real but understated, not a fetch failure, so this doesn't
+  // replace analyticsResult (requests24h etc. below still use the real,
+  // partial data) — it only tells the caller the numbers may be incomplete.
+  if (analyticsResult?.current.truncated) {
+    unavailable.push({
+      source: "analytics",
+      error:
+        `analytics truncated at ${analyticsResult.current.perScript.length} scripts; account-wide totals may undercount`,
+    });
+  }
+
   const analyticsByScript = new Map(
     (analyticsResult?.current.perScript ?? []).map((s) => [s.scriptName, s]),
   );
