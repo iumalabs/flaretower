@@ -213,6 +213,9 @@ Cloudflare Access decides who can reach FlareTower at all; FlareTower has its ow
   (through the browser, or any client carrying a valid Access session — the same
   `Cf-Access-Jwt-Assertion` gate as every other endpoint). `GET /api/identity/users` lists known
   operators and their `sub`s.
+- Every role change is recorded in `audit_log` (acting admin, target operator, previous role, new
+  role, timestamp), atomically with the change itself — see
+  [`specs/019-audit-role-changes/`](specs/019-audit-role-changes/).
 
 ## Required API token scopes
 
