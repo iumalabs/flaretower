@@ -290,10 +290,14 @@ export interface BindingReferences {
   allBindingsConfirmed: boolean;
 }
 
+// Deduped per resource — a script binding the same resource under two
+// different binding names (e.g. DB and DB_LEGACY both pointing at the
+// same D1 database) must still count as one Worker in "Bound to", not
+// one entry per binding.
 function addBinding(map: Map<string, string[]>, key: string, workerName: string): void {
   const existing = map.get(key);
   if (existing) {
-    existing.push(workerName);
+    if (!existing.includes(workerName)) existing.push(workerName);
   } else {
     map.set(key, [workerName]);
   }
