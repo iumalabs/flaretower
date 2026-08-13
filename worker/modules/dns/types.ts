@@ -12,6 +12,10 @@ export interface DnsRecord {
   proxyCapable: boolean;
   // null when not proxy-capable; boolean otherwise.
   proxied: boolean | null;
+  // Undefined when not available (e.g. this record came from a sentinel
+  // "(unavailable)" placeholder) — specs/013-dns-dashboard research.md §1.
+  // 1 means "auto" (Cloudflare's own convention for a proxied record).
+  ttl?: number;
   // Set by inventory.ts when it could not determine dangling-status for
   // this specific record (mirrors Module 1's WorkerHostname.evaluationError
   // — see worker/modules/workers-access-exposure/types.ts).
@@ -40,6 +44,11 @@ export interface DnsRecordEvaluation {
   content: string;
   proxyCapable: boolean;
   proxied: boolean | null;
+  ttl: number | null;
+  // Presentational only (specs/013-dns-dashboard research.md §3) — never
+  // affects `status`. True when `content` points at a known Cloudflare
+  // platform domain (e.g. *.pages.dev, *.workers.dev).
+  isPlatformTarget: boolean;
   status: DnsExposureStatus;
   reason: string;
 }

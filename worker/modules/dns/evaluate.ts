@@ -26,6 +26,45 @@ function findDanglingMatch(
   );
 }
 
+// Known Cloudflare platform domain suffixes a record's content might point
+// at — specs/013-dns-dashboard research.md §3. Presentational only, never
+// a `status`/severity input.
+const PLATFORM_DOMAIN_SUFFIXES = [".pages.dev", ".workers.dev"];
+
+export function isPlatformTargetDomain(content: string): boolean {
+  const value = content.toLowerCase();
+  return PLATFORM_DOMAIN_SUFFIXES.some((suffix) => value.endsWith(suffix));
+}
+
+// RFC 7489 §6.3: `p=none` means "monitor only, take no enforcement
+// action" — a well-defined, unambiguous "this isn't actually protecting
+// anything" signal, not a judgment call this project invents
+// (specs/013-dns-dashboard research.md §2). Returns null (no finding) for
+// any record that isn't a `_dmarc` TXT record, or whose value can't be
+// parsed as a `tag=value; ...` DMARC policy string (spec.md Edge Cases —
+// never fabricate a warning from an unparseable value).
+export function evaluateDmarcPolicy(record: DnsRecord): string | null {
+  if (record.recordType !== "TXT" || !record.recordName.startsWith("_dmarc.")) {
+    return null;
+  }
+
+  const tags = new Map(
+    record.content
+      .split(";")
+      .map((part) => part.trim())
+      .filter(Boolean)
+      .map((part) => {
+        const eq = part.indexOf("=");
+        return eq === -1 ? [part, ""] : [part.slice(0, eq).trim(), part.slice(eq + 1).trim()];
+      }),
+  );
+
+  if (tags.get("p") === "none") {
+    return "DMARC policy provides no enforcement (p=none)";
+  }
+  return null;
+}
+
 export function evaluateRecord(
   record: DnsRecord,
   danglingInsights: DanglingInsight[] | null,
@@ -37,6 +76,8 @@ export function evaluateRecord(
     content: record.content,
     proxyCapable: record.proxyCapable,
     proxied: record.proxied,
+    ttl: record.ttl ?? null,
+    isPlatformTarget: isPlatformTargetDomain(record.content),
   };
 
   if (record.evaluationError) {
@@ -69,6 +110,11 @@ export function evaluateRecord(
   // DNS-only (MX, TXT, NS, etc.) are never flagged this way — FR-004.
   if (record.proxyCapable && !record.proxied) {
     return { ...base, status: "warning", reason: "DNS-only — bypasses Cloudflare protection" };
+  }
+
+  const dmarcReason = evaluateDmarcPolicy(record);
+  if (dmarcReason) {
+    return { ...base, status: "warning", reason: dmarcReason };
   }
 
   return {

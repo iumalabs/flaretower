@@ -70,6 +70,7 @@ interface RawDnsRecord {
   content: string;
   proxiable: boolean;
   proxied?: boolean;
+  ttl?: number;
 }
 
 // Confirmed against Cloudflare's own API reference and a real account
@@ -196,6 +197,7 @@ export async function buildDnsInventory(
         content: r.content,
         proxyCapable: r.proxiable,
         proxied: r.proxiable ? (r.proxied ?? false) : null,
+        ttl: r.ttl,
       }));
       return { zoneName: z.name, records };
     } catch (err) {
