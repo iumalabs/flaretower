@@ -49,12 +49,20 @@ With Modules 1–7 plus both cross-cutting features above complete, this is Flar
 milestone. Everything past this point is genuinely new scope, not a remaining item from the original
 roadmap.
 
-Post-v1.0: [**Workers Dashboard**](specs/012-workers-dashboard/) — a dedicated, bespoke "Workers"
-page (separate from the existing Exposure page) with real per-Worker and account-wide operational
-metrics and a Workers-scoped recent-changes panel, following the design source's own expanded set of
-per-module dashboard mockups. Adds two new token scopes (`Account Analytics Read`, `Audit Logs Read`
-— see below); the same design update adds equivalent bespoke dashboards for the other 6 modules,
-tracked as their own specs (013-018) in the same pattern.
+Post-v1.0: [**Clone API Token Permissions**](specs/011-clone-token-permissions/) — a local-only
+"Token Tools" page: paste one Cloudflare API token's JSON permission payload in, get back either a
+human-readable checklist or a ready-to-paste JSON payload for creating the next token with matching
+scopes (e.g. keeping `preview`/`production` token permissions in sync), plus a diff between two
+pasted payloads. Solves issue #283 without FlareTower's own credential ever needing an
+`API Tokens
+Read`/`API Tokens Edit` scope — the Cloudflare API is never called. No new token scopes.
+
+Also post-v1.0: [**Workers Dashboard**](specs/012-workers-dashboard/) — a dedicated, bespoke
+"Workers" page (separate from the existing Exposure page) with real per-Worker and account-wide
+operational metrics and a Workers-scoped recent-changes panel, following the design source's own
+expanded set of per-module dashboard mockups. Adds two new token scopes (`Account Analytics Read`,
+`Audit Logs Read` — see below); the same design update adds equivalent bespoke dashboards for the
+other 6 modules, tracked as their own specs (013-018) in the same pattern.
 [**DNS Dashboard**](specs/013-dns-dashboard/) is the second of those — upgrades the existing DNS
 page in place (zone tabs, Proxy/TTL columns, an ineffective-DMARC-policy warning, a platform-domain
 informational label), no new token scope. [**Access Dashboard**](specs/014-access-dashboard/) is the
@@ -84,6 +92,13 @@ real Cloudflare account activity (who did what, when, what changed), filterable 
 exportable as JSONL, reusing spec 012's `fetchAccountAuditLog()` integration unmodified; no new
 token scope. The existing Unified alerts inbox / What changed / Account-wide posture summary
 sections are untouched. This completes the 7-spec per-module dashboard rollout (012-018).
+
+Also post-v1.0: [**Audit Operator Role Changes**](specs/019-audit-role-changes/) — closes a gap
+where changing another operator's `member`/`admin` role left no record of who made the change; every
+role change now writes a permanent `audit_log` entry (actor, target operator, previous role, new
+role, timestamp) atomically with the role change itself, through the same shared record-keeping
+mechanism every other mutating module already uses. No new Cloudflare API token scopes — this is
+FlareTower's own authorization state, not Cloudflare account state.
 
 ## Prerequisites
 
