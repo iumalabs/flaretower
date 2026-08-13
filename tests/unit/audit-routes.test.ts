@@ -85,3 +85,85 @@ Deno.test("GET /log - unavailable: true when the Cloudflare API responds with a 
   assertEquals(body.unavailable, true);
   assertEquals(body.entries, []);
 });
+
+// POST /alerts/:module/:kind/:id/acknowledge is a thin wrapper over
+// inbox.ts's acknowledgeAlert() (already covered, including persistence,
+// by tests/unit/audit-inbox.test.ts) — this only exercises the HTTP-layer
+// wiring: requireRole("admin") gating, param extraction, and status-code
+// mapping (200 on success, 404 for both unknown_source and not_found).
+interface AlertRow {
+  id: string;
+  acknowledged_at: string | null;
+}
+
+function createAlertMockD1(alertsByTable: Record<string, AlertRow[]>): D1Database {
+  return {
+    prepare(sql: string) {
+      const table = sql.match(/FROM\s+(\w+)|UPDATE\s+(\w+)/i);
+      const tableName = table?.[1] ?? table?.[2] ?? "";
+      let bound: unknown[] = [];
+      const statement = {
+        bind(...args: unknown[]) {
+          bound = args;
+          return statement;
+        },
+        first<T>() {
+          const id = bound[0] as string;
+          const row = (alertsByTable[tableName] ?? []).find((a) => a.id === id);
+          return Promise.resolve((row ?? null) as T | null);
+        },
+        run() {
+          const [acknowledgedAt, id] = bound as [string, string];
+          const row = (alertsByTable[tableName] ?? []).find((a) => a.id === id);
+          if (row) row.acknowledged_at = acknowledgedAt;
+          return Promise.resolve({} as D1Result);
+        },
+      };
+      return statement;
+    },
+  } as unknown as D1Database;
+}
+
+function appAsAdmin(db: D1Database) {
+  const hono = new Hono<
+    {
+      Bindings: { DB: D1Database; CF_ACCOUNT_ID: string; CF_API_TOKEN: string };
+      Variables: { identity: { role: "admin" | "member" } };
+    }
+  >();
+  hono.use("*", async (c, next) => {
+    c.set("identity", { role: "admin" });
+    await next();
+  });
+  hono.route("/", auditRoutes);
+  return (path: string) =>
+    hono.request(path, { method: "POST" }, {
+      DB: db,
+      CF_ACCOUNT_ID: "acct-1",
+      CF_API_TOKEN: "tok",
+    });
+}
+
+Deno.test("POST /alerts/:module/:kind/:id/acknowledge - acknowledges a real source's alert and persists it", async () => {
+  const alerts: AlertRow[] = [{ id: "a1", acknowledged_at: null }];
+  const request = appAsAdmin(createAlertMockD1({ exposure_alerts: alerts }));
+
+  const res = await request("/alerts/exposure/hostname/a1/acknowledge");
+
+  assertEquals(res.status, 200);
+  const body = await res.json() as { id: string; acknowledged_at: string };
+  assertEquals(body.id, "a1");
+  assertEquals(alerts[0].acknowledged_at, body.acknowledged_at);
+});
+
+Deno.test("POST /alerts/:module/:kind/:id/acknowledge - 404 on an unregistered module/kind pair", async () => {
+  const request = appAsAdmin(createAlertMockD1({}));
+  const res = await request("/alerts/not-a-module/not-a-kind/a1/acknowledge");
+  assertEquals(res.status, 404);
+});
+
+Deno.test("POST /alerts/:module/:kind/:id/acknowledge - 404 on an unknown id for a real source", async () => {
+  const request = appAsAdmin(createAlertMockD1({ exposure_alerts: [] }));
+  const res = await request("/alerts/exposure/hostname/missing/acknowledge");
+  assertEquals(res.status, 404);
+});
