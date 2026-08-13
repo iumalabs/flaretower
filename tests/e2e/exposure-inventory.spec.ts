@@ -159,6 +159,34 @@ test("US2/AC4 — expanding a row with sibling hostnames reveals them, collapsin
   await expect(sibling).toHaveCount(0);
 });
 
+test("the expandable row is keyboard-operable (Tab + Enter), not mouse-only", async ({ page }) => {
+  // FindingsTable's row-expand toggle is a <div>, not a <button>, for
+  // layout reasons — it needs role="button" + tabIndex + a keydown
+  // handler to be usable without a mouse, not just cursor:pointer styling.
+  const target = row(page, "billing-api", "custom_domain", "billing.example.com");
+  const sibling = target.getByText("billing-api.acct.workers.dev");
+  const toggle = target.getByRole("button");
+
+  await expect(sibling).toHaveCount(0);
+
+  await toggle.focus();
+  await toggle.press("Enter");
+  await expect(sibling).toBeVisible();
+
+  await toggle.press("Enter");
+  await expect(sibling).toHaveCount(0);
+});
+
+test("a sortable column header is keyboard-operable (Tab + Enter), not mouse-only", async ({ page }) => {
+  const header = page.getByTestId("sort-header-worker");
+  await header.focus();
+  await header.press("Enter");
+  // The active-sort indicator (▴/▾) only renders once toggleSort() has
+  // actually run for this column — confirms the keydown handler fired,
+  // not just that focus landed on the element.
+  await expect(header.getByText("▴")).toBeVisible();
+});
+
 test("US2 — filtering to critical narrows the table, no reload", async ({ page }) => {
   await page.getByRole("button", { name: /CRITICAL 1/ }).click();
   await expect(page.getByText("billing-api.acct.workers.dev").first()).toBeVisible();
