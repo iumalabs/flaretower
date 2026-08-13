@@ -2,6 +2,8 @@
 // the first time (research.md §3): a returning operator is recognized and
 // refreshed, a brand-new one is created — the very first ever created gets
 // auto-elevated (FR-005) so a fresh deployment always has an admin.
+import { writeAuditEntry } from "../../audit-log.ts";
+
 export type Role = "member" | "admin";
 
 export interface Operator {
@@ -95,16 +97,33 @@ export type SetRoleResult =
 // FR-006 — grants or revokes the elevated permission level for a known
 // operator. The caller (routes.ts) is responsible for validating that
 // `role` is one of the two accepted values before calling this.
+//
+// spec 019: the role UPDATE and its audit_log record are batched atomically
+// (db.batch()) so the two can never disagree about the operator's actual
+// role — a batch failure propagates, leaving the role unchanged. A no-op
+// submission (role already matches) still writes an audit entry (spec 019
+// research.md §4): it's a deliberate admin action worth being accountable
+// for either way, and skipping it would make a later reader unable to tell
+// a resubmission from a request that was silently dropped.
 export async function setOperatorRole(
   db: D1Database,
+  actorSub: string,
   sub: string,
   role: Role,
 ): Promise<SetRoleResult> {
-  const existing = await db.prepare(`SELECT sub FROM users WHERE sub = ?`).bind(sub).first<
-    { sub: string }
+  const existing = await db.prepare(`SELECT sub, role FROM users WHERE sub = ?`).bind(sub).first<
+    { sub: string; role: Role }
   >();
   if (!existing) return { outcome: "not_found" };
 
-  await db.prepare(`UPDATE users SET role = ? WHERE sub = ?`).bind(role, sub).run();
+  await db.batch([
+    db.prepare(`UPDATE users SET role = ? WHERE sub = ?`).bind(role, sub),
+    writeAuditEntry(db, {
+      actorSub,
+      action: "identity.role_change",
+      beforeJson: { sub, role: existing.role },
+      afterJson: { sub, role },
+    }),
+  ]);
   return { outcome: "ok", sub, role };
 }

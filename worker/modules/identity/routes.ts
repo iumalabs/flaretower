@@ -1,12 +1,14 @@
 import { Hono } from "hono";
-import { requireRole } from "../../auth/access-jwt.ts";
+import { type AccessIdentity, requireRole } from "../../auth/access-jwt.ts";
 import { listOperators, type Role, setOperatorRole } from "./users.ts";
 
 interface Env {
   DB: D1Database;
 }
 
-export const identityRoutes = new Hono<{ Bindings: Env }>();
+export const identityRoutes = new Hono<
+  { Bindings: Env; Variables: { identity: AccessIdentity } }
+>();
 
 identityRoutes.use("*", requireRole("admin"));
 
@@ -37,7 +39,8 @@ identityRoutes.post("/users/:sub/role", async (c) => {
     return c.json({ error: `role must be "member" or "admin"` }, 400);
   }
 
-  const result = await setOperatorRole(c.env.DB, sub, role);
+  const actorSub = c.get("identity").sub;
+  const result = await setOperatorRole(c.env.DB, actorSub, sub, role);
   if (result.outcome === "not_found") {
     return c.json({ error: "operator not found" }, 404);
   }
