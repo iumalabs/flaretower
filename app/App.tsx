@@ -11,6 +11,7 @@ import { AuditInventory } from "./pages/AuditInventory.tsx";
 import { OverviewPage } from "./pages/OverviewPage.tsx";
 import { TokenToolsPage } from "./pages/TokenToolsPage.tsx";
 import { Sidebar } from "./components/Sidebar.tsx";
+import { PageErrorBoundary } from "./components/PageErrorBoundary.tsx";
 import { NAV_ITEMS } from "./nav-items.ts";
 import {
   type AuditSummaryModuleEntry,
@@ -107,7 +108,9 @@ export function App(): JSX.Element {
         footer={{ version: __APP_VERSION__ ? `v${__APP_VERSION__} · self-hosted` : "self-hosted" }}
       />
       <div style={{ flex: 1, minWidth: 0 }}>
-        {active.render()}
+        <PageErrorBoundary key={page}>
+          {active.render()}
+        </PageErrorBoundary>
       </div>
     </div>
   );
