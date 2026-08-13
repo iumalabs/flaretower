@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.5.0](https://github.com/iumalabs/flaretower/compare/v1.4.0...v1.5.0) (2026-08-13)
+
+
+### Features
+
+* **access-dashboard:** add bespoke Access applications view (spec 014) ([#352](https://github.com/iumalabs/flaretower/issues/352)) ([07ca019](https://github.com/iumalabs/flaretower/commit/07ca019072422385804ba097f44877bcc3fa0e31))
+* **audit-dashboard:** add real Audit log panel, reusing spec 012's integration (spec 018) ([#356](https://github.com/iumalabs/flaretower/issues/356)) ([5a9ffe8](https://github.com/iumalabs/flaretower/commit/5a9ffe88df80b675aadc1895d09e6a713334f8f5))
+* **dns-dashboard:** add zone-tabbed DNS records view (spec 013) ([#350](https://github.com/iumalabs/flaretower/issues/350)) ([b2cac5a](https://github.com/iumalabs/flaretower/commit/b2cac5aef97a9e2939ef3dea97a88ae87bbd7194))
+* **pages-dashboard:** add per-project Pages dashboard (spec 015) ([#353](https://github.com/iumalabs/flaretower/issues/353)) ([741f5af](https://github.com/iumalabs/flaretower/commit/741f5af6fca38e7fb471a9a4d1553ef9754d6218))
+* **security-dashboard:** restructure zone checks, add 3 new checks + 2 live-fetched panels (spec 017) ([#355](https://github.com/iumalabs/flaretower/issues/355)) ([94785b4](https://github.com/iumalabs/flaretower/commit/94785b4face4e59cbedb7e560a9ed3bec3eb7555))
+* **storage-dashboard:** add Bound-to/Custom-domain/Tables-Size columns (spec 016) ([#354](https://github.com/iumalabs/flaretower/issues/354)) ([ea32747](https://github.com/iumalabs/flaretower/commit/ea32747bd43067d611ec9f5aba60df129c75186e))
+
 ## [1.4.0](https://github.com/iumalabs/flaretower/compare/v1.3.0...v1.4.0) (2026-08-12)
 
 
