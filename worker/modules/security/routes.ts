@@ -1,26 +1,50 @@
 import { Hono } from "hono";
 import { requireRole } from "../../auth/access-jwt.ts";
-import { buildSecurityInventory, listTurnstileWidgets } from "./inventory.ts";
 import {
+  buildSecurityInventory,
+  getZoneCertificatePacks,
+  getZoneCustomWafRules,
+  listTurnstileWidgets,
+  listZones,
+} from "./inventory.ts";
+import { mapWithConcurrency } from "../../concurrency.ts";
+import {
+  classifyCertificateExpiry,
+  classifyCustomWafRule,
+  evaluateAlwaysUseHttpses,
+  evaluateBotFightModes,
   evaluateDnssecs,
+  evaluateMinTlsVersions,
   evaluateRateLimitings,
   evaluateSslTlsModes,
   evaluateWafs,
+  rollUpZoneStatus,
+  selectActiveCertificate,
 } from "./evaluate.ts";
 import {
+  diffForAlwaysHttpsAlerts,
+  diffForBotFightModeAlerts,
   diffForDnssecAlerts,
+  diffForMinTlsAlerts,
   diffForRateLimitingAlerts,
   diffForSslTlsAlerts,
   diffForWafAlerts,
 } from "./alerts.ts";
 import type {
+  AlwaysHttpsEvaluation,
+  BotFightModeEvaluation,
+  CustomWafRule,
   DnssecEvaluation,
+  ExposureStatus,
+  MinTlsVersionEvaluation,
   ProtectionStatus,
   RateLimitingEvaluation,
+  SettingStatus,
   SslTlsEvaluation,
   SslTlsStatus,
   TurnstileWidget,
   WafEvaluation,
+  ZoneCertificate,
 } from "./types.ts";
 
 interface Env {
@@ -65,6 +89,30 @@ async function getPreviousRateLimitingStatuses(env: Env): Promise<Map<string, Pr
   return new Map(rows.map((r) => [r.zone_id, r.status]));
 }
 
+async function getPreviousBotFightModeStatuses(env: Env): Promise<Map<string, SettingStatus>> {
+  const { results: rows } = await env.DB.prepare(
+    `SELECT zone_id, status FROM bot_fight_mode_findings
+     WHERE run_id = (SELECT run_id FROM bot_fight_mode_findings ORDER BY evaluated_at DESC LIMIT 1)`,
+  ).all<{ zone_id: string; status: SettingStatus }>();
+  return new Map(rows.map((r) => [r.zone_id, r.status]));
+}
+
+async function getPreviousAlwaysHttpsStatuses(env: Env): Promise<Map<string, SettingStatus>> {
+  const { results: rows } = await env.DB.prepare(
+    `SELECT zone_id, status FROM always_https_findings
+     WHERE run_id = (SELECT run_id FROM always_https_findings ORDER BY evaluated_at DESC LIMIT 1)`,
+  ).all<{ zone_id: string; status: SettingStatus }>();
+  return new Map(rows.map((r) => [r.zone_id, r.status]));
+}
+
+async function getPreviousMinTlsStatuses(env: Env): Promise<Map<string, SettingStatus>> {
+  const { results: rows } = await env.DB.prepare(
+    `SELECT zone_id, status FROM min_tls_findings
+     WHERE run_id = (SELECT run_id FROM min_tls_findings ORDER BY evaluated_at DESC LIMIT 1)`,
+  ).all<{ zone_id: string; status: SettingStatus }>();
+  return new Map(rows.map((r) => [r.zone_id, r.status]));
+}
+
 // Shared by POST /evaluate (interactive) and the scheduled handler —
 // constitution Principle III.
 export async function runSecurityEvaluation(
@@ -78,6 +126,9 @@ export async function runSecurityEvaluation(
     dnssecResults: DnssecEvaluation[];
     wafResults: WafEvaluation[];
     rateLimitingResults: RateLimitingEvaluation[];
+    botFightModeResults: BotFightModeEvaluation[];
+    alwaysUseHttpsResults: AlwaysHttpsEvaluation[];
+    minTlsVersionResults: MinTlsVersionEvaluation[];
     newAlertCount: number;
   }
 > {
@@ -88,18 +139,27 @@ export async function runSecurityEvaluation(
     previousDnssecStatuses,
     previousWafStatuses,
     previousRateLimitingStatuses,
+    previousBotFightModeStatuses,
+    previousAlwaysHttpsStatuses,
+    previousMinTlsStatuses,
   ] = await Promise.all([
     buildSecurityInventory(creds),
     getPreviousSslTlsStatuses(env),
     getPreviousDnssecStatuses(env),
     getPreviousWafStatuses(env),
     getPreviousRateLimitingStatuses(env),
+    getPreviousBotFightModeStatuses(env),
+    getPreviousAlwaysHttpsStatuses(env),
+    getPreviousMinTlsStatuses(env),
   ]);
 
   const sslTlsResults = evaluateSslTlsModes(zones);
   const dnssecResults = evaluateDnssecs(zones);
   const wafResults = evaluateWafs(zones);
   const rateLimitingResults = evaluateRateLimitings(zones);
+  const botFightModeResults = evaluateBotFightModes(zones);
+  const alwaysUseHttpsResults = evaluateAlwaysUseHttpses(zones);
+  const minTlsVersionResults = evaluateMinTlsVersions(zones);
 
   const runId = crypto.randomUUID();
   const evaluatedAt = new Date().toISOString();
@@ -168,11 +228,62 @@ export async function runSecurityEvaluation(
     )
   );
 
+  const botFightModeStatements = botFightModeResults.map((b) =>
+    env.DB.prepare(
+      `INSERT INTO bot_fight_mode_findings (id, zone_id, zone_name, status, reason, evaluated_at, run_id, run_trigger)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).bind(
+      crypto.randomUUID(),
+      b.zoneId,
+      b.zoneName,
+      b.status,
+      b.reason,
+      evaluatedAt,
+      runId,
+      trigger,
+    )
+  );
+
+  const alwaysUseHttpsStatements = alwaysUseHttpsResults.map((a) =>
+    env.DB.prepare(
+      `INSERT INTO always_https_findings (id, zone_id, zone_name, status, reason, evaluated_at, run_id, run_trigger)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).bind(
+      crypto.randomUUID(),
+      a.zoneId,
+      a.zoneName,
+      a.status,
+      a.reason,
+      evaluatedAt,
+      runId,
+      trigger,
+    )
+  );
+
+  const minTlsVersionStatements = minTlsVersionResults.map((m) =>
+    env.DB.prepare(
+      `INSERT INTO min_tls_findings (id, zone_id, zone_name, status, reason, evaluated_at, run_id, run_trigger)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).bind(
+      crypto.randomUUID(),
+      m.zoneId,
+      m.zoneName,
+      m.status,
+      m.reason,
+      evaluatedAt,
+      runId,
+      trigger,
+    )
+  );
+
   const statements = [
     ...sslTlsStatements,
     ...dnssecStatements,
     ...wafStatements,
     ...rateLimitingStatements,
+    ...botFightModeStatements,
+    ...alwaysUseHttpsStatements,
+    ...minTlsVersionStatements,
   ];
   if (statements.length > 0) {
     await env.DB.batch(statements);
@@ -185,6 +296,15 @@ export async function runSecurityEvaluation(
     rateLimitingResults,
     previousRateLimitingStatuses,
   );
+  const newBotFightModeAlerts = diffForBotFightModeAlerts(
+    botFightModeResults,
+    previousBotFightModeStatuses,
+  );
+  const newAlwaysHttpsAlerts = diffForAlwaysHttpsAlerts(
+    alwaysUseHttpsResults,
+    previousAlwaysHttpsStatuses,
+  );
+  const newMinTlsAlerts = diffForMinTlsAlerts(minTlsVersionResults, previousMinTlsStatuses);
 
   const sslTlsAlertStatements = newSslTlsAlerts.map((a) =>
     env.DB.prepare(
@@ -246,11 +366,59 @@ export async function runSecurityEvaluation(
     )
   );
 
+  const botFightModeAlertStatements = newBotFightModeAlerts.map((a) =>
+    env.DB.prepare(
+      `INSERT INTO bot_fight_mode_alerts (id, zone_id, zone_name, previous_status, new_status, run_id, detected_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    ).bind(
+      crypto.randomUUID(),
+      a.zoneId,
+      a.zoneName,
+      a.previousStatus,
+      a.newStatus,
+      runId,
+      evaluatedAt,
+    )
+  );
+
+  const alwaysHttpsAlertStatements = newAlwaysHttpsAlerts.map((a) =>
+    env.DB.prepare(
+      `INSERT INTO always_https_alerts (id, zone_id, zone_name, previous_status, new_status, run_id, detected_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    ).bind(
+      crypto.randomUUID(),
+      a.zoneId,
+      a.zoneName,
+      a.previousStatus,
+      a.newStatus,
+      runId,
+      evaluatedAt,
+    )
+  );
+
+  const minTlsAlertStatements = newMinTlsAlerts.map((a) =>
+    env.DB.prepare(
+      `INSERT INTO min_tls_alerts (id, zone_id, zone_name, previous_status, new_status, run_id, detected_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    ).bind(
+      crypto.randomUUID(),
+      a.zoneId,
+      a.zoneName,
+      a.previousStatus,
+      a.newStatus,
+      runId,
+      evaluatedAt,
+    )
+  );
+
   const alertStatements = [
     ...sslTlsAlertStatements,
     ...dnssecAlertStatements,
     ...wafAlertStatements,
     ...rateLimitingAlertStatements,
+    ...botFightModeAlertStatements,
+    ...alwaysHttpsAlertStatements,
+    ...minTlsAlertStatements,
   ];
   if (alertStatements.length > 0) {
     await env.DB.batch(alertStatements);
@@ -263,8 +431,12 @@ export async function runSecurityEvaluation(
     dnssecResults,
     wafResults,
     rateLimitingResults,
+    botFightModeResults,
+    alwaysUseHttpsResults,
+    minTlsVersionResults,
     newAlertCount: newSslTlsAlerts.length + newDnssecAlerts.length + newWafAlerts.length +
-      newRateLimitingAlerts.length,
+      newRateLimitingAlerts.length + newBotFightModeAlerts.length + newAlwaysHttpsAlerts.length +
+      newMinTlsAlerts.length,
   };
 }
 
@@ -298,6 +470,24 @@ interface RateLimitingFindingRow {
   reason: string;
 }
 
+interface BotFightModeFindingRow {
+  zone_id: string;
+  status: string;
+  reason: string;
+}
+
+interface AlwaysHttpsFindingRow {
+  zone_id: string;
+  status: string;
+  reason: string;
+}
+
+interface MinTlsFindingRow {
+  zone_id: string;
+  status: string;
+  reason: string;
+}
+
 // Serializes a Turnstile widget list for the API response, preserving
 // the null-vs-empty-array distinction all the way through: null means
 // the list itself could not be fetched (not-evaluated), a `.map` over
@@ -317,6 +507,65 @@ export function serializeTurnstileWidgets(
     : widgets.map((w) => ({ sitekey: w.sitekey, name: w.name, domains: w.domains }));
 }
 
+// specs/017-security-dashboard research.md §5 — live-fetched on every
+// GET /inventory call, never persisted (mirrors
+// worker/modules/zero-trust/routes.ts's fetchAccessGroupsPanel()
+// precedent exactly). null only if the zone list itself couldn't be
+// fetched at all — a per-zone certificate-pack fetch failure just
+// leaves that zone contributing no row, not a total failure.
+async function fetchCertificatesPanel(
+  creds: { accountId: string; apiToken: string },
+): Promise<ZoneCertificate[] | null> {
+  let zones: Awaited<ReturnType<typeof listZones>>;
+  try {
+    zones = await listZones(creds);
+  } catch {
+    return null;
+  }
+
+  // Capped at 2 concurrent zones — same modest cap this module already
+  // uses elsewhere (worker/concurrency.ts).
+  return await mapWithConcurrency(zones, 2, async (zone) => {
+    const certificates = await getZoneCertificatePacks(creds, zone.id).catch(() => []);
+    const active = selectActiveCertificate(certificates);
+    return {
+      zoneId: zone.id,
+      zoneName: zone.name,
+      hosts: active?.hosts ?? [],
+      issuer: active?.issuer ?? "",
+      expiresOn: active?.expiresOn ?? null,
+      status: classifyCertificateExpiry(active?.expiresOn ?? null),
+    };
+  });
+}
+
+// research.md §6 — same live-fetched, unpersisted precedent as
+// fetchCertificatesPanel() above. One row per (zone, rule) pair.
+async function fetchWafCustomRulesPanel(
+  creds: { accountId: string; apiToken: string },
+): Promise<CustomWafRule[] | null> {
+  let zones: Awaited<ReturnType<typeof listZones>>;
+  try {
+    zones = await listZones(creds);
+  } catch {
+    return null;
+  }
+
+  const perZoneRules = await mapWithConcurrency(zones, 2, async (zone) => {
+    const rules = await getZoneCustomWafRules(creds, zone.id).catch(() => []);
+    return rules.map((rule) => ({
+      zoneId: zone.id,
+      zoneName: zone.name,
+      description: rule.description ?? "",
+      expression: rule.expression ?? "",
+      action: rule.action ?? "",
+      enabled: rule.enabled,
+      status: classifyCustomWafRule(rule),
+    }));
+  });
+  return perZoneRules.flat();
+}
+
 // Every zone always produces exactly one ssl_tls_findings row per run
 // (data-model.md) — the most reliable table to source "did a run
 // happen" from, same pattern as Module 4's pages_subdomain_findings.
@@ -327,11 +576,13 @@ securityRoutes.get("/inventory", async (c) => {
   // this exact fetch (inventory.ts) — a scoped-down token (missing
   // `Turnstile Read`) or a transient API error must surface as
   // not-evaluated, not as a confirmed-empty `[]` (T025, FR-012).
-  const [latest, turnstileWidgets] = await Promise.all([
+  const [latest, turnstileWidgets, certificates, wafCustomRules] = await Promise.all([
     c.env.DB.prepare(
       `SELECT run_id, evaluated_at FROM ssl_tls_findings ORDER BY evaluated_at DESC LIMIT 1`,
     ).first<{ run_id: string; evaluated_at: string }>(),
     listTurnstileWidgets(creds).catch(() => null),
+    fetchCertificatesPanel(creds),
+    fetchWafCustomRulesPanel(creds),
   ]);
 
   if (!latest) {
@@ -339,6 +590,8 @@ securityRoutes.get("/inventory", async (c) => {
       run_id: null,
       evaluated_at: null,
       zones: [],
+      certificates,
+      waf_custom_rules: wafCustomRules,
       turnstile_widgets: serializeTurnstileWidgets(turnstileWidgets),
     });
   }
@@ -348,6 +601,9 @@ securityRoutes.get("/inventory", async (c) => {
     { results: dnssecRows },
     { results: wafRows },
     { results: rateLimitingRows },
+    { results: botFightModeRows },
+    { results: alwaysHttpsRows },
+    { results: minTlsRows },
   ] = await Promise.all([
     c.env.DB.prepare(
       `SELECT zone_id, zone_name, status, reason FROM ssl_tls_findings WHERE run_id = ? ORDER BY zone_name`,
@@ -361,11 +617,23 @@ securityRoutes.get("/inventory", async (c) => {
     c.env.DB.prepare(
       `SELECT zone_id, status, reason FROM rate_limiting_findings WHERE run_id = ?`,
     ).bind(latest.run_id).all<RateLimitingFindingRow>(),
+    c.env.DB.prepare(
+      `SELECT zone_id, status, reason FROM bot_fight_mode_findings WHERE run_id = ?`,
+    ).bind(latest.run_id).all<BotFightModeFindingRow>(),
+    c.env.DB.prepare(
+      `SELECT zone_id, status, reason FROM always_https_findings WHERE run_id = ?`,
+    ).bind(latest.run_id).all<AlwaysHttpsFindingRow>(),
+    c.env.DB.prepare(
+      `SELECT zone_id, status, reason FROM min_tls_findings WHERE run_id = ?`,
+    ).bind(latest.run_id).all<MinTlsFindingRow>(),
   ]);
 
   const dnssecByZone = new Map(dnssecRows.map((r) => [r.zone_id, r]));
   const wafByZone = new Map(wafRows.map((r) => [r.zone_id, r]));
   const rateLimitingByZone = new Map(rateLimitingRows.map((r) => [r.zone_id, r]));
+  const botFightModeByZone = new Map(botFightModeRows.map((r) => [r.zone_id, r]));
+  const alwaysHttpsByZone = new Map(alwaysHttpsRows.map((r) => [r.zone_id, r]));
+  const minTlsByZone = new Map(minTlsRows.map((r) => [r.zone_id, r]));
 
   return c.json({
     run_id: latest.run_id,
@@ -374,15 +642,44 @@ securityRoutes.get("/inventory", async (c) => {
       const dnssec = dnssecByZone.get(s.zone_id);
       const waf = wafByZone.get(s.zone_id);
       const rateLimiting = rateLimitingByZone.get(s.zone_id);
+      const botFightMode = botFightModeByZone.get(s.zone_id);
+      const alwaysUseHttps = alwaysHttpsByZone.get(s.zone_id);
+      const minTlsVersion = minTlsByZone.get(s.zone_id);
+      // specs/017-security-dashboard FR-002 — the worst of every check
+      // this zone actually has a row for; a check missing its own row
+      // (shouldn't normally happen, every check inserts one row per
+      // zone per run) simply doesn't contribute, never treated as safe.
+      const overallStatus = rollUpZoneStatus(
+        [
+          s.status,
+          dnssec?.status,
+          waf?.status,
+          rateLimiting?.status,
+          botFightMode?.status,
+          alwaysUseHttps?.status,
+          minTlsVersion?.status,
+        ]
+          .filter((v): v is string => v !== undefined)
+          .map((v) => v as ExposureStatus),
+      );
       return {
         zone_id: s.zone_id,
         zone_name: s.zone_name,
+        overall_status: overallStatus,
         ssl_tls: { status: s.status, reason: s.reason },
         dnssec: dnssec && { status: dnssec.status, reason: dnssec.reason },
         waf: waf && { status: waf.status, reason: waf.reason },
         rate_limiting: rateLimiting && { status: rateLimiting.status, reason: rateLimiting.reason },
+        bot_fight_mode: botFightMode &&
+          { status: botFightMode.status, reason: botFightMode.reason },
+        always_use_https: alwaysUseHttps &&
+          { status: alwaysUseHttps.status, reason: alwaysUseHttps.reason },
+        min_tls_version: minTlsVersion &&
+          { status: minTlsVersion.status, reason: minTlsVersion.reason },
       };
     }),
+    certificates,
+    waf_custom_rules: wafCustomRules,
     turnstile_widgets: serializeTurnstileWidgets(turnstileWidgets),
   });
 });
@@ -427,7 +724,37 @@ interface RateLimitingAlertRow {
   acknowledged_at: string | null;
 }
 
-// Merges all four alert tables at the API layer with a `kind`
+interface BotFightModeAlertRow {
+  id: string;
+  zone_id: string;
+  zone_name: string;
+  previous_status: string | null;
+  new_status: string;
+  detected_at: string;
+  acknowledged_at: string | null;
+}
+
+interface AlwaysHttpsAlertRow {
+  id: string;
+  zone_id: string;
+  zone_name: string;
+  previous_status: string | null;
+  new_status: string;
+  detected_at: string;
+  acknowledged_at: string | null;
+}
+
+interface MinTlsAlertRow {
+  id: string;
+  zone_id: string;
+  zone_name: string;
+  previous_status: string | null;
+  new_status: string;
+  detected_at: string;
+  acknowledged_at: string | null;
+}
+
+// Merges all seven alert tables at the API layer with a `kind`
 // discriminator (contracts/api.md) — the tables stay separate in D1
 // (data-model.md §7's rationale), combined only for this response.
 securityRoutes.get("/alerts", async (c) => {
@@ -436,6 +763,9 @@ securityRoutes.get("/alerts", async (c) => {
     { results: dnssecRows },
     { results: wafRows },
     { results: rateLimitingRows },
+    { results: botFightModeRows },
+    { results: alwaysHttpsRows },
+    { results: minTlsRows },
   ] = await Promise.all([
     c.env.DB.prepare(
       `SELECT id, zone_id, zone_name, previous_status, new_status, detected_at, acknowledged_at
@@ -453,6 +783,18 @@ securityRoutes.get("/alerts", async (c) => {
       `SELECT id, zone_id, zone_name, previous_status, new_status, detected_at, acknowledged_at
        FROM rate_limiting_alerts WHERE acknowledged_at IS NULL ORDER BY detected_at DESC`,
     ).all<RateLimitingAlertRow>(),
+    c.env.DB.prepare(
+      `SELECT id, zone_id, zone_name, previous_status, new_status, detected_at, acknowledged_at
+       FROM bot_fight_mode_alerts WHERE acknowledged_at IS NULL ORDER BY detected_at DESC`,
+    ).all<BotFightModeAlertRow>(),
+    c.env.DB.prepare(
+      `SELECT id, zone_id, zone_name, previous_status, new_status, detected_at, acknowledged_at
+       FROM always_https_alerts WHERE acknowledged_at IS NULL ORDER BY detected_at DESC`,
+    ).all<AlwaysHttpsAlertRow>(),
+    c.env.DB.prepare(
+      `SELECT id, zone_id, zone_name, previous_status, new_status, detected_at, acknowledged_at
+       FROM min_tls_alerts WHERE acknowledged_at IS NULL ORDER BY detected_at DESC`,
+    ).all<MinTlsAlertRow>(),
   ]);
 
   return c.json({
@@ -497,6 +839,36 @@ securityRoutes.get("/alerts", async (c) => {
         detected_at: r.detected_at,
         acknowledged_at: r.acknowledged_at,
       })),
+      ...botFightModeRows.map((r) => ({
+        id: r.id,
+        kind: "bot_fight_mode" as const,
+        zone_id: r.zone_id,
+        zone_name: r.zone_name,
+        previous_status: r.previous_status,
+        new_status: r.new_status,
+        detected_at: r.detected_at,
+        acknowledged_at: r.acknowledged_at,
+      })),
+      ...alwaysHttpsRows.map((r) => ({
+        id: r.id,
+        kind: "always_use_https" as const,
+        zone_id: r.zone_id,
+        zone_name: r.zone_name,
+        previous_status: r.previous_status,
+        new_status: r.new_status,
+        detected_at: r.detected_at,
+        acknowledged_at: r.acknowledged_at,
+      })),
+      ...minTlsRows.map((r) => ({
+        id: r.id,
+        kind: "min_tls_version" as const,
+        zone_id: r.zone_id,
+        zone_name: r.zone_name,
+        previous_status: r.previous_status,
+        new_status: r.new_status,
+        detected_at: r.detected_at,
+        acknowledged_at: r.acknowledged_at,
+      })),
     ],
   });
 });
@@ -506,6 +878,9 @@ const ALERT_TABLE_BY_KIND: Record<string, string> = {
   dnssec: "dnssec_alerts",
   waf: "waf_alerts",
   rate_limiting: "rate_limiting_alerts",
+  bot_fight_mode: "bot_fight_mode_alerts",
+  always_use_https: "always_https_alerts",
+  min_tls_version: "min_tls_alerts",
 };
 
 // Not a Cloudflare account mutation (FR-013 scope boundary) — not

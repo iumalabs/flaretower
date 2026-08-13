@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { JSX } from "react";
-import { type ExposureStatus } from "../components/ExposureStatusBadge.tsx";
+import { type ExposureStatus, ExposureStatusBadge } from "../components/ExposureStatusBadge.tsx";
 import {
   FindingsTable,
   type FindingsTableColumn,
@@ -16,10 +16,14 @@ interface CheckFinding {
 interface ZoneFinding {
   zone_id: string;
   zone_name: string;
+  overall_status: ExposureStatus;
   ssl_tls: CheckFinding;
   dnssec?: CheckFinding;
   waf?: CheckFinding;
   rate_limiting?: CheckFinding;
+  bot_fight_mode?: CheckFinding;
+  always_use_https?: CheckFinding;
+  min_tls_version?: CheckFinding;
 }
 
 interface TurnstileWidget {
@@ -28,21 +32,40 @@ interface TurnstileWidget {
   domains: string[];
 }
 
+interface ZoneCertificate {
+  zone_id: string;
+  zone_name: string;
+  hosts: string[];
+  issuer: string;
+  expires_on: string | null;
+  status: ExposureStatus;
+}
+
+interface CustomWafRule {
+  zone_id: string;
+  zone_name: string;
+  description: string;
+  expression: string;
+  action: string;
+  enabled: boolean;
+  status: ExposureStatus;
+}
+
 interface SecurityInventoryResponse {
   run_id: string | null;
   evaluated_at: string | null;
   zones: ZoneFinding[];
+  // null = the zone list itself couldn't be fetched at all (live-fetched
+  // on every request, not persisted — specs/017-security-dashboard
+  // research.md §5/§6), distinct from a successfully fetched, confirmed-
+  // empty array.
+  certificates: ZoneCertificate[] | null;
+  waf_custom_rules: CustomWafRule[] | null;
   // null = the Turnstile widgets list itself could not be fetched (e.g. a
   // scoped-down token, or a transient API error) — distinct from a
   // successfully fetched, confirmed-empty array. See
   // worker/modules/security/inventory.ts's SecurityInventory doc comment.
   turnstile_widgets: TurnstileWidget[] | null;
-}
-
-interface FlatCheck {
-  zone_name: string;
-  check: string;
-  reason: string;
 }
 
 async function fetchSecurityInventory(): Promise<SecurityInventoryResponse> {
@@ -53,11 +76,20 @@ async function fetchSecurityInventory(): Promise<SecurityInventoryResponse> {
   return await res.json();
 }
 
-const COLUMNS: FindingsTableColumn<FlatCheck>[] = [
+// A per-check pill inside a zone row's cell — distinct from FindingsTable's
+// own leftmost badge (which carries the row's overall_status).
+function CheckCell({ check }: { check: CheckFinding | undefined }): JSX.Element {
+  if (!check) {
+    return <ExposureStatusBadge status="not_evaluated" />;
+  }
+  return <ExposureStatusBadge status={check.status} />;
+}
+
+const CHECK_COLUMNS: FindingsTableColumn<ZoneFinding>[] = [
   {
     key: "zone",
     label: "Zone",
-    width: "24%",
+    width: "15%",
     sortValue: (r) => r.zone_name,
     render: (r) => (
       <span
@@ -72,9 +104,65 @@ const COLUMNS: FindingsTableColumn<FlatCheck>[] = [
     ),
   },
   {
-    key: "check",
-    label: "Check",
-    width: "18%",
+    key: "ssl_tls",
+    label: "SSL/TLS",
+    width: "10%",
+    render: (r) => <CheckCell check={r.ssl_tls} />,
+  },
+  {
+    key: "dnssec",
+    label: "DNSSEC",
+    width: "10%",
+    render: (r) => <CheckCell check={r.dnssec} />,
+  },
+  {
+    key: "waf",
+    label: "WAF",
+    width: "10%",
+    render: (r) => <CheckCell check={r.waf} />,
+  },
+  {
+    key: "rate_limiting",
+    label: "Rate limiting",
+    width: "11%",
+    render: (r) => <CheckCell check={r.rate_limiting} />,
+  },
+  {
+    key: "bot_fight_mode",
+    label: "Bot fight mode",
+    width: "12%",
+    render: (r) => <CheckCell check={r.bot_fight_mode} />,
+  },
+  {
+    key: "always_use_https",
+    label: "Always HTTPS",
+    width: "12%",
+    render: (r) => <CheckCell check={r.always_use_https} />,
+  },
+  {
+    key: "min_tls_version",
+    label: "Min TLS",
+    width: "10%",
+    render: (r) => <CheckCell check={r.min_tls_version} />,
+  },
+];
+
+// specs/017-security-dashboard research.md §5 — deliberately coarse (day
+// precision only), matching this rollout's established convention for
+// "how long" displays (e.g. Pages' build-recency).
+function formatExpiry(expiresOn: string | null): string {
+  if (expiresOn === null) return "not available";
+  const days = Math.round((new Date(expiresOn).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+  if (days < 0) return "expired";
+  return `expires in ${days}d`;
+}
+
+const CERTIFICATE_COLUMNS: FindingsTableColumn<ZoneCertificate>[] = [
+  {
+    key: "zone",
+    label: "Zone",
+    width: "20%",
+    sortValue: (r) => r.zone_name,
     render: (r) => (
       <span
         style={{
@@ -83,27 +171,141 @@ const COLUMNS: FindingsTableColumn<FlatCheck>[] = [
           color: "var(--fg-secondary)",
         }}
       >
-        {r.check}
+        {r.zone_name}
       </span>
     ),
   },
   {
-    key: "reason",
-    label: "Reason",
+    key: "hosts",
+    label: "Host(s)",
+    width: "30%",
     render: (r) => (
       <span style={{ fontSize: "var(--text-body-size)", color: "var(--fg-muted)" }}>
-        {r.reason}
+        {r.hosts.length > 0 ? r.hosts.join(", ") : "none"}
+      </span>
+    ),
+  },
+  {
+    key: "issuer",
+    label: "Issuer",
+    width: "25%",
+    render: (r) => (
+      <span style={{ fontSize: "var(--text-body-size)", color: "var(--fg-muted)" }}>
+        {r.issuer || "not available"}
+      </span>
+    ),
+  },
+  {
+    key: "expires_on",
+    label: "Expiry",
+    render: (r) => (
+      <span
+        style={{
+          fontFamily: "var(--font-mono)",
+          fontSize: "var(--text-code-size)",
+          color: "var(--fg-secondary)",
+        }}
+      >
+        {formatExpiry(r.expires_on)}
       </span>
     ),
   },
 ];
 
-const CHECK_LABEL: Record<string, string> = {
-  ssl_tls: "SSL/TLS mode",
-  dnssec: "DNSSEC",
-  waf: "WAF",
-  rate_limiting: "Rate limiting",
-};
+const WAF_CUSTOM_RULE_COLUMNS: FindingsTableColumn<CustomWafRule>[] = [
+  {
+    key: "zone",
+    label: "Zone",
+    width: "16%",
+    sortValue: (r) => r.zone_name,
+    render: (r) => (
+      <span
+        style={{
+          fontFamily: "var(--font-mono)",
+          fontSize: "var(--text-code-size)",
+          color: "var(--fg-secondary)",
+        }}
+      >
+        {r.zone_name}
+      </span>
+    ),
+  },
+  {
+    key: "description",
+    label: "Rule",
+    width: "20%",
+    render: (r) => (
+      <span
+        style={{
+          fontFamily: "var(--font-mono)",
+          fontSize: "var(--text-code-size)",
+          color: "var(--fg-secondary)",
+        }}
+      >
+        {r.description || "(unnamed rule)"}
+      </span>
+    ),
+  },
+  {
+    key: "expression",
+    label: "Expression",
+    width: "40%",
+    render: (r) => (
+      <span
+        style={{
+          fontFamily: "var(--font-mono)",
+          fontSize: "var(--text-code-size)",
+          color: "var(--fg-faint)",
+        }}
+      >
+        {r.expression}
+      </span>
+    ),
+  },
+  {
+    key: "action",
+    label: "Action",
+    render: (r) => (
+      <span style={{ fontSize: "var(--text-body-size)", color: "var(--fg-muted)" }}>
+        {r.enabled ? r.action : "disabled"}
+      </span>
+    ),
+  },
+];
+
+function zoneDetail(zone: ZoneFinding): JSX.Element {
+  const rows: Array<[string, CheckFinding | undefined]> = [
+    ["SSL/TLS", zone.ssl_tls],
+    ["DNSSEC", zone.dnssec],
+    ["WAF", zone.waf],
+    ["Rate limiting", zone.rate_limiting],
+    ["Bot fight mode", zone.bot_fight_mode],
+    ["Always HTTPS", zone.always_use_https],
+    ["Min TLS version", zone.min_tls_version],
+  ];
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      {rows.filter(([, c]) => c !== undefined).map(([label, c]) => (
+        <div key={label} style={{ display: "flex", gap: 10, alignItems: "baseline" }}>
+          <span
+            style={{
+              fontFamily: "var(--font-mono)",
+              fontSize: "var(--text-label-size)",
+              color: "var(--fg-faint)",
+              width: 110,
+              flex: "none",
+            }}
+          >
+            {label}
+          </span>
+          <span style={{ fontSize: "var(--text-body-size)", color: "var(--fg-muted)" }}>
+            {c!.reason}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 function SectionHeading({ children }: { children: string }): JSX.Element {
   return (
@@ -153,7 +355,7 @@ export function SecurityPostureInventory(): JSX.Element {
             margin: "0 0 8px",
           }}
         >
-          Security posture inventory
+          Security posture
         </h1>
         <p style={{ color: "var(--fg-muted)" }}>
           No evaluation runs yet. Trigger one via <code>POST /api/security/evaluate</code>.
@@ -162,22 +364,13 @@ export function SecurityPostureInventory(): JSX.Element {
     );
   }
 
-  const rows: FindingsTableRow<FlatCheck>[] | null = data
-    ? data.zones.flatMap((z) => {
-      const checks: [string, CheckFinding | undefined][] = [
-        ["ssl_tls", z.ssl_tls],
-        ["dnssec", z.dnssec],
-        ["waf", z.waf],
-        ["rate_limiting", z.rate_limiting],
-      ];
-      return checks
-        .filter((c): c is [string, CheckFinding] => c[1] !== undefined)
-        .map(([kind, c]) => ({
-          id: `${z.zone_id}:${kind}`,
-          status: c.status,
-          data: { zone_name: z.zone_name, check: CHECK_LABEL[kind], reason: c.reason },
-        }));
-    })
+  const rows: FindingsTableRow<ZoneFinding>[] | null = data
+    ? data.zones.map((z) => ({
+      id: z.zone_id,
+      status: z.overall_status,
+      data: z,
+      detail: zoneDetail(z),
+    }))
     : null;
 
   const criticalRow = rows?.find((r) => r.status === "critical");
@@ -193,11 +386,11 @@ export function SecurityPostureInventory(): JSX.Element {
           margin: "0 0 8px",
         }}
       >
-        Security posture inventory
+        Security posture
       </h1>
       {data && (
         <p style={{ color: "var(--fg-faint)", fontSize: "var(--text-meta-size)", marginTop: 0 }}>
-          Last evaluated {data.evaluated_at} · run {data.run_id}
+          {data.zones.length} zone{data.zones.length === 1 ? "" : "s"} · run {data.run_id}
         </p>
       )}
 
@@ -206,15 +399,15 @@ export function SecurityPostureInventory(): JSX.Element {
           scope="module"
           finding={{
             severity: "critical",
-            title: `${criticalRow.data.check} needs attention`,
+            title: "A zone has a critical security gap",
             target: criticalRow.data.zone_name,
-            description: criticalRow.data.reason,
+            description: criticalRow.data.ssl_tls.reason,
           }}
         />
       )}
 
       <FindingsTable
-        columns={COLUMNS}
+        columns={CHECK_COLUMNS}
         rows={rows}
         loadingLabel="Loading security posture inventory…"
         emptyState={{
@@ -222,6 +415,56 @@ export function SecurityPostureInventory(): JSX.Element {
           description: "This account has no zones to evaluate.",
         }}
       />
+
+      <SectionHeading>Certificates</SectionHeading>
+      {data && data.certificates === null
+        ? (
+          <p style={{ color: "var(--status-critical-fg)" }}>
+            Certificates could not be evaluated.
+          </p>
+        )
+        : (
+          <FindingsTable
+            columns={CERTIFICATE_COLUMNS}
+            rows={data
+              ? data.certificates!.map((c) => ({
+                id: `cert:${c.zone_id}`,
+                status: c.status,
+                data: c,
+              }))
+              : null}
+            loadingLabel="Loading certificates…"
+            emptyState={{
+              heading: "No certificates found",
+              description: "This account has no zones with an active certificate.",
+            }}
+          />
+        )}
+
+      <SectionHeading>WAF custom rules</SectionHeading>
+      {data && data.waf_custom_rules === null
+        ? (
+          <p style={{ color: "var(--status-critical-fg)" }}>
+            WAF custom rules could not be evaluated.
+          </p>
+        )
+        : (
+          <FindingsTable
+            columns={WAF_CUSTOM_RULE_COLUMNS}
+            rows={data
+              ? data.waf_custom_rules!.map((r, i) => ({
+                id: `waf-rule:${r.zone_id}:${i}`,
+                status: r.status,
+                data: r,
+              }))
+              : null}
+            loadingLabel="Loading WAF custom rules…"
+            emptyState={{
+              heading: "No custom WAF rules configured",
+              description: "No zone in this account has a custom WAF rule deployed.",
+            }}
+          />
+        )}
 
       <SectionHeading>Turnstile widgets</SectionHeading>
       {data && data.turnstile_widgets === null

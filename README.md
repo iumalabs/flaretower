@@ -68,7 +68,11 @@ check), no new token scope. [**Storage Dashboard**](specs/016-storage-dashboard/
 upgrades the existing R2/KV/D1 page in place, a "Bound to" column shared across all three grouped
 tables (which deployed Worker(s) actually reference each resource), a Custom domain column for R2
 buckets, and Tables/Size columns for D1 databases, reusing the existing exposure/usage status
-semantics unchanged; no new token scope.
+semantics unchanged; no new token scope. [**Security Dashboard**](specs/017-security-dashboard/) is
+the sixth — upgrades the existing Security Posture page in place, one row per zone (SSL/TLS, DNSSEC,
+WAF, Rate Limiting, plus 3 new checks: Bot Fight Mode, Always Use HTTPS, Minimum TLS Version)
+instead of the prior one-row-per-check flattening, plus live-fetched Certificates and WAF Custom
+Rules panels; Turnstile widgets is untouched. No new token scope.
 
 ## Prerequisites
 
