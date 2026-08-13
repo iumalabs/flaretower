@@ -1,5 +1,5 @@
 import { assertEquals } from "@std/assert";
-import { mapWithConcurrency } from "../../worker/concurrency.ts";
+import { mapWithConcurrency, withGlobalFetchSlot } from "../../worker/concurrency.ts";
 
 Deno.test("mapWithConcurrency - preserves result order regardless of completion order", async () => {
   const items = [30, 10, 20];
@@ -55,4 +55,45 @@ Deno.test("mapWithConcurrency - a rejected task propagates as a rejection of the
     assertEquals((err as Error).message, "boom");
   }
   assertEquals(threw, true);
+});
+
+Deno.test("withGlobalFetchSlot - never runs more than 6 wrapped calls at once", async () => {
+  let current = 0;
+  let peak = 0;
+
+  await Promise.all(
+    Array.from({ length: 20 }, () =>
+      withGlobalFetchSlot(async () => {
+        current++;
+        peak = Math.max(peak, current);
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        current--;
+      })),
+  );
+
+  assertEquals(peak <= 6, true);
+});
+
+Deno.test("withGlobalFetchSlot - releases the slot even when the wrapped call throws", async () => {
+  await Promise.allSettled(
+    Array.from({ length: 6 }, () => withGlobalFetchSlot(() => Promise.reject(new Error("boom")))),
+  );
+
+  // If a slot leaked on the rejection path above, this next batch would
+  // never all complete (some callers would wait forever for a slot that
+  // never frees up) — Promise.all resolving at all is the assertion.
+  let completed = 0;
+  await Promise.all(
+    Array.from({ length: 6 }, () =>
+      withGlobalFetchSlot(() => {
+        completed++;
+        return Promise.resolve();
+      })),
+  );
+  assertEquals(completed, 6);
+});
+
+Deno.test("withGlobalFetchSlot - returns the wrapped call's resolved value", async () => {
+  const result = await withGlobalFetchSlot(() => Promise.resolve("ok"));
+  assertEquals(result, "ok");
 });
