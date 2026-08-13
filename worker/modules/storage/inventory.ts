@@ -455,15 +455,25 @@ export async function buildStorageInventory(
   creds: CloudflareStorageCredentials,
   fetchImpl: typeof fetch = fetch,
 ): Promise<StorageInventory> {
-  const [buckets, accessApplications, bindingReferences, [kvResult, d1Result]] = await Promise.all([
+  // fetchBucketsWithDomains and buildBindingReferences each ramp up their
+  // own internal fan-out (documented peaks of 4 and 5 respectively, both
+  // already capped individually against issue #292) — running them in the
+  // same Promise.all lets those two ramps overlap, peaking at 4 + 5 = 9
+  // simultaneous connections by themselves, before listAccessApplications
+  // or the KV/D1 list calls are even counted. Sequenced here so at most
+  // one of the two heavy fan-outs is ever ramping up at a time; the two
+  // lightweight flat-list calls (1 + 2 connections, no ramp-up of their
+  // own) stay alongside the first phase since they resolve quickly and
+  // don't meaningfully add to the sustained peak.
+  const [buckets, accessApplications, [kvResult, d1Result]] = await Promise.all([
     fetchBucketsWithDomains(creds, fetchImpl),
     listAccessApplications(creds, fetchImpl).catch(() => null),
-    buildBindingReferences(creds, fetchImpl),
     Promise.allSettled([
       listKvNamespaces(creds, fetchImpl),
       listD1Databases(creds, fetchImpl),
     ]),
   ]);
+  const bindingReferences = await buildBindingReferences(creds, fetchImpl);
 
   const kvNamespaces: KvNamespaceInventoryItem[] = kvResult.status === "fulfilled"
     ? kvResult.value.map((k) => ({ namespaceId: k.id, title: k.title }))
