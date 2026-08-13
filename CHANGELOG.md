@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.6.2](https://github.com/iumalabs/flaretower/compare/v1.6.1...v1.6.2) (2026-08-13)
+
+
+### Bug Fixes
+
+* **pages-dashboard:** clamp Last build recency against clock skew ([#380](https://github.com/iumalabs/flaretower/issues/380)) ([550fc3d](https://github.com/iumalabs/flaretower/commit/550fc3d777eaa54d573cda4e01edbd06c6e64f11))
+* **security-dashboard:** correct critical banner, dedupe zone-list fetch ([#379](https://github.com/iumalabs/flaretower/issues/379)) ([087bd89](https://github.com/iumalabs/flaretower/commit/087bd8958ca6e3bf53f22b6f33e14b1381d4418b))
+* **storage-dashboard:** dedupe 'Bound to' when a Worker binds a resource twice ([#381](https://github.com/iumalabs/flaretower/issues/381)) ([1d84058](https://github.com/iumalabs/flaretower/commit/1d84058114456b36743f2133535031a43396b14d))
+* **workers-dashboard:** fetch/concurrency hygiene from post-rollout code review ([#378](https://github.com/iumalabs/flaretower/issues/378)) ([0614ed4](https://github.com/iumalabs/flaretower/commit/0614ed439f821ff1942efa9245f5d81d1dd9b5a3))
+
 ## [1.6.1](https://github.com/iumalabs/flaretower/compare/v1.6.0...v1.6.1) (2026-08-13)
 
 
