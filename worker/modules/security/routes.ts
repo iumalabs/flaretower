@@ -513,15 +513,16 @@ export function serializeTurnstileWidgets(
 // precedent exactly). null only if the zone list itself couldn't be
 // fetched at all — a per-zone certificate-pack fetch failure just
 // leaves that zone contributing no row, not a total failure.
+//
+// `zones` is fetched once by the GET /inventory handler below and shared
+// with fetchWafCustomRulesPanel() rather than each panel calling
+// listZones() independently — they'd otherwise issue the same GET /zones
+// request twice per inventory load.
 async function fetchCertificatesPanel(
   creds: { accountId: string; apiToken: string },
+  zones: Awaited<ReturnType<typeof listZones>> | null,
 ): Promise<ZoneCertificate[] | null> {
-  let zones: Awaited<ReturnType<typeof listZones>>;
-  try {
-    zones = await listZones(creds);
-  } catch {
-    return null;
-  }
+  if (zones === null) return null;
 
   // Capped at 2 concurrent zones — same modest cap this module already
   // uses elsewhere (worker/concurrency.ts).
@@ -540,16 +541,13 @@ async function fetchCertificatesPanel(
 }
 
 // research.md §6 — same live-fetched, unpersisted precedent as
-// fetchCertificatesPanel() above. One row per (zone, rule) pair.
+// fetchCertificatesPanel() above. One row per (zone, rule) pair. Shares
+// the same fetched `zones` list — see fetchCertificatesPanel()'s comment.
 async function fetchWafCustomRulesPanel(
   creds: { accountId: string; apiToken: string },
+  zones: Awaited<ReturnType<typeof listZones>> | null,
 ): Promise<CustomWafRule[] | null> {
-  let zones: Awaited<ReturnType<typeof listZones>>;
-  try {
-    zones = await listZones(creds);
-  } catch {
-    return null;
-  }
+  if (zones === null) return null;
 
   const perZoneRules = await mapWithConcurrency(zones, 2, async (zone) => {
     const rules = await getZoneCustomWafRules(creds, zone.id).catch(() => []);
@@ -575,14 +573,20 @@ securityRoutes.get("/inventory", async (c) => {
   // Same null-on-total-failure idiom `buildSecurityInventory()` uses for
   // this exact fetch (inventory.ts) — a scoped-down token (missing
   // `Turnstile Read`) or a transient API error must surface as
-  // not-evaluated, not as a confirmed-empty `[]` (T025, FR-012).
-  const [latest, turnstileWidgets, certificates, wafCustomRules] = await Promise.all([
+  // not-evaluated, not as a confirmed-empty `[]` (T025, FR-012). `zones`
+  // is fetched once here, alongside the D1 read and turnstile fetch, and
+  // shared by both panels below instead of each issuing its own GET
+  // /zones (fetchCertificatesPanel's own comment).
+  const [latest, turnstileWidgets, zones] = await Promise.all([
     c.env.DB.prepare(
       `SELECT run_id, evaluated_at FROM ssl_tls_findings ORDER BY evaluated_at DESC LIMIT 1`,
     ).first<{ run_id: string; evaluated_at: string }>(),
     listTurnstileWidgets(creds).catch(() => null),
-    fetchCertificatesPanel(creds),
-    fetchWafCustomRulesPanel(creds),
+    listZones(creds).catch(() => null),
+  ]);
+  const [certificates, wafCustomRules] = await Promise.all([
+    fetchCertificatesPanel(creds, zones),
+    fetchWafCustomRulesPanel(creds, zones),
   ]);
 
   if (!latest) {
