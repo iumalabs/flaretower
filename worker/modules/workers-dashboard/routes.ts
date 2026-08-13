@@ -73,7 +73,7 @@ export async function buildWorkersDashboard(env: Env): Promise<WorkersDashboard>
         return new Map<string, ExposureStatus[]>();
       }),
       getWorkerLastDeployTimes(creds).catch((err: unknown) => {
-        unavailable.push({ source: "exposure", error: `last-deploy times: ${errorMessage(err)}` });
+        unavailable.push({ source: "last_deploy", error: errorMessage(err) });
         return new Map<string, string | null>();
       }),
       fetchWorkersAnalytics(creds, now).catch((err: unknown) => {
