@@ -196,6 +196,23 @@ test("specs/013 US1 — zone tabs show name+count; selecting a different tab swa
   await expect(page.getByText("old-blog.example.com")).toHaveCount(0);
 });
 
+test("a status filter set on one zone doesn't silently carry over and hide another zone's records", async ({ page }) => {
+  // example.com has exactly one critical record — filter down to it.
+  await page.getByRole("button", { name: /CRITICAL 1/ }).click();
+  await expect(page.getByText("old-blog.example.com").first()).toBeVisible();
+  await expect(page.getByText("api.example.com")).toHaveCount(0);
+
+  // second.example has zero critical records. If the "critical" filter
+  // carried over, its own real (safe) record would stay hidden with no
+  // visible chip left to un-toggle it (spec.md-adjacent bug, no spec —
+  // pure regression coverage).
+  await page.getByRole("button", { name: "second.example" }).click();
+
+  await expect(page.getByTestId("findings-row-second.example:A:second.example:203.0.113.99"))
+    .toBeVisible();
+  await expect(page.getByText("No findings match this filter.")).toHaveCount(0);
+});
+
 test("specs/013 US2 — Proxy status and TTL render per record, distinct from the Finding status", async ({ page }) => {
   const proxiedRow = row(
     page,
