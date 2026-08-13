@@ -1,4 +1,4 @@
-// The hard-coded registry of all fourteen finding/alert table pairs
+// The hard-coded registry of all seventeen finding/alert table pairs
 // Modules 1-6 already populate (research.md §2, data-model.md). Table
 // and column names here are the only place they may ever come from —
 // never request input — the same allowlist discipline every prior
@@ -139,6 +139,36 @@ export const AUDIT_SOURCES: readonly AuditSource[] = [
     findingIdentityColumns: ["zone_id"],
     alertLabelColumns: ["zone_name"],
   },
+  // The 3 checks 0013_security_findings_add_bot_https_min_tls.sql (specs
+  // 017) added after this registry's original 14 entries were written —
+  // without these, evaluate runs for these checks still write real
+  // findings/alerts (security/routes.ts), but they'd be invisible to
+  // changes.ts/inbox.ts/summary.ts, silently excluded from the very
+  // cross-module views Module 7 exists to provide.
+  {
+    module: "security",
+    kind: "bot_fight_mode",
+    findingsTable: "bot_fight_mode_findings",
+    alertsTable: "bot_fight_mode_alerts",
+    findingIdentityColumns: ["zone_id"],
+    alertLabelColumns: ["zone_name"],
+  },
+  {
+    module: "security",
+    kind: "always_https",
+    findingsTable: "always_https_findings",
+    alertsTable: "always_https_alerts",
+    findingIdentityColumns: ["zone_id"],
+    alertLabelColumns: ["zone_name"],
+  },
+  {
+    module: "security",
+    kind: "min_tls",
+    findingsTable: "min_tls_findings",
+    alertsTable: "min_tls_alerts",
+    findingIdentityColumns: ["zone_id"],
+    alertLabelColumns: ["zone_name"],
+  },
 ];
 
 export function findAuditSource(module: string, kind: string): AuditSource | undefined {
@@ -146,7 +176,7 @@ export function findAuditSource(module: string, kind: string): AuditSource | und
 }
 
 // Shared across inbox.ts/changes.ts/summary.ts (FR-010 / spec.md Edge
-// Cases bullet 2): a genuine D1 read failure for one of the fourteen
+// Cases bullet 2): a genuine D1 read failure for one of the seventeen
 // sources must be reported distinctly from that source legitimately
 // having zero rows, in the same shape from all three query functions so
 // the API responses and AuditInventory.tsx don't each invent their own.

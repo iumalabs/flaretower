@@ -1,4 +1,4 @@
-// Unified outstanding-alerts inbox: reads directly from all fourteen
+// Unified outstanding-alerts inbox: reads directly from all seventeen
 // sources' alert tables, merges, and sorts. No evaluation happens
 // here — every alert already exists; this only re-presents it
 // (data-model.md).
@@ -60,7 +60,7 @@ export interface UnifiedAlertsResult {
   unavailableSources: UnavailableSource[];
 }
 
-// A per-source read failure does not blank out the other thirteen
+// A per-source read failure does not blank out the other sixteen
 // (spec FR-010) — Promise.allSettled, not Promise.all.
 export async function queryUnifiedAlerts(db: D1Database): Promise<UnifiedAlertsResult> {
   const results = await Promise.allSettled(

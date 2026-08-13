@@ -1,4 +1,4 @@
-// "What changed since a point in time" digest: for each of the fourteen
+// "What changed since a point in time" digest: for each of the seventeen
 // sources, compares each entity's latest finding against its most
 // recent finding at or before a requested cutoff (research.md §5).
 import {
@@ -94,7 +94,7 @@ export interface ChangesResult {
   unavailableSources: UnavailableSource[];
 }
 
-// A per-source read failure doesn't blank out the other thirteen
+// A per-source read failure doesn't blank out the other sixteen
 // (spec FR-010) — Promise.allSettled, not Promise.all.
 export async function computeChanges(db: D1Database, since: string): Promise<ChangesResult> {
   const results = await Promise.allSettled(
