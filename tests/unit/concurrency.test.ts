@@ -1,5 +1,9 @@
-import { assertEquals } from "@std/assert";
-import { mapWithConcurrency, withGlobalFetchSlot } from "../../worker/concurrency.ts";
+import { assertEquals, assertRejects } from "@std/assert";
+import {
+  GlobalFetchTimeoutError,
+  mapWithConcurrency,
+  withGlobalFetchSlot,
+} from "../../worker/concurrency.ts";
 
 Deno.test("mapWithConcurrency - preserves result order regardless of completion order", async () => {
   const items = [30, 10, 20];
@@ -96,4 +100,28 @@ Deno.test("withGlobalFetchSlot - releases the slot even when the wrapped call th
 Deno.test("withGlobalFetchSlot - returns the wrapped call's resolved value", async () => {
   const result = await withGlobalFetchSlot(() => Promise.resolve("ok"));
   assertEquals(result, "ok");
+});
+
+// issue #390: a wrapped call that never settles (a stalled live Cloudflare
+// API fetch, observed in production) must not hold its slot forever.
+Deno.test("withGlobalFetchSlot - a wrapped call that never settles times out and still releases its slot", async () => {
+  const neverSettles = () => new Promise<void>(() => {});
+
+  await assertRejects(
+    () => withGlobalFetchSlot(neverSettles, 10),
+    GlobalFetchTimeoutError,
+  );
+
+  // If the slot from the timed-out call above had leaked, this next batch
+  // would never all complete — some callers would wait forever for a slot
+  // that never frees up. Promise.all resolving at all is the assertion.
+  let completed = 0;
+  await Promise.all(
+    Array.from({ length: 6 }, () =>
+      withGlobalFetchSlot(() => {
+        completed++;
+        return Promise.resolve();
+      })),
+  );
+  assertEquals(completed, 6);
 });
