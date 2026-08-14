@@ -7,6 +7,7 @@ import {
   type FindingsTableRow,
 } from "../components/FindingsTable.tsx";
 import { AlertBanner } from "../components/AlertBanner.tsx";
+import { TabStrip } from "../components/TabStrip.tsx";
 
 interface AuditLogEntry {
   occurred_at: string;
@@ -537,21 +538,6 @@ function AuditLogPanel({ data, error }: { data: AuditLogResponse | null; error: 
   );
 }
 
-function SectionHeading({ children }: { children: string }): JSX.Element {
-  return (
-    <h2
-      style={{
-        fontFamily: "var(--font-sans)",
-        fontSize: "var(--text-section-size)",
-        fontWeight: "var(--text-section-weight)" as unknown as number,
-        margin: "24px 0 12px",
-      }}
-    >
-      {children}
-    </h2>
-  );
-}
-
 export function AuditInventory(): JSX.Element {
   const [auditLogData, setAuditLogData] = useState<AuditLogResponse | null>(null);
   const [auditLogError, setAuditLogError] = useState<string | null>(null);
@@ -625,9 +611,6 @@ export function AuditInventory(): JSX.Element {
         Audit & Drift
       </h1>
 
-      <SectionHeading>Audit log</SectionHeading>
-      <AuditLogPanel data={auditLogData} error={auditLogError} />
-
       {criticalAlert && (
         <AlertBanner
           scope="account"
@@ -643,60 +626,92 @@ export function AuditInventory(): JSX.Element {
         />
       )}
 
-      <SectionHeading>Unified alerts inbox</SectionHeading>
-      {data && <UnavailableSourcesNotice sources={data.unavailable_sources} />}
-      <FindingsTable
-        columns={ALERT_COLUMNS(handleAcknowledged)}
-        rows={alertRows}
-        loadingLabel="Loading audit inbox…"
-        emptyState={{
-          heading: "No outstanding alerts",
-          description: "Every module's alerts are either resolved or acknowledged.",
-        }}
+      <TabStrip
+        tabs={[
+          {
+            key: "log",
+            label: "Audit log",
+            content: <AuditLogPanel data={auditLogData} error={auditLogError} />,
+          },
+          {
+            key: "alerts",
+            label: "Unified alerts inbox",
+            content: (
+              <div>
+                {data && <UnavailableSourcesNotice sources={data.unavailable_sources} />}
+                <FindingsTable
+                  columns={ALERT_COLUMNS(handleAcknowledged)}
+                  rows={alertRows}
+                  loadingLabel="Loading audit inbox…"
+                  emptyState={{
+                    heading: "No outstanding alerts",
+                    description: "Every module's alerts are either resolved or acknowledged.",
+                  }}
+                />
+              </div>
+            ),
+          },
+          {
+            key: "changes",
+            label: "What changed",
+            content: (
+              <div>
+                {changesData && (
+                  <UnavailableSourcesNotice sources={changesData.unavailable_sources} />
+                )}
+                {changesError
+                  ? <p style={{ color: "var(--status-critical-fg)" }}>{changesError}</p>
+                  : (
+                    <FindingsTable
+                      columns={CHANGE_COLUMNS}
+                      rows={changeRows}
+                      loadingLabel="Loading changes…"
+                      emptyState={{
+                        heading: "No status changes",
+                        description: changesData
+                          ? `No status changes since ${changesData.since}.`
+                          : "No status changes in the observed window.",
+                      }}
+                    />
+                  )}
+              </div>
+            ),
+          },
+          {
+            key: "summary",
+            label: "Account-wide posture summary",
+            content: (
+              <div>
+                {summaryData && (
+                  <UnavailableSourcesNotice sources={summaryData.unavailable_sources} />
+                )}
+                {summaryError
+                  ? <p style={{ color: "var(--status-critical-fg)" }}>{summaryError}</p>
+                  : !summaryData
+                  ? <p style={{ color: "var(--fg-muted)" }}>Loading summary…</p>
+                  : (
+                    <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                      <tbody>
+                        {summaryData.modules.map((entry) => {
+                          const unavailable = summaryData.unavailable_sources.some(
+                            (s) => s.module === entry.module && s.kind === entry.kind,
+                          );
+                          return (
+                            <SummaryRow
+                              key={`${entry.module}/${entry.kind}`}
+                              entry={entry}
+                              unavailable={unavailable}
+                            />
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  )}
+              </div>
+            ),
+          },
+        ]}
       />
-
-      <SectionHeading>What changed</SectionHeading>
-      {changesData && <UnavailableSourcesNotice sources={changesData.unavailable_sources} />}
-      {changesError
-        ? <p style={{ color: "var(--status-critical-fg)" }}>{changesError}</p>
-        : (
-          <FindingsTable
-            columns={CHANGE_COLUMNS}
-            rows={changeRows}
-            loadingLabel="Loading changes…"
-            emptyState={{
-              heading: "No status changes",
-              description: changesData
-                ? `No status changes since ${changesData.since}.`
-                : "No status changes in the observed window.",
-            }}
-          />
-        )}
-
-      <SectionHeading>Account-wide posture summary</SectionHeading>
-      {summaryData && <UnavailableSourcesNotice sources={summaryData.unavailable_sources} />}
-      {summaryError
-        ? <p style={{ color: "var(--status-critical-fg)" }}>{summaryError}</p>
-        : !summaryData
-        ? <p style={{ color: "var(--fg-muted)" }}>Loading summary…</p>
-        : (
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
-            <tbody>
-              {summaryData.modules.map((entry) => {
-                const unavailable = summaryData.unavailable_sources.some(
-                  (s) => s.module === entry.module && s.kind === entry.kind,
-                );
-                return (
-                  <SummaryRow
-                    key={`${entry.module}/${entry.kind}`}
-                    entry={entry}
-                    unavailable={unavailable}
-                  />
-                );
-              })}
-            </tbody>
-          </table>
-        )}
     </div>
   );
 }
