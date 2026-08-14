@@ -53,7 +53,8 @@ export async function mapWithConcurrency<T, R>(
 // connection limit, which is issue #292's actual production failure.
 // Every acquire is guaranteed to release via try/finally in
 // withGlobalFetchSlot(), so a permit can never leak even if the wrapped
-// call throws.
+// call throws — or, since issue #390, if it instead hangs forever without
+// throwing (withGlobalFetchSlot's own race-against-a-timeout below).
 const GLOBAL_FETCH_LIMIT = 6;
 let globalInFlight = 0;
 const globalWaiters: Array<() => void> = [];
@@ -77,11 +78,44 @@ function releaseGlobalFetchSlot(): void {
   if (next) next();
 }
 
-export async function withGlobalFetchSlot<T>(fn: () => Promise<T>): Promise<T> {
+export class GlobalFetchTimeoutError extends Error {
+  constructor(timeoutMs: number) {
+    super(`Global fetch slot held longer than ${timeoutMs}ms — aborting`);
+    this.name = "GlobalFetchTimeoutError";
+  }
+}
+
+// A wrapped call that never settles (a live Cloudflare API fetch that
+// stalls without ever resolving or rejecting) would otherwise hold its
+// slot forever — the `finally` above never runs, so `globalInFlight` never
+// drops and every later caller sharing this isolate queues on
+// acquireGlobalFetchSlot() forever too. Confirmed live via `wrangler tail`
+// (issue #390): every route reaching withGlobalFetchSlot() — Workers
+// dashboard, Security, Zero Trust, Audit log — started hanging (Workers
+// runtime's own "canceled this request because it detected your Worker's
+// code had hung" error) while pure-D1-read routes stayed healthy, which
+// only fits a shared resource being starved by stuck fetches. Bounding how
+// long `fn()` may hold a slot guarantees `finally` always runs, so a slot
+// is always eventually returned to the pool. `timeoutMs` is overridable
+// only so tests can exercise the timeout path without waiting out the real
+// default.
+const GLOBAL_FETCH_TIMEOUT_MS = 20_000;
+
+export async function withGlobalFetchSlot<T>(
+  fn: () => Promise<T>,
+  timeoutMs: number = GLOBAL_FETCH_TIMEOUT_MS,
+): Promise<T> {
   await acquireGlobalFetchSlot();
+  let timer: ReturnType<typeof setTimeout> | undefined;
   try {
-    return await fn();
+    return await Promise.race([
+      fn(),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new GlobalFetchTimeoutError(timeoutMs)), timeoutMs);
+      }),
+    ]);
   } finally {
+    clearTimeout(timer);
     releaseGlobalFetchSlot();
   }
 }
