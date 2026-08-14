@@ -102,12 +102,20 @@ async function queryWindow(
     throw new Error(`Cloudflare GraphQL Analytics API error: ${body.errors[0].message}`);
   }
 
+  // Cloudflare's GraphQL Analytics API returns cpuTime quantiles in
+  // microseconds (confirmed against the sibling http_requests Logpush
+  // dataset's WorkerCPUTime/WorkerWallTimeUs field descriptions — same
+  // underlying CPU-time instrumentation, both documented in µs; the
+  // GraphQL tutorial's own example, cpuTimeP50: 212.5, is consistent with
+  // a trivial worker's real CPU cost in µs, not a 212.5ms one). Convert to
+  // milliseconds here, once, so every field named *Ms downstream actually
+  // holds milliseconds.
   const groups = body.data?.viewer?.accounts?.[0]?.workersInvocationsAdaptive ?? [];
   const perScript = groups.map((g) => ({
     scriptName: g.dimensions.scriptName,
     requests: g.sum.requests,
     errors: g.sum.errors,
-    cpuTimeP50Ms: g.quantiles.cpuTimeP50,
+    cpuTimeP50Ms: g.quantiles.cpuTimeP50 / 1000,
   }));
 
   // Account-wide P99 isn't a sum across scripts (percentiles don't
@@ -120,7 +128,7 @@ async function queryWindow(
   // (non-dimensioned) query. Documented as an approximation, not a
   // Cloudflare-reported account aggregate.
   const cpuTimeP99Ms = groups.length > 0
-    ? Math.max(...groups.map((g) => g.quantiles.cpuTimeP99))
+    ? Math.max(...groups.map((g) => g.quantiles.cpuTimeP99)) / 1000
     : null;
 
   return { perScript, cpuTimeP99Ms, truncated: groups.length >= ANALYTICS_ROW_LIMIT };
