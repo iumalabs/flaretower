@@ -137,156 +137,168 @@ export function FindingsTable<Row>(
         })}
       </div>
 
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          borderTop: "1px solid var(--border)",
-          borderBottom: "1px solid var(--border)",
-          background: "var(--surface-1)",
-        }}
-      >
-        <div style={{ width: 3, flex: "none" }} />
-        <div style={{ width: 120, flex: "none", padding: "10px 8px" }}>
-          <span
-            style={{
-              fontFamily: "var(--font-mono)",
-              fontSize: "var(--text-label-size)",
-              letterSpacing: "var(--text-label-ls)",
-              color: "var(--fg-faint)",
-              textTransform: "uppercase",
-            }}
-          >
-            Status
-          </span>
-        </div>
-        {columns.map((c) => (
-          <div
-            key={c.key}
-            data-testid={`sort-header-${c.key}`}
-            role={c.sortValue ? "button" : undefined}
-            tabIndex={c.sortValue ? 0 : undefined}
-            aria-sort={c.sortValue && sortKey === c.key
-              ? (sortDir === 1 ? "ascending" : "descending")
-              : undefined}
-            onClick={() => c.sortValue && toggleSort(c.key)}
-            onKeyDown={c.sortValue ? activateOnKey(() => toggleSort(c.key)) : undefined}
-            style={{
-              width: c.width,
-              flex: c.width ? "none" : 1,
-              padding: "10px 8px",
-              display: "flex",
-              alignItems: "center",
-              gap: 6,
-              cursor: c.sortValue ? "pointer" : undefined,
-            }}
-          >
+      {
+        /* Header + rows scroll together, horizontally, as one region — every
+         * column below is `flex: "none"` on purpose (fixed/percentage widths
+         * so cells stay readable instead of being squeezed illegibly), which
+         * means none of them can shrink to fit a narrow viewport. Without
+         * this wrapper the overflow used to bleed into the page itself,
+         * clipping the rightmost column(s) with no way to reach them
+         * (reported live on the Workers dashboard: the Last Deploy column
+         * and part of a metric card were cut off at the browser's edge). */
+      }
+      <div style={{ overflowX: "auto" }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            borderTop: "1px solid var(--border)",
+            borderBottom: "1px solid var(--border)",
+            background: "var(--surface-1)",
+          }}
+        >
+          <div style={{ width: 3, flex: "none" }} />
+          <div style={{ width: 120, flex: "none", padding: "10px 8px" }}>
             <span
               style={{
                 fontFamily: "var(--font-mono)",
                 fontSize: "var(--text-label-size)",
                 letterSpacing: "var(--text-label-ls)",
-                color: sortKey === c.key ? "var(--brand-primary)" : "var(--fg-faint)",
+                color: "var(--fg-faint)",
                 textTransform: "uppercase",
               }}
             >
-              {c.label}
+              Status
             </span>
-            {sortKey === c.key && (
-              <span style={{ fontSize: 9, color: "var(--brand-primary)" }}>
-                {sortDir === 1 ? "▴" : "▾"}
-              </span>
-            )}
           </div>
-        ))}
-        <div style={{ width: 24, flex: "none" }} />
-      </div>
-
-      <div>
-        {sortedRows.map((row) => {
-          const critical = row.status === "critical";
-          const open = expanded === row.id;
-          return (
+          {columns.map((c) => (
             <div
-              key={row.id}
-              data-testid={`findings-row-${row.id}`}
+              key={c.key}
+              data-testid={`sort-header-${c.key}`}
+              role={c.sortValue ? "button" : undefined}
+              tabIndex={c.sortValue ? 0 : undefined}
+              aria-sort={c.sortValue && sortKey === c.key
+                ? (sortDir === 1 ? "ascending" : "descending")
+                : undefined}
+              onClick={() => c.sortValue && toggleSort(c.key)}
+              onKeyDown={c.sortValue ? activateOnKey(() => toggleSort(c.key)) : undefined}
               style={{
-                borderBottom: "1px solid var(--rule-hairline)",
-                background: critical ? "var(--status-critical-row)" : "transparent",
+                width: c.width,
+                flex: c.width ? "none" : 1,
+                padding: "10px 8px",
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                cursor: c.sortValue ? "pointer" : undefined,
               }}
             >
-              <div
-                role={row.detail ? "button" : undefined}
-                tabIndex={row.detail ? 0 : undefined}
-                aria-expanded={row.detail ? open : undefined}
-                onClick={() => row.detail && setExpanded(open ? null : row.id)}
-                onKeyDown={row.detail
-                  ? activateOnKey(() => setExpanded(open ? null : row.id))
-                  : undefined}
+              <span
                 style={{
-                  display: "flex",
-                  alignItems: "center",
-                  cursor: row.detail ? "pointer" : undefined,
+                  fontFamily: "var(--font-mono)",
+                  fontSize: "var(--text-label-size)",
+                  letterSpacing: "var(--text-label-ls)",
+                  color: sortKey === c.key ? "var(--brand-primary)" : "var(--fg-faint)",
+                  textTransform: "uppercase",
+                }}
+              >
+                {c.label}
+              </span>
+              {sortKey === c.key && (
+                <span style={{ fontSize: 9, color: "var(--brand-primary)" }}>
+                  {sortDir === 1 ? "▴" : "▾"}
+                </span>
+              )}
+            </div>
+          ))}
+          <div style={{ width: 24, flex: "none" }} />
+        </div>
+
+        <div>
+          {sortedRows.map((row) => {
+            const critical = row.status === "critical";
+            const open = expanded === row.id;
+            return (
+              <div
+                key={row.id}
+                data-testid={`findings-row-${row.id}`}
+                style={{
+                  borderBottom: "1px solid var(--rule-hairline)",
+                  background: critical ? "var(--status-critical-row)" : "transparent",
                 }}
               >
                 <div
+                  role={row.detail ? "button" : undefined}
+                  tabIndex={row.detail ? 0 : undefined}
+                  aria-expanded={row.detail ? open : undefined}
+                  onClick={() => row.detail && setExpanded(open ? null : row.id)}
+                  onKeyDown={row.detail
+                    ? activateOnKey(() => setExpanded(open ? null : row.id))
+                    : undefined}
                   style={{
-                    width: 3,
-                    flex: "none",
-                    alignSelf: "stretch",
-                    background: critical ? "var(--status-critical)" : "transparent",
-                  }}
-                />
-                <div style={{ width: 120, flex: "none", padding: "8px" }}>
-                  <ExposureStatusBadge status={row.status} />
-                </div>
-                {columns.map((c) => (
-                  <div
-                    key={c.key}
-                    style={{
-                      width: c.width,
-                      flex: c.width ? "none" : 1,
-                      padding: "8px",
-                      minWidth: 0,
-                    }}
-                  >
-                    {c.render(row.data)}
-                  </div>
-                ))}
-                <div style={{ width: 24, flex: "none", textAlign: "center" }}>
-                  {row.detail && (
-                    <span
-                      style={{
-                        display: "inline-block",
-                        color: "var(--fg-faint)",
-                        transform: open ? "rotate(90deg)" : undefined,
-                        transition: "transform .15s",
-                      }}
-                    >
-                      {"›"}
-                    </span>
-                  )}
-                </div>
-              </div>
-              {open && row.detail && (
-                <div
-                  style={{
-                    background: "var(--bg-base)",
-                    borderTop: "1px solid var(--rule-hairline)",
-                    padding: "16px 24px 18px 21px",
+                    display: "flex",
+                    alignItems: "center",
+                    cursor: row.detail ? "pointer" : undefined,
                   }}
                 >
-                  {row.detail}
+                  <div
+                    style={{
+                      width: 3,
+                      flex: "none",
+                      alignSelf: "stretch",
+                      background: critical ? "var(--status-critical)" : "transparent",
+                    }}
+                  />
+                  <div style={{ width: 120, flex: "none", padding: "8px" }}>
+                    <ExposureStatusBadge status={row.status} />
+                  </div>
+                  {columns.map((c) => (
+                    <div
+                      key={c.key}
+                      style={{
+                        width: c.width,
+                        flex: c.width ? "none" : 1,
+                        padding: "8px",
+                        minWidth: 0,
+                      }}
+                    >
+                      {c.render(row.data)}
+                    </div>
+                  ))}
+                  <div style={{ width: 24, flex: "none", textAlign: "center" }}>
+                    {row.detail && (
+                      <span
+                        style={{
+                          display: "inline-block",
+                          color: "var(--fg-faint)",
+                          transform: open ? "rotate(90deg)" : undefined,
+                          transition: "transform .15s",
+                        }}
+                      >
+                        {"›"}
+                      </span>
+                    )}
+                  </div>
                 </div>
-              )}
+                {open && row.detail && (
+                  <div
+                    style={{
+                      background: "var(--bg-base)",
+                      borderTop: "1px solid var(--rule-hairline)",
+                      padding: "16px 24px 18px 21px",
+                    }}
+                  >
+                    {row.detail}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+          {sortedRows.length === 0 && (
+            <div style={{ padding: "12px 8px", color: "var(--fg-faint)" }}>
+              No findings match this filter.
             </div>
-          );
-        })}
-        {sortedRows.length === 0 && (
-          <div style={{ padding: "12px 8px", color: "var(--fg-faint)" }}>
-            No findings match this filter.
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       <div
