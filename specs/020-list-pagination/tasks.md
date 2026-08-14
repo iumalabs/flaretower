@@ -113,14 +113,14 @@ force it via a small `page_size`); confirm the table paginates instead of render
 
 ### Security (verify row-unit, then apply the pattern — research.md §2 flagged this unconfirmed)
 
-- [ ] T023 [P] [US2] Confirm `app/pages/SecurityPostureInventory.tsx`'s current table shape is flat
+- [x] T023 [P] [US2] Confirm `app/pages/SecurityPostureInventory.tsx`'s current table shape is flat
       one-row-per-zone (per specs/017) with no additional grouping the DNS/Storage checks didn't
       already anticipate; note any deviation before continuing
-- [ ] T024 [P] [US2] Extend `GET /inventory` in `worker/modules/security/routes.ts` per T023's
+- [x] T024 [P] [US2] Extend `GET /inventory` in `worker/modules/security/routes.ts` per T023's
       confirmed shape
-- [ ] T025 [P] [US2] Unit tests in `tests/unit/security-routes.test.ts`
-- [ ] T026 [US2] Extend `app/pages/SecurityPostureInventory.tsx` (depends on T024)
-- [ ] T027 [US2] Extend `tests/e2e/security-inventory.spec.ts` (depends on T026)
+- [x] T025 [P] [US2] Unit tests in `tests/unit/security-routes.test.ts`
+- [x] T026 [US2] Extend `app/pages/SecurityPostureInventory.tsx` (depends on T024)
+- [x] T027 [US2] Extend `tests/e2e/security-inventory.spec.ts` (depends on T026)
 
 ### Zero Trust (verify row-unit first — research.md §2 flagged this unconfirmed)
 
