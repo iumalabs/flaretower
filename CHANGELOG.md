@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.8.0](https://github.com/iumalabs/flaretower/compare/v1.7.2...v1.8.0) (2026-08-14)
+
+
+### Features
+
+* **dashboard:** tabbed panel navigation on Audit, Security, Storage, Zero Trust ([#398](https://github.com/iumalabs/flaretower/issues/398)) ([591b207](https://github.com/iumalabs/flaretower/commit/591b207dd0c09ae0acfd36ffc12a7f25880e1c6d))
+
 ## [1.7.2](https://github.com/iumalabs/flaretower/compare/v1.7.1...v1.7.2) (2026-08-14)
 
 
