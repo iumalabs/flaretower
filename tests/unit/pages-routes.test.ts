@@ -1,6 +1,11 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals, assertThrows } from "@std/assert";
 import { Hono } from "hono";
-import { deriveProductionDomain, pagesRoutes } from "../../worker/modules/pages/routes.ts";
+import {
+  buildPagesInventoryResponse,
+  deriveProductionDomain,
+  pagesRoutes,
+} from "../../worker/modules/pages/routes.ts";
+import { PaginationParamError } from "../../worker/pagination.ts";
 
 function domainRow(
   status: string,
@@ -28,6 +33,71 @@ Deno.test("deriveProductionDomain - null when the project has zero active domain
 
 Deno.test("deriveProductionDomain - null when the project has zero custom domains at all", () => {
   assertEquals(deriveProductionDomain([]), null);
+});
+
+// specs/020-list-pagination — buildPagesInventoryResponse() is pure
+// (extracted from the route handler), so these exercise the pagination/
+// sort/critical_finding logic directly.
+function projectOut(overrides: Partial<{
+  project_name: string;
+  production_domain: string | null;
+  production_branch: string | null;
+  health_status: string;
+  health_reason: string;
+}> = {}) {
+  return {
+    project_name: "site",
+    production_domain: null,
+    production_branch: "main",
+    last_build_status: "safe",
+    last_build_reason: "success",
+    last_build_created_at: null,
+    health_status: "safe",
+    health_reason: "healthy",
+    subdomain: { subdomain: "site.pages.dev", status: "safe", reason: "healthy" },
+    deployment: null,
+    domains: [],
+    ...overrides,
+  };
+}
+
+Deno.test("buildPagesInventoryResponse - paginates and sorts by a whitelisted key", () => {
+  const projects = [
+    projectOut({ project_name: "charlie" }),
+    projectOut({ project_name: "alpha" }),
+    projectOut({ project_name: "bravo" }),
+  ];
+  const res = buildPagesInventoryResponse(projects, "run-1", "t", { page_size: "2" });
+
+  assertEquals(res.projects.map((p) => p.project_name), ["alpha", "bravo"]);
+  assertEquals(res.projects_pagination, { page: 1, page_size: 2, total: 3, total_pages: 2 });
+});
+
+Deno.test("buildPagesInventoryResponse - critical_finding reflects the whole list, not just the paginated page", () => {
+  const projects = [
+    projectOut({ project_name: "a-safe" }),
+    projectOut({
+      project_name: "z-exposed",
+      health_status: "critical",
+      health_reason: "no Access policy",
+    }),
+  ];
+  const res = buildPagesInventoryResponse(projects, "run-1", "t", { page: "1", page_size: "1" });
+
+  assertEquals(res.projects.map((p) => p.project_name), ["a-safe"]);
+  assertEquals(res.critical_finding, { project_name: "z-exposed", reason: "no Access policy" });
+});
+
+Deno.test("buildPagesInventoryResponse - null critical_finding when nothing is critical", () => {
+  const res = buildPagesInventoryResponse([projectOut()], "run-1", "t", {});
+  assertEquals(res.critical_finding, null);
+});
+
+Deno.test("buildPagesInventoryResponse - rejects an invalid sort_key", () => {
+  assertThrows(
+    () => buildPagesInventoryResponse([projectOut()], "run-1", "t", { sort_key: "nope" }),
+    PaginationParamError,
+  );
 });
 
 // A minimal mock focused only on the alert tables' SELECT/UPDATE shape
