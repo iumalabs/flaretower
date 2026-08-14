@@ -274,3 +274,29 @@ test("US3 — recent changes panel shows an explicit empty state when there are 
 
   await expect(page.getByText("No recent Workers-related changes.")).toBeVisible();
 });
+
+// issue #393: an audit_log source failure (e.g. a Cloudflare Audit Logs API
+// token rejection) always produces an empty recent_changes list too — this
+// must not look the same as a genuinely empty, healthy result to an operator.
+test("US3 — recent changes panel distinguishes an unavailable audit log source from a genuinely empty one", async ({ page }) => {
+  await page.route("**/api/workers/dashboard*", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ...MOCK_DASHBOARD,
+        recent_changes: [],
+        unavailable: [{
+          source: "audit_log",
+          error: "Cloudflare Audit Logs API returned HTTP 403",
+        }],
+      }),
+    }));
+  await page.goto("/");
+  await page.getByRole("button", { name: "Workers" }).click();
+
+  await expect(page.getByTestId("recent-changes-unavailable")).toContainText(
+    "Cloudflare Audit Logs API returned HTTP 403",
+  );
+  await expect(page.getByText("No recent Workers-related changes.")).not.toBeVisible();
+});

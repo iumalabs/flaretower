@@ -178,7 +178,12 @@ function formatPct(n: number | null): string {
   return `${sign}${n.toFixed(1)}%`;
 }
 
-function RecentChangesPanel({ changes }: { changes: RecentChange[] | null }): JSX.Element {
+function RecentChangesPanel(
+  { changes, unavailableReason }: {
+    changes: RecentChange[] | null;
+    unavailableReason: string | null;
+  },
+): JSX.Element {
   return (
     <div
       style={{
@@ -208,12 +213,24 @@ function RecentChangesPanel({ changes }: { changes: RecentChange[] | null }): JS
           Loading…
         </div>
       )}
-      {changes !== null && changes.length === 0 && (
+      {changes !== null && unavailableReason && (
+        <div
+          data-testid="recent-changes-unavailable"
+          style={{
+            padding: 14,
+            color: "var(--status-critical-fg)",
+            fontSize: "var(--text-code-size)",
+          }}
+        >
+          Recent changes unavailable: {unavailableReason}
+        </div>
+      )}
+      {changes !== null && !unavailableReason && changes.length === 0 && (
         <div style={{ padding: 14, color: "var(--fg-faint)", fontSize: "var(--text-code-size)" }}>
           No recent Workers-related changes.
         </div>
       )}
-      {changes !== null && changes.length > 0 && (
+      {changes !== null && !unavailableReason && changes.length > 0 && (
         <div style={{ display: "flex", flexDirection: "column" }}>
           {changes.map((c, i) => (
             <div
@@ -379,7 +396,11 @@ export function WorkersDashboardPage(): JSX.Element {
               />
             )}
         </div>
-        <RecentChangesPanel changes={data ? data.recent_changes : null} />
+        <RecentChangesPanel
+          changes={data ? data.recent_changes : null}
+          unavailableReason={data?.unavailable.find((u) => u.source === "audit_log")?.error ??
+            null}
+        />
       </div>
     </div>
   );
