@@ -141,8 +141,10 @@ test("US1 — every application and every service token appears, none omitted", 
   await expect(page.getByText("internal-tool.example.com")).toBeVisible();
   await expect(page.getByText("scoped-tool.example.com")).toBeVisible();
   // old-ci-token is critical and legitimately appears twice — once in its
-  // row, once in the module-scope alert banner above the table (FR-013).
+  // row, once in the module-scope alert banner above the tabs (FR-013).
   await expect(page.getByText("old-ci-token").first()).toBeVisible();
+
+  await page.getByRole("tab", { name: "Service tokens" }).click();
   await expect(page.getByText("soon-to-expire-token")).toBeVisible();
   await expect(page.getByText("healthy-token")).toBeVisible();
 });
@@ -168,6 +170,7 @@ test("US2/AC4 — an application with zero policies attached is flagged, not sil
 });
 
 test("US3 — service token statuses render distinctly: critical, warning, safe", async ({ page }) => {
+  await page.getByRole("tab", { name: "Service tokens" }).click();
   const expiredRow = page.getByTestId("findings-row-tok-expired");
   await expect(expiredRow.getByText("CRITICAL")).toBeVisible();
 
@@ -205,6 +208,7 @@ test("specs/014 US2 — selecting an application shows its policy rules in plain
 });
 
 test("specs/014 US3 — the Groups panel shows real reference counts, including a group referenced by zero applications", async ({ page }) => {
+  await page.getByRole("tab", { name: "Access Groups" }).click();
   const platform = page.getByTestId("access-group-grp-platform");
   await expect(platform.getByText("4 apps")).toBeVisible();
   await expect(platform.getByText("Okta group")).toBeVisible();
@@ -224,9 +228,11 @@ test("specs/014 US3 — a Groups-fetch failure shows an explicit 'not available'
   await page.reload();
   await page.getByRole("button", { name: "Zero Trust" }).click();
 
-  await expect(page.getByText("not available")).toBeVisible();
   // The applications table is unaffected by the Groups failure.
   await expect(page.getByTestId("findings-row-app-scoped")).toBeVisible();
+
+  await page.getByRole("tab", { name: "Access Groups" }).click();
+  await expect(page.getByText("not available")).toBeVisible();
 });
 
 // Regression coverage for specs/003-zero-trust/tasks.md T025/T026 — the
@@ -252,6 +258,8 @@ test("T026 — a completed run with zero apps and zero tokens shows a distinct m
   await page.getByRole("button", { name: "Zero Trust" }).click();
 
   await expect(page.getByText("No Access applications", { exact: true })).toBeVisible();
+
+  await page.getByRole("tab", { name: "Service tokens" }).click();
   await expect(page.getByText("No service tokens", { exact: true })).toBeVisible();
   await expect(page.getByText("No evaluation runs yet.")).not.toBeVisible();
 });
@@ -305,11 +313,85 @@ test("specs/020 US2 — Access applications paginate independently of Service to
 
   await expect(page.getByTestId("findings-row-app-open")).toBeVisible();
   await expect(page.getByTestId("findings-row-app-bypass")).not.toBeVisible();
+  await expect(page.getByTestId("pagination-status")).toHaveText("4 total · page 1 of 2");
+
   // Service tokens (3, fits one page) show no pager of their own.
+  await page.getByRole("tab", { name: "Service tokens" }).click();
   await expect(page.getByTestId("findings-row-tok-expired")).toBeVisible();
   await expect(page.getByTestId("findings-row-tok-healthy")).toBeVisible();
+  await page.getByRole("tab", { name: "Access applications" }).click();
 
-  await expect(page.getByTestId("pagination-status")).toHaveText("4 total · page 1 of 2");
   await page.getByTestId("pagination-next").click();
   await expect(page.getByTestId("findings-row-app-bypass")).toBeVisible();
+});
+
+// specs/021-dashboard-panel-tabs
+test("specs/021 US1 — three tabs replace the stacked blocks; Access Groups renders as its own tab, decoupled from Applications", async ({ page }) => {
+  await expect(page.getByRole("tab", { name: "Access applications" })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Access Groups" })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Service tokens" })).toBeVisible();
+
+  // Access applications is the default/first tab.
+  await expect(page.getByTestId("findings-row-app-open")).toBeVisible();
+  await expect(page.getByTestId("access-group-grp-platform")).not.toBeVisible();
+
+  await page.getByRole("tab", { name: "Access Groups" }).click();
+  await expect(page.getByTestId("access-group-grp-platform")).toBeVisible();
+  await expect(page.getByTestId("findings-row-app-open")).not.toBeVisible();
+
+  await page.getByRole("tab", { name: "Service tokens" }).click();
+  await expect(page.getByTestId("findings-row-tok-expired")).toBeVisible();
+  await expect(page.getByTestId("access-group-grp-platform")).not.toBeVisible();
+});
+
+test("specs/021 US2 — switching tabs and back preserves Access applications' page, sort, and selected application", async ({ page }) => {
+  const apps = MOCK_ZT_INVENTORY.applications;
+  await page.route("**/api/zero-trust/inventory*", (route) => {
+    const url = new URL(route.request().url());
+    const appPage = Number(url.searchParams.get("app_page") ?? "1");
+    const appSortKey = url.searchParams.get("app_sort_key") ?? "application";
+    const appSortDir = url.searchParams.get("app_sort_dir") ?? "asc";
+    const appPageSize = 2;
+    const sortValue = appSortKey === "policies"
+      ? (a: (typeof apps)[number]) => a.policy_count ?? -1
+      : (a: (typeof apps)[number]) => a.app_domain;
+    const sorted = [...apps].sort((a, b) => {
+      const av = sortValue(a), bv = sortValue(b);
+      const cmp = av < bv ? -1 : av > bv ? 1 : 0;
+      return appSortDir === "desc" ? -cmp : cmp;
+    });
+    const start = (appPage - 1) * appPageSize;
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ...MOCK_ZT_INVENTORY,
+        applications: sorted.slice(start, start + appPageSize),
+        applications_pagination: {
+          page: appPage,
+          page_size: appPageSize,
+          total: apps.length,
+          total_pages: Math.ceil(apps.length / appPageSize),
+        },
+      }),
+    });
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Zero Trust" }).click();
+
+  // Sort by policies (0, 1, 1, 2 → app-no-policies first ascending), page
+  // forward, then select the resulting page 2 application.
+  await page.getByTestId("sort-header-policies").click();
+  await expect(page.getByTestId("pagination-status")).toHaveText("4 total · page 1 of 2");
+  await page.getByTestId("pagination-next").click();
+  await expect(page.getByTestId("pagination-status")).toHaveText("4 total · page 2 of 2");
+  await page.getByRole("button", { name: "gateway-admin" }).click();
+  await expect(page.getByText("Policy detail — gateway-admin")).toBeVisible();
+
+  await page.getByRole("tab", { name: "Service tokens" }).click();
+  await page.getByRole("tab", { name: "Access applications" }).click();
+
+  await expect(page.getByTestId("sort-header-policies")).toHaveAttribute("aria-sort", "ascending");
+  await expect(page.getByTestId("pagination-status")).toHaveText("4 total · page 2 of 2");
+  await expect(page.getByText("Policy detail — gateway-admin")).toBeVisible();
 });

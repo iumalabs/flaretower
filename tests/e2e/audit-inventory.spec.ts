@@ -174,17 +174,18 @@ test.beforeEach(async ({ page }) => {
 });
 
 test("specs/018 US1 — the Audit log panel shows real account activity, alongside the existing unchanged sections", async ({ page }) => {
-  await expect(page.getByRole("heading", { name: "Audit log" })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Audit log" })).toBeVisible();
 
   const row0 = page.getByTestId("audit-log-row-0");
   await expect(row0.getByText("@ilse", { exact: false })).toBeVisible();
   await expect(row0.getByText("Bound route to Access application")).toBeVisible();
   await expect(row0.getByText("internal.acme.dev/gateway/*")).toBeVisible();
 
-  // The existing 3 sections are still present and unchanged.
-  await expect(page.getByRole("heading", { name: "Unified alerts inbox" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "What changed" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Account-wide posture summary" })).toBeVisible();
+  // The existing 3 sections still exist, now as tabs (specs/021) rather
+  // than always-visible stacked blocks.
+  await expect(page.getByRole("tab", { name: "Unified alerts inbox" })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "What changed" })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Account-wide posture summary" })).toBeVisible();
 });
 
 test("specs/018 US1 — a confirmed-empty window renders distinctly from an unavailable Audit Logs API", async ({ page }) => {
@@ -292,6 +293,7 @@ test("specs/018 US3 — exporting a filtered view downloads only the currently-v
 });
 
 test("US1 — alerts from multiple modules appear in the unified inbox, each labeled with its source", async ({ page }) => {
+  await page.getByRole("tab", { name: "Unified alerts inbox" }).click();
   const sslRow = page.getByTestId("findings-row-a1");
   await expect(sslRow).toBeVisible();
   await expect(sslRow.getByText("security/ssl_tls", { exact: false })).toBeVisible();
@@ -302,7 +304,7 @@ test("US1 — alerts from multiple modules appear in the unified inbox, each lab
 });
 
 test("US2 — the what changed section shows an entity whose status changed since the cutoff", async ({ page }) => {
-  await expect(page.getByRole("heading", { name: "What changed" })).toBeVisible();
+  await page.getByRole("tab", { name: "What changed" }).click();
 
   const changeRow = page.getByTestId("findings-row-security/dnssec/flaretower-changed.test");
   await expect(changeRow).toBeVisible();
@@ -311,7 +313,7 @@ test("US2 — the what changed section shows an entity whose status changed sinc
 });
 
 test("US3 — the posture summary renders per-module counts, and a no-data module renders distinctly from a confirmed-clean one", async ({ page }) => {
-  await expect(page.getByRole("heading", { name: "Account-wide posture summary" })).toBeVisible();
+  await page.getByRole("tab", { name: "Account-wide posture summary" }).click();
 
   const exposureRow = page.locator("tr", { hasText: "exposure/hostname" });
   await expect(exposureRow).toBeVisible();
@@ -323,7 +325,7 @@ test("US3 — the posture summary renders per-module counts, and a no-data modul
 });
 
 test("T025 — a source whose D1 read failed renders as not available, distinct from a source with no data yet", async ({ page }) => {
-  await expect(page.getByRole("heading", { name: "Account-wide posture summary" })).toBeVisible();
+  await page.getByRole("tab", { name: "Account-wide posture summary" }).click();
 
   // zero-trust/application rejected outright — must read "(not available)",
   // never fold into the same "no data yet" wording a source that simply
@@ -341,4 +343,32 @@ test("T025 — a source whose D1 read failed renders as not available, distinct 
   await expect(
     page.getByText("zero-trust/application data not available", { exact: false }),
   ).toBeVisible();
+});
+
+// specs/021-dashboard-panel-tabs
+test("specs/021 US1 — four tabs replace the stacked blocks; only the active tab's content renders", async ({ page }) => {
+  await expect(page.getByRole("tab", { name: "Audit log" })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Unified alerts inbox" })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "What changed" })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Account-wide posture summary" })).toBeVisible();
+
+  // Audit log is the default/first tab.
+  await expect(page.getByTestId("audit-log-row-0")).toBeVisible();
+  await expect(page.getByTestId("findings-row-a1")).not.toBeVisible();
+
+  await page.getByRole("tab", { name: "Unified alerts inbox" }).click();
+  await expect(page.getByTestId("findings-row-a1")).toBeVisible();
+  await expect(page.getByTestId("audit-log-row-0")).not.toBeVisible();
+});
+
+test("specs/021 FR-006 — the account-wide critical alert banner stays visible on every tab", async ({ page }) => {
+  // MOCK_AUDIT_ALERTS' "a1" is already status "critical" by default.
+  const banner = page.getByText("An outstanding critical alert needs attention");
+  await expect(banner).toBeVisible();
+
+  await page.getByRole("tab", { name: "What changed" }).click();
+  await expect(banner).toBeVisible();
+
+  await page.getByRole("tab", { name: "Account-wide posture summary" }).click();
+  await expect(banner).toBeVisible();
 });
