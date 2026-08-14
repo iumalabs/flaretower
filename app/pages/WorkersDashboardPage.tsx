@@ -4,6 +4,7 @@ import type { ExposureStatus } from "../components/ExposureStatusBadge.tsx";
 import {
   FindingsTable,
   type FindingsTableColumn,
+  type FindingsTablePagination,
   type FindingsTableRow,
 } from "../components/FindingsTable.tsx";
 import { MetricCard } from "../components/MetricCard.tsx";
@@ -29,6 +30,13 @@ interface RecentChange {
   result_summary: string | null;
 }
 
+interface PaginationEnvelope {
+  page: number;
+  page_size: number;
+  total: number;
+  total_pages: number;
+}
+
 interface DashboardResponse {
   generated_at: string;
   summary: {
@@ -41,12 +49,24 @@ interface DashboardResponse {
     cpu_p99_ms: number | null;
   };
   workers: WorkerRow[];
+  workers_pagination: PaginationEnvelope;
   recent_changes: RecentChange[];
   unavailable: Array<{ source: string; error: string }>;
 }
 
-async function fetchDashboard(): Promise<DashboardResponse> {
-  const res = await fetch("/api/workers/dashboard");
+interface WorkersPageParams {
+  page: number;
+  sortKey: string | null;
+  sortDir: 1 | -1;
+}
+
+async function fetchDashboard(params: WorkersPageParams): Promise<DashboardResponse> {
+  const query = new URLSearchParams({ page: String(params.page) });
+  if (params.sortKey) {
+    query.set("sort_key", params.sortKey);
+    query.set("sort_dir", params.sortDir === 1 ? "asc" : "desc");
+  }
+  const res = await fetch(`/api/workers/dashboard?${query}`);
   if (!res.ok) {
     throw new Error(`GET /api/workers/dashboard failed: ${res.status}`);
   }
@@ -233,14 +253,30 @@ function RecentChangesPanel({ changes }: { changes: RecentChange[] | null }): JS
 export function WorkersDashboardPage(): JSX.Element {
   const [data, setData] = useState<DashboardResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const [sortKey, setSortKey] = useState<string | null>(null);
+  const [sortDir, setSortDir] = useState<1 | -1>(1);
 
   useEffect(() => {
-    fetchDashboard()
-      .then(setData)
+    fetchDashboard({ page, sortKey, sortDir })
+      .then((res) => {
+        // The requested page no longer exists (e.g. the underlying inventory
+        // shrank between loads) but real results do — recover to the true
+        // last page rather than showing "no Workers" for an account that
+        // has them (FR-008), instead of setData()-ing this stale response.
+        if (
+          res.workers.length === 0 && res.workers_pagination.total > 0 &&
+          page > res.workers_pagination.total_pages
+        ) {
+          setPage(res.workers_pagination.total_pages);
+          return;
+        }
+        setData(res);
+      })
       .catch((err: unknown) =>
         setError(err instanceof Error ? err.message : "failed to load dashboard")
       );
-  }, []);
+  }, [page, sortKey, sortDir]);
 
   if (error) {
     return <p style={{ color: "var(--status-critical-fg)" }}>{error}</p>;
@@ -253,6 +289,28 @@ export function WorkersDashboardPage(): JSX.Element {
       data: w,
     }))
     : null;
+
+  function handleSortChange(key: string) {
+    if (sortKey === key) {
+      setSortDir((d) => (d === 1 ? -1 : 1));
+    } else {
+      setSortKey(key);
+      setSortDir(1);
+    }
+    setPage(1);
+  }
+
+  const pagination: FindingsTablePagination | undefined = data
+    ? {
+      page: data.workers_pagination.page,
+      pageSize: data.workers_pagination.page_size,
+      total: data.workers_pagination.total,
+      onPageChange: setPage,
+      sortKey,
+      sortDir,
+      onSortChange: handleSortChange,
+    }
+    : undefined;
 
   return (
     <div>
@@ -317,6 +375,7 @@ export function WorkersDashboardPage(): JSX.Element {
                 columns={COLUMNS}
                 rows={rows}
                 loadingLabel="Loading Workers inventory…"
+                pagination={pagination}
               />
             )}
         </div>

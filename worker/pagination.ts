@@ -73,15 +73,17 @@ export function buildEnvelope(params: PaginationParams, total: number): Paginati
 // Validates a client-supplied sort key against a module's own whitelist
 // (research.md §3 — an unvalidated key concatenated into ORDER BY is a
 // SQL-injection vector, and D1 has no parameterized-identifier mechanism).
-// `whitelist` maps the public key a caller may request to the real column
-// name to sort by. Returns the whitelist's default entry when rawSortKey is
-// undefined; throws on an explicitly-supplied, unrecognized key rather than
-// silently falling back to default.
-export function resolveSortColumn(
+// `whitelist` maps the public key a caller may request to whatever that
+// module needs to actually sort by — a real D1 column name (string) for the
+// D1-backed modules, or an in-memory accessor function for a module like
+// Workers dashboard whose rows aren't D1-backed (routes.ts). Returns the
+// whitelist's default entry when rawSortKey is undefined; throws on an
+// explicitly-supplied, unrecognized key rather than silently falling back.
+export function resolveSortColumn<T>(
   rawSortKey: string | undefined,
-  whitelist: Record<string, string>,
+  whitelist: Record<string, T>,
   defaultKey: string,
-): { key: string; column: string } {
+): { key: string; column: T } {
   const key = rawSortKey ?? defaultKey;
   const column = whitelist[key];
   if (column === undefined) {

@@ -33,6 +33,7 @@ const MOCK_DASHBOARD = {
       exposure_status: "safe",
     },
   ],
+  workers_pagination: { page: 1, page_size: 50, total: 2, total_pages: 1 },
   recent_changes: [
     {
       occurred_at: "2026-08-07T13:42:08Z",
@@ -72,7 +73,7 @@ test.beforeEach(async ({ page }) => {
 });
 
 test("US1 — every deployed Worker appears once, with environment and rolled-up exposure status", async ({ page }) => {
-  await page.route("**/api/workers/dashboard", (route) =>
+  await page.route("**/api/workers/dashboard*", (route) =>
     route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -93,7 +94,7 @@ test("US1 — every deployed Worker appears once, with environment and rolled-up
 });
 
 test("US1 — sidebar shows Workers and Exposure as separate nav items with independent badges", async ({ page }) => {
-  await page.route("**/api/workers/dashboard", (route) =>
+  await page.route("**/api/workers/dashboard*", (route) =>
     route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -108,7 +109,7 @@ test("US1 — sidebar shows Workers and Exposure as separate nav items with inde
 });
 
 test("US1 — empty account renders an explicit empty state, not an empty table", async ({ page }) => {
-  await page.route("**/api/workers/dashboard", (route) =>
+  await page.route("**/api/workers/dashboard*", (route) =>
     route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -116,6 +117,7 @@ test("US1 — empty account renders an explicit empty state, not an empty table"
         ...MOCK_DASHBOARD,
         summary: { ...MOCK_DASHBOARD.summary, deployed_count: 0 },
         workers: [],
+        workers_pagination: { page: 1, page_size: 50, total: 0, total_pages: 1 },
       }),
     }));
   await page.goto("/");
@@ -125,7 +127,7 @@ test("US1 — empty account renders an explicit empty state, not an empty table"
 });
 
 test("US2 — metric cards show real figures including the day-over-day delta", async ({ page }) => {
-  await page.route("**/api/workers/dashboard", (route) =>
+  await page.route("**/api/workers/dashboard*", (route) =>
     route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -140,7 +142,7 @@ test("US2 — metric cards show real figures including the day-over-day delta", 
 });
 
 test("US2 — an unavailable analytics source degrades per-row metrics to 'not available', not zero", async ({ page }) => {
-  await page.route("**/api/workers/dashboard", (route) =>
+  await page.route("**/api/workers/dashboard*", (route) =>
     route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -176,7 +178,7 @@ test("US2 — an unavailable analytics source degrades per-row metrics to 'not a
 });
 
 test("US3 — recent changes panel shows Workers-relevant entries", async ({ page }) => {
-  await page.route("**/api/workers/dashboard", (route) =>
+  await page.route("**/api/workers/dashboard*", (route) =>
     route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -189,8 +191,79 @@ test("US3 — recent changes panel shows Workers-relevant entries", async ({ pag
   await expect(page.getByText("wrangler · deploy", { exact: false })).toBeVisible();
 });
 
+test("specs/020 US2 — the Workers table paginates: page footer, next/prev, and boundary disabled states", async ({ page }) => {
+  const allWorkers = Array.from({ length: 5 }, (_, i) => ({
+    worker_name: `worker-${i}`,
+    environment: "production",
+    route_count: 1,
+    last_deploy_at: null,
+    requests_24h: null,
+    errors_24h: null,
+    cpu_p50_ms: null,
+    exposure_status: "safe",
+  }));
+
+  await page.route("**/api/workers/dashboard*", (route) => {
+    const url = new URL(route.request().url());
+    const requestedPage = Number(url.searchParams.get("page") ?? "1");
+    const pageSize = 2;
+    const start = (requestedPage - 1) * pageSize;
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ...MOCK_DASHBOARD,
+        summary: { ...MOCK_DASHBOARD.summary, deployed_count: allWorkers.length },
+        workers: allWorkers.slice(start, start + pageSize),
+        workers_pagination: {
+          page: requestedPage,
+          page_size: pageSize,
+          total: allWorkers.length,
+          total_pages: Math.ceil(allWorkers.length / pageSize),
+        },
+      }),
+    });
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Workers" }).click();
+
+  await expect(page.getByTestId("findings-row-worker-0")).toBeVisible();
+  await expect(page.getByTestId("findings-row-worker-1")).toBeVisible();
+  await expect(page.getByTestId("findings-row-worker-2")).not.toBeVisible();
+  await expect(page.getByTestId("pagination-status")).toHaveText("5 total · page 1 of 3");
+  await expect(page.getByTestId("pagination-prev")).toBeDisabled();
+  await expect(page.getByTestId("pagination-next")).toBeEnabled();
+
+  await page.getByTestId("pagination-next").click();
+  await expect(page.getByTestId("findings-row-worker-2")).toBeVisible();
+  await expect(page.getByTestId("findings-row-worker-3")).toBeVisible();
+  await expect(page.getByTestId("pagination-status")).toHaveText("5 total · page 2 of 3");
+  await expect(page.getByTestId("pagination-prev")).toBeEnabled();
+
+  await page.getByTestId("pagination-next").click();
+  await expect(page.getByTestId("findings-row-worker-4")).toBeVisible();
+  await expect(page.getByTestId("pagination-status")).toHaveText("5 total · page 3 of 3");
+  await expect(page.getByTestId("pagination-next")).toBeDisabled();
+});
+
+test("specs/020 US2 — a small result set (fits one page) shows no pagination controls", async ({ page }) => {
+  await page.route("**/api/workers/dashboard*", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(MOCK_DASHBOARD),
+    }));
+  await page.goto("/");
+  await page.getByRole("button", { name: "Workers" }).click();
+
+  await expect(page.getByTestId("findings-row-api-gateway")).toBeVisible();
+  // FR-004: a result set that fits on one page renders with no pagination
+  // controls at all, not a disabled/inert pager.
+  await expect(page.getByTestId("pagination-footer")).not.toBeVisible();
+});
+
 test("US3 — recent changes panel shows an explicit empty state when there are none", async ({ page }) => {
-  await page.route("**/api/workers/dashboard", (route) =>
+  await page.route("**/api/workers/dashboard*", (route) =>
     route.fulfill({
       status: 200,
       contentType: "application/json",

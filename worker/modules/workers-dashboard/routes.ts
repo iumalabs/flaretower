@@ -4,6 +4,14 @@ import { fetchWorkersAnalytics } from "./analytics.ts";
 import { fetchAccountAuditLog, filterWorkersRelevant } from "./audit-log.ts";
 import { getWorkerLastDeployTimes } from "./inventory.ts";
 import { classifyEnvironment, rollUpExposureStatus } from "./classify.ts";
+import {
+  buildEnvelope,
+  PaginationParamError,
+  parsePaginationParams,
+  resolveSortColumn,
+  resolveSortDir,
+  toLimitOffset,
+} from "../../pagination.ts";
 import type {
   AccountSummary,
   ExposureStatus,
@@ -231,7 +239,78 @@ export function serializeDashboard(dashboard: WorkersDashboard) {
   };
 }
 
+// Same accessor logic as WorkersDashboardPage.tsx's COLUMNS[*].sortValue —
+// duplicated here (not D1-backed like the other 5 modules' inventory
+// routes, so there's no shared ORDER BY to parameterize) so client-visible
+// sort order stays identical whether or not pagination changes which rows
+// are on screen (specs/020-list-pagination research.md §2, FR-006).
+const WORKER_SORT_ACCESSORS: Record<string, (w: WorkerDashboardRow) => string | number> = {
+  worker: (w) => w.workerName,
+  env: (w) => w.environment,
+  routes: (w) => w.routeCount,
+  requests: (w) => w.requests24h ?? -1,
+  errors: (w) => w.errors24h ?? -1,
+  cpu: (w) => w.cpuP50Ms ?? -1,
+  "last-deploy": (w) => w.lastDeployAt ?? "",
+};
+
+export interface WorkersPageQuery {
+  page?: string;
+  page_size?: string;
+  sort_key?: string;
+  sort_dir?: string;
+}
+
+// Pure, extracted from the route handler for the same reason
+// buildAccountSummary/serializeDashboard already are (this file's own
+// established convention) — buildWorkersDashboard() makes 4+ live
+// Cloudflare API calls, so testing the route end-to-end would mean mocking
+// all of them just to cover ~20 lines of pagination arithmetic. Throws
+// PaginationParamError on invalid query values, same as every other
+// paginated module route.
+export function paginateWorkers(
+  workers: WorkerDashboardRow[],
+  query: WorkersPageQuery,
+): { workers: WorkerDashboardRow[]; pagination: ReturnType<typeof buildEnvelope> } {
+  const params = parsePaginationParams(query.page, query.page_size);
+  const sort = resolveSortColumn(query.sort_key, WORKER_SORT_ACCESSORS, "worker");
+  const dir = resolveSortDir(query.sort_dir);
+  const dirMult = dir === "DESC" ? -1 : 1;
+
+  const sorted = [...workers].sort((a, b) => {
+    const av = sort.column(a);
+    const bv = sort.column(b);
+    const cmp = av < bv ? -1 : av > bv ? 1 : 0;
+    return cmp * dirMult;
+  });
+
+  const { limit, offset } = toLimitOffset(params);
+  return {
+    workers: sorted.slice(offset, offset + limit),
+    pagination: buildEnvelope(params, workers.length),
+  };
+}
+
 workersDashboardRoutes.get("/dashboard", async (c) => {
   const dashboard = await buildWorkersDashboard(c.env);
-  return c.json(serializeDashboard(dashboard));
+
+  let paged: ReturnType<typeof paginateWorkers>;
+  try {
+    paged = paginateWorkers(dashboard.workers, {
+      page: c.req.query("page"),
+      page_size: c.req.query("page_size"),
+      sort_key: c.req.query("sort_key"),
+      sort_dir: c.req.query("sort_dir"),
+    });
+  } catch (err) {
+    if (err instanceof PaginationParamError) {
+      return c.json({ error: err.message }, 400);
+    }
+    throw err;
+  }
+
+  return c.json({
+    ...serializeDashboard({ ...dashboard, workers: paged.workers }),
+    workers_pagination: paged.pagination,
+  });
 });

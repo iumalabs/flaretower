@@ -93,6 +93,16 @@ export function FindingsTable<Row>(
   const sortKey = pagination ? pagination.sortKey : localSortKey;
   const sortDir = pagination ? pagination.sortDir : localSortDir;
 
+  // FR-004: a result set that fits on one page must render exactly as it
+  // does without pagination — no pager, chips/footer shown as normal (their
+  // counts are accurate here, since `rows` is the complete set either way).
+  // Sort still delegates to the caller whenever `pagination` is passed
+  // (below) regardless of page count — same correct result, no mode-flip.
+  const totalPages = pagination
+    ? Math.max(1, Math.ceil(pagination.total / pagination.pageSize))
+    : 1;
+  const showPager = !!pagination && totalPages > 1;
+
   // Under pagination, `rows` is already the server-sorted current page —
   // sorting it again locally would re-order it using only this page's data,
   // silently breaking cross-page order (FR-006).
@@ -142,7 +152,7 @@ export function FindingsTable<Row>(
           reading "12 critical" would be wrong/misleading the moment there's
           a second page (research.md §5). */
       }
-      {!pagination && (
+      {!showPager && (
         <div style={{ display: "flex", gap: 8, padding: "10px 12px", flexWrap: "wrap" }}>
           {STATUS_ORDER.filter((s) =>
             counts[s] > 0
@@ -343,10 +353,9 @@ export function FindingsTable<Row>(
         </div>
       </div>
 
-      {pagination
+      {showPager && pagination
         ? (
           (() => {
-            const totalPages = Math.max(1, Math.ceil(pagination.total / pagination.pageSize));
             return (
               <div
                 data-testid="pagination-footer"
