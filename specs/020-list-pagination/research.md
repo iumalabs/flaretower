@@ -35,7 +35,17 @@ pattern would work everywhere. It doesn't — each module's table has a differen
   zone-picker UI selects the active zone; `zone.records.map(...)` feeds `FindingsTable`). Pagination
   scope is records *within the selected zone*, not a flat cross-zone list — switching zones is
   already its own reset boundary (the component remounts `FindingsTable` on zone switch per its own
-  comment at `DnsInventory.tsx:328`).
+  comment at `DnsInventory.tsx:328`). **Correction (during implementation)**: this paragraph
+  originally claimed zone-scoping was already an "existing `zone` query param" — that was wrong.
+  `GET /api/dns/inventory` took **no query params at all** before this feature; zone selection was
+  entirely client-side (the frontend fetched every zone's every record in one response and filtered
+  in the browser). Implementing DNS pagination meant introducing `zone` as a genuinely new param, a
+  lightweight `zone_summaries` list (name + count only) for the tab bar so it doesn't need every
+  zone's full record set, and account-wide `total_records`/`total_dangling` computed server-side
+  since the frontend can no longer sum them from data it doesn't fully have anymore. Recorded here
+  as a reminder that "confirm before assuming" (this section's own opening instruction) applies to
+  every module, not just the three explicitly flagged as unconfirmed below — this one was stated as
+  fact and was wrong.
 - **Storage** (`StorageInventory.tsx:229-236,308-334`): **three independent `FindingsTable`
   instances** on one page — R2 buckets, KV namespaces, D1 databases — each with its own rows array.
   Each needs its own independent page/page_size/total; there is no single "the table" to paginate.

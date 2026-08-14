@@ -15,13 +15,13 @@ component, and an existing fetch helper. Nothing to scaffold.
 
 ## Phase 2: Foundational (blocks US2 and US3 — NOT US1, which is fully independent)
 
-- [ ] T001 [P] Create `worker/pagination.ts`: LIMIT/OFFSET math from `page`/`page_size`, a
+- [x] T001 [P] Create `worker/pagination.ts`: LIMIT/OFFSET math from `page`/`page_size`, a
       `PaginationEnvelope` builder (`page`, `page_size`, `total`, `total_pages`), and a
       whitelisted-column sort-key validator (data-model.md, research.md §3)
-- [ ] T002 [P] Unit tests for `worker/pagination.ts` in `tests/unit/pagination.test.ts`: LIMIT/OFFSET
+- [x] T002 [P] Unit tests for `worker/pagination.ts` in `tests/unit/pagination.test.ts`: LIMIT/OFFSET
       math, envelope `total_pages` rounding, valid/invalid `page`/`page_size` rejection, sort-key
       whitelist accept/reject
-- [ ] T003 [P] Extend `app/components/FindingsTable.tsx`: add optional `pagination` prop
+- [x] T003 [P] Extend `app/components/FindingsTable.tsx`: add optional `pagination` prop
       (data-model.md's `FindingsTablePagination`) — page footer (current page, total pages, total
       count, prev/next with correct disabled state), sort delegates to `onSortChange` instead of
       local `toggleSort` when present, status-filter chips hidden when present (research.md §5);
@@ -40,23 +40,23 @@ with the true total and a capped indicator — no silent 100-event ceiling.
 **Independent Test**: point the Audit log at an account/window with >100 events; confirm every
 event is reachable and the total count is accurate (spec.md's own Independent Test for this story).
 
-- [ ] T004 [US1] Extend `fetchAccountAuditLog()` in `worker/modules/workers-dashboard/audit-log.ts`:
+- [x] T004 [US1] Extend `fetchAccountAuditLog()` in `worker/modules/workers-dashboard/audit-log.ts`:
       follow Cloudflare's `page`/`per_page` pagination itself (research.md §1) up to
       `AUDIT_LOG_FETCH_CAP = 1000`; return `{ entries, truncated }` instead of a bare array
-- [ ] T005 [US1] Unit tests in `tests/unit/workers-dashboard-audit-log.test.ts`: multi-page
+- [x] T005 [US1] Unit tests in `tests/unit/workers-dashboard-audit-log.test.ts`: multi-page
       follow-through, stop-on-short-page (end of data), stop-at-cap with `truncated: true`,
       stop-before-cap with `truncated: false`
-- [ ] T006 [US1] Update `fetchAccountAuditLog()`'s only other caller (Workers dashboard's Recent
+- [x] T006 [US1] Update `fetchAccountAuditLog()`'s only other caller (Workers dashboard's Recent
       Changes panel, `worker/modules/workers-dashboard/routes.ts`) for the new `{ entries,
       truncated }` return shape — that panel only ever needs `entries`, so this is a destructure
       change, not a new capability there
-- [ ] T007 [US1] Extend `GET /log` in `worker/modules/audit/routes.ts`: forward `total:
+- [x] T007 [US1] Extend `GET /log` in `worker/modules/audit/routes.ts`: forward `total:
       entries.length` and `truncated` (contracts/api.md)
-- [ ] T008 [US1] Unit tests in `tests/unit/audit-routes.test.ts`: `total`/`truncated` forwarded
+- [x] T008 [US1] Unit tests in `tests/unit/audit-routes.test.ts`: `total`/`truncated` forwarded
       correctly, including the `unavailable: true` path (unaffected by this change)
-- [ ] T009 [US1] Extend `app/pages/AuditInventory.tsx`: show the true total event count; render a
+- [x] T009 [US1] Extend `app/pages/AuditInventory.tsx`: show the true total event count; render a
       clearly-visible "capped" indicator when `truncated` is true (FR-012)
-- [ ] T010 [US1] Extend `tests/e2e/audit-inventory.spec.ts`: total-count assertion; capped-indicator
+- [x] T010 [US1] Extend `tests/e2e/audit-inventory.spec.ts`: total-count assertion; capped-indicator
       scenario (mock >cap events) per quickstart.md Scenario 1/1c
 
 **Checkpoint**: User Story 1 fully functional and independently shippable — no dependency on
@@ -76,26 +76,27 @@ force it via a small `page_size`); confirm the table paginates instead of render
 
 ### Workers (flat, account-wide — simplest case; build first, use as the reference pattern)
 
-- [ ] T011 [P] [US2] Extend `GET /inventory` in `worker/modules/workers-dashboard/routes.ts`:
+- [x] T011 [P] [US2] Extend `GET /dashboard` in `worker/modules/workers-dashboard/routes.ts`
+      (corrected from "GET /inventory" — that's this module's actual route name):
       `page`/`page_size`/`sort_key`/`sort_dir` via T001's helper; response gains `pagination`
       envelope
-- [ ] T012 [P] [US2] Unit tests for the paginated/sorted query in
+- [x] T012 [P] [US2] Unit tests for the paginated/sorted query in
       `tests/unit/workers-dashboard-inventory.test.ts`
-- [ ] T013 [US2] Extend `app/pages/WorkersDashboardPage.tsx`: page/sort state, pass to the fetch
+- [x] T013 [US2] Extend `app/pages/WorkersDashboardPage.tsx`: page/sort state, pass to the fetch
       call and to `FindingsTable`'s `pagination` prop (depends on T011 for the API shape)
-- [ ] T014 [US2] Extend `tests/e2e/workers-dashboard.spec.ts`: pagination scenario per
+- [x] T014 [US2] Extend `tests/e2e/workers-dashboard.spec.ts`: pagination scenario per
       quickstart.md Scenario 2 (depends on T013)
 
 ### DNS (per-selected-zone scope — research.md §2)
 
-- [ ] T015 [P] [US2] Extend `GET /inventory` in `worker/modules/dns/routes.ts`:
+- [x] T015 [P] [US2] Extend `GET /inventory` in `worker/modules/dns/routes.ts`:
       `page`/`page_size`/`sort_key`/`sort_dir` scoped to the existing `zone` param
-- [ ] T016 [P] [US2] Unit tests in `tests/unit/dns-routes.test.ts` (or `dns-inventory.test.ts` —
+- [x] T016 [P] [US2] Unit tests in `tests/unit/dns-routes.test.ts` (or `dns-inventory.test.ts` —
       match whichever already covers `GET /inventory`)
-- [ ] T017 [US2] Extend `app/pages/DnsInventory.tsx`: page/sort state per selected zone (reset on
+- [x] T017 [US2] Extend `app/pages/DnsInventory.tsx`: page/sort state per selected zone (reset on
       zone switch, matching the component's existing remount-on-zone-switch behavior), wire to
       `FindingsTable`'s `pagination` prop (depends on T015)
-- [ ] T018 [US2] Extend `tests/e2e/dns-inventory.spec.ts`: pagination scenario, including zone-switch
+- [x] T018 [US2] Extend `tests/e2e/dns-inventory.spec.ts`: pagination scenario, including zone-switch
       resets to page 1 (depends on T017)
 
 ### Storage (three independent envelopes — research.md §2, data-model.md)

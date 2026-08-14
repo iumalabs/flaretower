@@ -2,25 +2,47 @@
 
 **Feature**: [spec.md](../spec.md) | **Date**: 2026-08-14
 
-All 7 routes below are **existing** endpoints, extended in place — no new routes, no removed
-fields (additive only, per data-model.md's `PaginationEnvelope`).
+All routes below are **existing** endpoints, extended in place — no new routes.
+Implementation status: ✅ Workers, ✅ DNS. Security/Zero Trust/Pages below are still the
+Phase 0 design (to be reconfirmed against each page's actual wiring per research.md §2's
+"confirm before assuming" note, same as DNS's contract turned out to need correcting).
 
-## `GET /api/{dns,security,zero-trust,pages}/inventory` — flat, account-wide pagination
+## `GET /api/workers/dashboard` — flat, account-wide pagination ✅ implemented
 
 **New query parameters**: `page` (default 1), `page_size` (default 50, max 200), `sort_key`
-(default: module's existing order), `sort_dir` (`asc`|`desc`, default `asc`). Invalid values → 400
-with a message naming the offending param (mirrors `audit/routes.ts`'s existing `since`-validation
-error style).
+(one of `worker`/`env`/`routes`/`requests`/`errors`/`cpu`/`last-deploy`, default `worker`),
+`sort_dir` (`asc`|`desc`, default `asc`). Invalid values → 400 with a message naming the offending
+param.
 
-**Response**: existing top-level array field (`zones`, findings, etc.) now holds only the
-requested page's rows; a sibling `pagination: PaginationEnvelope` field is added. DNS additionally
-scopes `page`/`page_size`/sort to the already-selected `zone` query param — pagination applies to
-that zone's records, not a cross-zone flat list (research.md §2).
+**Response**: `workers` now holds only the requested page's rows; a sibling
+`workers_pagination: PaginationEnvelope` field is added. Sorting/pagination happens in-memory in
+the route handler (`paginateWorkers()`), not via D1 — this route's row set is already fully
+live-fetched from Cloudflare on every call (no D1-backed findings table to push a LIMIT into).
 
-## `GET /api/workers/inventory` — same as above
+## `GET /api/dns/inventory` — per-zone scoping, restructured response ✅ implemented
 
-Same param/response shape; Workers' table is already a flat one-row-per-Worker list, no scoping
-wrinkle.
+**New query parameters**: `zone` (zone name; defaults to the first zone alphabetically),
+`page`/`page_size`/`sort_key` (`type`/`name`/`ttl`, default `name`)/`sort_dir`. This endpoint took
+**no query params at all** before this feature — `zone` did not previously exist (research.md §2's
+correction); adding it changed the response shape, not just added a pagination sibling:
+
+```json
+{
+  "run_id": "...", "evaluated_at": "...",
+  "total_records": 42, "total_dangling": 3,
+  "zone_summaries": [{ "zone_name": "example.com", "record_count": 40 }, "...every zone..."],
+  "selected_zone": "example.com",
+  "critical_finding": { "record_name": "...", "reason": "..." },
+  "records": ["...the selected zone's current page only..."],
+  "records_pagination": { "page": 1, "page_size": 50, "total": 40, "total_pages": 1 }
+}
+```
+
+Replaces the old `{ run_id, evaluated_at, zones: [{ zone_name, records }] }` (every zone's every
+record in one response). `zone_summaries` carries only name+count for the tab bar — other zones'
+full record sets are never fetched until selected. `critical_finding` is computed across the whole
+selected zone (not just the current page), so the module-scope alert banner can't miss a critical
+record simply because it's on a different page.
 
 ## `GET /api/storage/inventory` — three independent envelopes
 
