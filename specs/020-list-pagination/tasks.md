@@ -101,14 +101,14 @@ force it via a small `page_size`); confirm the table paginates instead of render
 
 ### Storage (three independent envelopes — research.md §2, data-model.md)
 
-- [ ] T019 [P] [US2] Extend `GET /inventory` in `worker/modules/storage/routes.ts`: three
+- [x] T019 [P] [US2] Extend `GET /inventory` in `worker/modules/storage/routes.ts`: three
       independent `bucket_*`/`kv_*`/`d1_*` param triplets and three `PaginationEnvelope`s
       (contracts/api.md)
-- [ ] T020 [P] [US2] Unit tests in `tests/unit/storage-routes.test.ts`: each of the three
+- [x] T020 [P] [US2] Unit tests in `tests/unit/storage-routes.test.ts`: each of the three
       collections paginates/sorts independently of the other two
-- [ ] T021 [US2] Extend `app/pages/StorageInventory.tsx`: three independent page/sort states (one
+- [x] T021 [US2] Extend `app/pages/StorageInventory.tsx`: three independent page/sort states (one
       per `FindingsTable` instance), wire each to its own envelope (depends on T019)
-- [ ] T022 [US2] Extend `tests/e2e/storage-inventory.spec.ts`: pagination scenario per table
+- [x] T022 [US2] Extend `tests/e2e/storage-inventory.spec.ts`: pagination scenario per table
       (depends on T021)
 
 ### Security (verify row-unit, then apply the pattern — research.md §2 flagged this unconfirmed)
