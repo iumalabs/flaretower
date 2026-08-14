@@ -7,12 +7,16 @@ name: D1 migrations
 # merged (issue: 5 module dashboards returning 500 in production because
 # their queries referenced columns/tables those migrations hadn't created
 # yet). Scoped to path changes under worker/db/migrations/ so unrelated
-# merges don't trigger a run.
+# merges don't trigger a run. Also runnable on demand (workflow_dispatch) —
+# needed the day this workflow itself merges: that merge won't touch
+# worker/db/migrations/ (already-existing migration files pushed before this
+# workflow existed still need a first, manual-trigger run to be applied).
 on:
   push:
     branches: [main]
     paths:
       - "worker/db/migrations/**"
+  workflow_dispatch: {}
 
 permissions:
   contents: read
