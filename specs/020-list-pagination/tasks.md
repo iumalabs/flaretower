@@ -124,13 +124,13 @@ force it via a small `page_size`); confirm the table paginates instead of render
 
 ### Zero Trust (verify row-unit first — research.md §2 flagged this unconfirmed)
 
-- [ ] T028 [P] [US2] Confirm `app/pages/ZeroTrustInventory.tsx`'s current table shape (flat
+- [x] T028 [P] [US2] Confirm `app/pages/ZeroTrustInventory.tsx`'s current table shape (flat
       one-row-per-Access-application, or grouped/multi-table like Storage) before assuming a shape
-- [ ] T029 [P] [US2] Extend `GET /inventory` in `worker/modules/zero-trust/routes.ts` per T028's
+- [x] T029 [P] [US2] Extend `GET /inventory` in `worker/modules/zero-trust/routes.ts` per T028's
       confirmed shape
-- [ ] T030 [P] [US2] Unit tests in `tests/unit/zero-trust-routes.test.ts`
-- [ ] T031 [US2] Extend `app/pages/ZeroTrustInventory.tsx` (depends on T029)
-- [ ] T032 [US2] Extend `tests/e2e/zero-trust-inventory.spec.ts` (depends on T031)
+- [x] T030 [P] [US2] Unit tests in `tests/unit/zero-trust-routes.test.ts`
+- [x] T031 [US2] Extend `app/pages/ZeroTrustInventory.tsx` (depends on T029)
+- [x] T032 [US2] Extend `tests/e2e/zero-trust-inventory.spec.ts` (depends on T031)
 
 ### Pages (verify row-unit first — research.md §2 flagged this unconfirmed)
 
