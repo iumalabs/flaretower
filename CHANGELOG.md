@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.9.0](https://github.com/iumalabs/flaretower/compare/v1.8.0...v1.9.0) (2026-08-14)
+
+
+### Features
+
+* **audit:** pagination for the alerts inbox, changes feed, and a bounded Overview ([#402](https://github.com/iumalabs/flaretower/issues/402)) ([5263cd9](https://github.com/iumalabs/flaretower/commit/5263cd9b12cf09bc1c867e3135662dc3dcfb76c1))
+
 ## [1.8.0](https://github.com/iumalabs/flaretower/compare/v1.7.2...v1.8.0) (2026-08-14)
 
 
