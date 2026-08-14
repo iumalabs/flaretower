@@ -74,8 +74,22 @@
       },
       "secrets": {
         // Declared here for validation/type-generation only (constitution
-        // Principle VIII) — the actual value is set via
-        // `wrangler secret put CF_API_TOKEN --env production`, never here.
+        // Principle VIII) — the actual value is set separately, NOT via
+        // `wrangler secret put CF_API_TOKEN --env production` (confirmed
+        // 2026-08-14, issue #393: `--env production` makes wrangler's
+        // `secret`/`versions secret` subcommands look for a worker literally
+        // named `flaretower-production`, which doesn't exist — unlike
+        // `deploy`/`versions upload`, which correctly resolve `--env
+        // production` against this shared `flaretower` script). Use, with no
+        // `--env` flag: `wrangler versions secret put CF_API_TOKEN` (plain
+        // `secret put` fails outright unless the latest uploaded version
+        // happens to be the one at 100% traffic, since Workers Builds
+        // doesn't always auto-promote), then promote it —
+        // `wrangler versions deploy --version-id <id> --percentage 100
+        // --yes`, with the id from `wrangler versions list --json` /
+        // `wrangler deployments status --json` rather than the interactive
+        // picker, which doesn't fit this project's version history on one
+        // screen.
         "required": ["CF_API_TOKEN"]
       },
       "d1_databases": [
