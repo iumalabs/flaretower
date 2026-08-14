@@ -3,6 +3,16 @@ import { expect, test } from "@playwright/test";
 const MOCK_STORAGE_INVENTORY = {
   run_id: "run-1",
   evaluated_at: "2026-08-08T12:00:00Z",
+  total_resources: 9,
+  total_exposed: 2,
+  critical_finding: {
+    title: "An R2 bucket is publicly exposed",
+    target: "public-uploads",
+    reason: "r2.dev managed public URL is enabled",
+  },
+  buckets_pagination: { page: 1, page_size: 50, total: 5, total_pages: 1 },
+  kv_namespaces_pagination: { page: 1, page_size: 50, total: 2, total_pages: 1 },
+  d1_databases_pagination: { page: 1, page_size: 50, total: 2, total_pages: 1 },
   buckets: [
     {
       bucket_name: "public-uploads",
@@ -109,7 +119,7 @@ test.beforeEach(async ({ page }) => {
       contentType: "application/json",
       body: JSON.stringify({ run_id: null, evaluated_at: null, projects: [] }),
     }));
-  await page.route("**/api/storage/inventory", (route) =>
+  await page.route("**/api/storage/inventory*", (route) =>
     route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -204,4 +214,46 @@ test("specs/016 US3 — Tables/Size show real values, and an explicit not-availa
 
   const withoutDetail = page.getByTestId("findings-row-db-2");
   await expect(withoutDetail.getByText("not available").first()).toBeVisible();
+});
+
+test("specs/020 US2 — each of the 3 tables paginates independently", async ({ page }) => {
+  await page.unroute("**/api/storage/inventory*");
+  await page.route("**/api/storage/inventory*", (route) => {
+    const url = new URL(route.request().url());
+    const bucketPage = Number(url.searchParams.get("bucket_page") ?? "1");
+    // Only buckets is split across pages here — kv/d1 stay single-page, to
+    // prove each collection's pagination is independent of the others.
+    const bucketPageSize = 2;
+    const start = (bucketPage - 1) * bucketPageSize;
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ...MOCK_STORAGE_INVENTORY,
+        buckets: MOCK_STORAGE_INVENTORY.buckets.slice(start, start + bucketPageSize),
+        buckets_pagination: {
+          page: bucketPage,
+          page_size: bucketPageSize,
+          total: MOCK_STORAGE_INVENTORY.buckets.length,
+          total_pages: Math.ceil(MOCK_STORAGE_INVENTORY.buckets.length / bucketPageSize),
+        },
+      }),
+    });
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: "R2 / KV / D1" }).click();
+
+  await expect(page.getByTestId("findings-row-public-uploads")).toBeVisible();
+  await expect(page.getByTestId("findings-row-loosely-covered-assets")).not.toBeVisible();
+  // Both kv rows still visible on their own single, unpaginated page.
+  await expect(page.getByTestId("findings-row-kv-used")).toBeVisible();
+  await expect(page.getByTestId("findings-row-kv-unused")).toBeVisible();
+
+  // Only the buckets table is paginated here (kv/d1 fit on one page each),
+  // so pagination-status matches exactly one element.
+  await expect(page.getByTestId("pagination-status")).toHaveText("5 total · page 1 of 3");
+
+  await page.getByTestId("pagination-next").click();
+  await expect(page.getByTestId("findings-row-loosely-covered-assets")).toBeVisible();
+  await expect(page.getByTestId("findings-row-public-uploads")).not.toBeVisible();
 });
