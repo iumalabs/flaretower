@@ -30,23 +30,54 @@ Deno.test("fetchWorkersAnalytics - maps current and previous windows independent
   const fetchImpl = ((_input: RequestInfo | URL, _init?: RequestInit) => {
     call++;
     // First call is the current (trailing-24h) window per fetchWorkersAnalytics's own ordering.
+    // p50/p99 here are raw microseconds, as Cloudflare's GraphQL API returns them.
     if (call === 1) {
       return Promise.resolve(
-        graphqlResponse([{ scriptName: "api-gateway", requests: 100, errors: 5, p50: 6, p99: 18 }]),
+        graphqlResponse([{
+          scriptName: "api-gateway",
+          requests: 100,
+          errors: 5,
+          p50: 6000,
+          p99: 18000,
+        }]),
       );
     }
     return Promise.resolve(
-      graphqlResponse([{ scriptName: "api-gateway", requests: 80, errors: 2, p50: 5, p99: 15 }]),
+      graphqlResponse([{
+        scriptName: "api-gateway",
+        requests: 80,
+        errors: 2,
+        p50: 5000,
+        p99: 15000,
+      }]),
     );
   }) as typeof fetch;
 
   const result = await fetchWorkersAnalytics(creds, now, fetchImpl);
+  // Converted to milliseconds: 6000µs -> 6ms, 18000µs -> 18ms.
   assertEquals(result.current.perScript, [
     { scriptName: "api-gateway", requests: 100, errors: 5, cpuTimeP50Ms: 6 },
   ]);
   assertEquals(result.current.cpuTimeP99Ms, 18);
   assertEquals(result.previous.perScript[0].requests, 80);
   assertEquals(call, 2);
+});
+
+Deno.test("fetchWorkersAnalytics - converts raw microsecond quantiles to milliseconds", async () => {
+  const fetchImpl = (() =>
+    Promise.resolve(
+      graphqlResponse([{
+        scriptName: "worker-a",
+        requests: 4,
+        errors: 0,
+        p50: 212500,
+        p99: 261190,
+      }]),
+    )) as typeof fetch;
+
+  const result = await fetchWorkersAnalytics(creds, now, fetchImpl);
+  assertEquals(result.current.perScript[0].cpuTimeP50Ms, 212.5);
+  assertEquals(result.current.cpuTimeP99Ms, 261.19);
 });
 
 Deno.test("fetchWorkersAnalytics - zero groups -> empty perScript, null P99", async () => {
