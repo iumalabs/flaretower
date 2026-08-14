@@ -4,6 +4,7 @@ import { type ExposureStatus, ExposureStatusBadge } from "../components/Exposure
 import {
   FindingsTable,
   type FindingsTableColumn,
+  type FindingsTablePagination,
   type FindingsTableRow,
 } from "../components/FindingsTable.tsx";
 import { AlertBanner } from "../components/AlertBanner.tsx";
@@ -51,16 +52,27 @@ interface CustomWafRule {
   status: ExposureStatus;
 }
 
+interface PaginationEnvelope {
+  page: number;
+  page_size: number;
+  total: number;
+  total_pages: number;
+}
+
 interface SecurityInventoryResponse {
   run_id: string | null;
   evaluated_at: string | null;
+  critical_finding: { zone_name: string; description: string } | null;
   zones: ZoneFinding[];
+  zones_pagination: PaginationEnvelope;
   // null = the zone list itself couldn't be fetched at all (live-fetched
   // on every request, not persisted — specs/017-security-dashboard
   // research.md §5/§6), distinct from a successfully fetched, confirmed-
-  // empty array.
+  // empty array. Pagination envelope is null in lockstep with the array.
   certificates: ZoneCertificate[] | null;
+  certificates_pagination: PaginationEnvelope | null;
   waf_custom_rules: CustomWafRule[] | null;
+  waf_custom_rules_pagination: PaginationEnvelope | null;
   // null = the Turnstile widgets list itself could not be fetched (e.g. a
   // scoped-down token, or a transient API error) — distinct from a
   // successfully fetched, confirmed-empty array. See
@@ -68,8 +80,36 @@ interface SecurityInventoryResponse {
   turnstile_widgets: TurnstileWidget[] | null;
 }
 
-async function fetchSecurityInventory(): Promise<SecurityInventoryResponse> {
-  const res = await fetch("/api/security/inventory");
+interface CollectionPageState {
+  page: number;
+  sortKey: string | null;
+  sortDir: 1 | -1;
+}
+
+const INITIAL_COLLECTION_STATE: CollectionPageState = { page: 1, sortKey: null, sortDir: 1 };
+
+function appendCollectionParams(
+  query: URLSearchParams,
+  prefix: string,
+  state: CollectionPageState,
+): void {
+  query.set(`${prefix}_page`, String(state.page));
+  if (state.sortKey) {
+    query.set(`${prefix}_sort_key`, state.sortKey);
+    query.set(`${prefix}_sort_dir`, state.sortDir === 1 ? "asc" : "desc");
+  }
+}
+
+async function fetchSecurityInventory(
+  zoneState: CollectionPageState,
+  certState: CollectionPageState,
+  wafRuleState: CollectionPageState,
+): Promise<SecurityInventoryResponse> {
+  const query = new URLSearchParams();
+  appendCollectionParams(query, "zone", zoneState);
+  appendCollectionParams(query, "certificate", certState);
+  appendCollectionParams(query, "waf_rule", wafRuleState);
+  const res = await fetch(`/api/security/inventory?${query}`);
   if (!res.ok) {
     throw new Error(`GET /api/security/inventory failed: ${res.status}`);
   }
@@ -285,15 +325,6 @@ function zoneChecks(zone: ZoneFinding): Array<[string, CheckFinding | undefined]
   ];
 }
 
-// The check whose own status actually made the zone's overall_status
-// "critical" — a zone can be critical via any one of its checks, not just
-// SSL/TLS, so the banner must describe whichever one it really was.
-function criticalCheckDescription(zone: ZoneFinding): string {
-  const [label, check] = zoneChecks(zone).find(([, c]) => c?.status === "critical") ??
-    ["SSL/TLS", zone.ssl_tls];
-  return `${label}: ${check!.reason}`;
-}
-
 function zoneDetail(zone: ZoneFinding): JSX.Element {
   const rows = zoneChecks(zone);
   return (
@@ -338,14 +369,47 @@ function SectionHeading({ children }: { children: string }): JSX.Element {
 export function SecurityPostureInventory(): JSX.Element {
   const [data, setData] = useState<SecurityInventoryResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [zoneState, setZoneState] = useState<CollectionPageState>(INITIAL_COLLECTION_STATE);
+  const [certState, setCertState] = useState<CollectionPageState>(INITIAL_COLLECTION_STATE);
+  const [wafRuleState, setWafRuleState] = useState<CollectionPageState>(INITIAL_COLLECTION_STATE);
 
   useEffect(() => {
-    fetchSecurityInventory()
-      .then(setData)
+    fetchSecurityInventory(zoneState, certState, wafRuleState)
+      .then((res) => {
+        // Same FR-008 out-of-range recovery as every other paginated
+        // module — each of the 3 collections can independently fall out of
+        // range if its own result set shrank between loads.
+        let needsRecovery = false;
+        if (
+          res.zones.length === 0 && res.zones_pagination.total > 0 &&
+          zoneState.page > res.zones_pagination.total_pages
+        ) {
+          setZoneState((s) => ({ ...s, page: res.zones_pagination.total_pages }));
+          needsRecovery = true;
+        }
+        if (
+          res.certificates_pagination && res.certificates?.length === 0 &&
+          res.certificates_pagination.total > 0 &&
+          certState.page > res.certificates_pagination.total_pages
+        ) {
+          setCertState((s) => ({ ...s, page: res.certificates_pagination!.total_pages }));
+          needsRecovery = true;
+        }
+        if (
+          res.waf_custom_rules_pagination && res.waf_custom_rules?.length === 0 &&
+          res.waf_custom_rules_pagination.total > 0 &&
+          wafRuleState.page > res.waf_custom_rules_pagination.total_pages
+        ) {
+          setWafRuleState((s) => ({ ...s, page: res.waf_custom_rules_pagination!.total_pages }));
+          needsRecovery = true;
+        }
+        if (needsRecovery) return;
+        setData(res);
+      })
       .catch((err: unknown) =>
         setError(err instanceof Error ? err.message : "failed to load security posture inventory")
       );
-  }, []);
+  }, [zoneState, certState, wafRuleState]);
 
   if (error) {
     return <p style={{ color: "var(--status-critical-fg)" }}>{error}</p>;
@@ -386,7 +450,47 @@ export function SecurityPostureInventory(): JSX.Element {
     }))
     : null;
 
-  const criticalRow = rows?.find((r) => r.status === "critical");
+  // Computed server-side across the whole zones list, not just whichever
+  // page is loaded (worker/modules/security/routes.ts) — pagination can't
+  // hide a critical zone simply because it's on a different page.
+  const criticalFinding = data?.critical_finding ?? null;
+
+  function makeSortHandler(
+    setState: (updater: (s: CollectionPageState) => CollectionPageState) => void,
+  ) {
+    return (key: string) => {
+      setState((s) => ({
+        page: 1,
+        sortKey: key,
+        sortDir: s.sortKey === key ? (s.sortDir === 1 ? -1 : 1) : 1,
+      }));
+    };
+  }
+
+  function makePagination(
+    envelope: PaginationEnvelope | null | undefined,
+    state: CollectionPageState,
+    setState: (updater: (s: CollectionPageState) => CollectionPageState) => void,
+  ): FindingsTablePagination | undefined {
+    if (!envelope) return undefined;
+    return {
+      page: envelope.page,
+      pageSize: envelope.page_size,
+      total: envelope.total,
+      onPageChange: (page) => setState((s) => ({ ...s, page })),
+      sortKey: state.sortKey,
+      sortDir: state.sortDir,
+      onSortChange: makeSortHandler(setState),
+    };
+  }
+
+  const zonePagination = makePagination(data?.zones_pagination, zoneState, setZoneState);
+  const certPagination = makePagination(data?.certificates_pagination, certState, setCertState);
+  const wafRulePagination = makePagination(
+    data?.waf_custom_rules_pagination,
+    wafRuleState,
+    setWafRuleState,
+  );
 
   return (
     <div>
@@ -403,18 +507,20 @@ export function SecurityPostureInventory(): JSX.Element {
       </h1>
       {data && (
         <p style={{ color: "var(--fg-faint)", fontSize: "var(--text-meta-size)", marginTop: 0 }}>
-          {data.zones.length} zone{data.zones.length === 1 ? "" : "s"} · run {data.run_id}
+          {data.zones_pagination.total} zone{data.zones_pagination.total === 1 ? "" : "s"} · run
+          {" "}
+          {data.run_id}
         </p>
       )}
 
-      {criticalRow && (
+      {criticalFinding && (
         <AlertBanner
           scope="module"
           finding={{
             severity: "critical",
             title: "A zone has a critical security gap",
-            target: criticalRow.data.zone_name,
-            description: criticalCheckDescription(criticalRow.data),
+            target: criticalFinding.zone_name,
+            description: criticalFinding.description,
           }}
         />
       )}
@@ -427,6 +533,7 @@ export function SecurityPostureInventory(): JSX.Element {
           heading: "No zones in this account",
           description: "This account has no zones to evaluate.",
         }}
+        pagination={zonePagination}
       />
 
       <SectionHeading>Certificates</SectionHeading>
@@ -451,6 +558,7 @@ export function SecurityPostureInventory(): JSX.Element {
               heading: "No certificates found",
               description: "This account has no zones with an active certificate.",
             }}
+            pagination={certPagination}
           />
         )}
 
@@ -476,6 +584,7 @@ export function SecurityPostureInventory(): JSX.Element {
               heading: "No custom WAF rules configured",
               description: "No zone in this account has a custom WAF rule deployed.",
             }}
+            pagination={wafRulePagination}
           />
         )}
 

@@ -1,6 +1,10 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals, assertThrows } from "@std/assert";
 import { Hono } from "hono";
-import { securityRoutes } from "../../worker/modules/security/routes.ts";
+import {
+  buildSecurityInventoryResponse,
+  securityRoutes,
+} from "../../worker/modules/security/routes.ts";
+import { PaginationParamError } from "../../worker/pagination.ts";
 
 // specs/017-security-dashboard: GET /inventory also live-fetches Turnstile
 // widgets (worker/modules/security/inventory.ts's listTurnstileWidgets),
@@ -167,6 +171,146 @@ Deno.test("GET /inventory - run_id is null when the evaluation has never run", a
 
   assertEquals(body.run_id, null);
   assertEquals(body.zones, []);
+});
+
+// specs/020-list-pagination — buildSecurityInventoryResponse() is pure
+// (extracted from the route handler), so these exercise the 3-collection
+// pagination/sort/critical_finding logic — and the camelCase->snake_case
+// serialization fix for certificates/waf_custom_rules — directly.
+function zoneOut(overrides: Partial<{
+  zone_id: string;
+  zone_name: string;
+  overall_status: string;
+  ssl_tls: { status: string; reason: string };
+  dnssec: { status: string; reason: string };
+}> = {}) {
+  return {
+    zone_id: "z1",
+    zone_name: "z1.example.com",
+    overall_status: "safe",
+    ssl_tls: { status: "safe", reason: "strict" },
+    ...overrides,
+  };
+}
+
+Deno.test("buildSecurityInventoryResponse - zones paginate; certificates/waf_custom_rules stay null when the live fetch failed", () => {
+  const zones = Array.from(
+    { length: 3 },
+    (_, i) => zoneOut({ zone_id: `z${i}`, zone_name: `z${i}.test` }),
+  );
+  const res = buildSecurityInventoryResponse(zones, null, null, null, "run-1", "t", {
+    zone: { page_size: "2" },
+  });
+
+  assertEquals(res.zones.length, 2);
+  assertEquals(res.zones_pagination, { page: 1, page_size: 2, total: 3, total_pages: 2 });
+  assertEquals(res.certificates, null);
+  assertEquals(res.certificates_pagination, null);
+  assertEquals(res.waf_custom_rules, null);
+  assertEquals(res.waf_custom_rules_pagination, null);
+});
+
+Deno.test("buildSecurityInventoryResponse - critical_finding reflects the whole zones list, not just the paginated page", () => {
+  const zones = [
+    zoneOut({ zone_id: "a", zone_name: "a.test", overall_status: "safe" }),
+    zoneOut({
+      zone_id: "z",
+      zone_name: "z.test",
+      overall_status: "critical",
+      dnssec: { status: "critical", reason: "DNSSEC not enabled" },
+    }),
+  ];
+  const res = buildSecurityInventoryResponse(zones, null, null, null, "run-1", "t", {
+    zone: { page: "1", page_size: "1" },
+  });
+
+  assertEquals(res.zones.map((z) => z.zone_name), ["a.test"]);
+  assertEquals(res.critical_finding, {
+    zone_name: "z.test",
+    description: "DNSSEC: DNSSEC not enabled",
+  });
+});
+
+Deno.test("buildSecurityInventoryResponse - critical_finding falls back to SSL/TLS when no specific check is critical", () => {
+  // overall_status critical but no individual check object marked
+  // critical (shouldn't normally happen, but the fallback must not throw).
+  const zones = [zoneOut({ overall_status: "critical" })];
+  const res = buildSecurityInventoryResponse(zones, null, null, null, "run-1", "t", {});
+  assertEquals(res.critical_finding?.description, "SSL/TLS: strict");
+});
+
+Deno.test("buildSecurityInventoryResponse - certificates/waf_custom_rules are serialized to snake_case, not passed through as-fetched camelCase", () => {
+  const certificates = [
+    {
+      zoneId: "z1",
+      zoneName: "z1.example.com",
+      hosts: ["z1.example.com"],
+      issuer: "Let's Encrypt",
+      expiresOn: "2026-12-01T00:00:00Z",
+      status: "safe" as const,
+    },
+  ];
+  const wafRules = [
+    {
+      zoneId: "z1",
+      zoneName: "z1.example.com",
+      description: "block bad bots",
+      expression: '(http.user_agent contains "bad")',
+      action: "block",
+      enabled: true,
+      status: "safe" as const,
+    },
+  ];
+
+  const res = buildSecurityInventoryResponse([], certificates, wafRules, null, "run-1", "t", {});
+
+  assertEquals(res.certificates, [{
+    zone_id: "z1",
+    zone_name: "z1.example.com",
+    hosts: ["z1.example.com"],
+    issuer: "Let's Encrypt",
+    expires_on: "2026-12-01T00:00:00Z",
+    status: "safe",
+  }]);
+  assertEquals(res.waf_custom_rules, [{
+    zone_id: "z1",
+    zone_name: "z1.example.com",
+    description: "block bad bots",
+    expression: '(http.user_agent contains "bad")',
+    action: "block",
+    enabled: true,
+    status: "safe",
+  }]);
+});
+
+Deno.test("buildSecurityInventoryResponse - certificates and waf_custom_rules paginate independently of zones and each other", () => {
+  const certificates = Array.from({ length: 3 }, (_, i) => ({
+    zoneId: `z${i}`,
+    zoneName: `z${i}.test`,
+    hosts: [],
+    issuer: "",
+    expiresOn: null,
+    status: "safe" as const,
+  }));
+  const res = buildSecurityInventoryResponse([], certificates, [], null, "run-1", "t", {
+    certificate: { page_size: "1" },
+  });
+  assertEquals(res.certificates?.length, 1);
+  assertEquals(res.certificates_pagination, { page: 1, page_size: 1, total: 3, total_pages: 3 });
+  assertEquals(res.waf_custom_rules, []);
+  assertEquals(res.waf_custom_rules_pagination, {
+    page: 1,
+    page_size: 50,
+    total: 0,
+    total_pages: 1,
+  });
+});
+
+Deno.test("buildSecurityInventoryResponse - rejects an invalid page for any one collection", () => {
+  assertThrows(
+    () => buildSecurityInventoryResponse([], [], [], null, "run-1", "t", { zone: { page: "0" } }),
+    PaginationParamError,
+  );
 });
 
 // A separate, minimal mock focused only on the alert tables'
