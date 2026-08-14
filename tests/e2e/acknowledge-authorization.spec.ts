@@ -95,6 +95,9 @@ test.beforeEach(async ({ page }) => {
     }));
   await page.goto("/");
   await page.getByRole("button", { name: "Audit & Drift" }).click();
+  // specs/021-dashboard-panel-tabs: the unified alerts inbox is no longer
+  // the default tab (Audit log is) — every test here needs it active.
+  await page.getByRole("tab", { name: "Unified alerts inbox" }).click();
 });
 
 test("a member operator's acknowledge attempt is rejected and the alert stays outstanding", async ({ page }) => {

@@ -9,6 +9,7 @@ import {
 } from "../components/FindingsTable.tsx";
 import { AlertBanner } from "../components/AlertBanner.tsx";
 import { EmptyState } from "../components/EmptyState.tsx";
+import { TabStrip } from "../components/TabStrip.tsx";
 
 interface PolicyRuleLine {
   verb: "ALLOW" | "REQUIRE" | "DENY";
@@ -211,21 +212,6 @@ const TOKEN_COLUMNS: FindingsTableColumn<TokenFinding>[] = [
     ),
   },
 ];
-
-function SectionHeading({ children }: { children: string }): JSX.Element {
-  return (
-    <h2
-      style={{
-        fontFamily: "var(--font-sans)",
-        fontSize: "var(--text-section-size)",
-        fontWeight: "var(--text-section-weight)" as unknown as number,
-        margin: "24px 0 12px",
-      }}
-    >
-      {children}
-    </h2>
-  );
-}
 
 const VERB_COLOR: Record<PolicyRuleLine["verb"], string> = {
   ALLOW: "var(--status-safe)",
@@ -530,63 +516,86 @@ export function ZeroTrustInventory(): JSX.Element {
         />
       )}
 
-      <SectionHeading>Access applications</SectionHeading>
-      {appRows && appRows.length === 0
-        ? (
-          <EmptyState
-            heading="No Access applications"
-            description="This account has no Access applications configured."
-          />
-        )
-        : (
-          <FindingsTable
-            columns={APP_COLUMNS}
-            rows={appRows}
-            loadingLabel="Loading applications…"
-            pagination={appPagination}
-          />
-        )}
+      <TabStrip
+        tabs={[
+          {
+            key: "applications",
+            label: "Access applications",
+            content: (
+              <div>
+                {appRows && appRows.length === 0
+                  ? (
+                    <EmptyState
+                      heading="No Access applications"
+                      description="This account has no Access applications configured."
+                    />
+                  )
+                  : (
+                    <FindingsTable
+                      columns={APP_COLUMNS}
+                      rows={appRows}
+                      loadingLabel="Loading applications…"
+                      pagination={appPagination}
+                    />
+                  )}
 
-      {appRows && appRows.length > 0 && (
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, margin: "10px 0" }}>
-          {data!.applications.map((a) => (
-            <button
-              key={a.app_id}
-              type="button"
-              onClick={() => setSelectedAppId(a.app_id)}
-              style={{
-                fontFamily: "var(--font-mono)",
-                fontSize: "var(--text-label-size)",
-                color: a.app_id === selectedAppId ? "var(--fg-primary)" : "var(--fg-faint)",
-                border: `1px solid ${
-                  a.app_id === selectedAppId ? "var(--brand-primary)" : "var(--border)"
-                }`,
-                background: a.app_id === selectedAppId ? "var(--brand-wash)" : "transparent",
-                padding: "4px 9px",
-                cursor: "pointer",
-              }}
-            >
-              {a.app_name ?? a.app_id}
-            </button>
-          ))}
-        </div>
-      )}
+                {appRows && appRows.length > 0 && (
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6, margin: "10px 0" }}>
+                    {data!.applications.map((a) => (
+                      <button
+                        key={a.app_id}
+                        type="button"
+                        onClick={() => setSelectedAppId(a.app_id)}
+                        style={{
+                          fontFamily: "var(--font-mono)",
+                          fontSize: "var(--text-label-size)",
+                          color: a.app_id === selectedAppId
+                            ? "var(--fg-primary)"
+                            : "var(--fg-faint)",
+                          border: `1px solid ${
+                            a.app_id === selectedAppId ? "var(--brand-primary)" : "var(--border)"
+                          }`,
+                          background: a.app_id === selectedAppId
+                            ? "var(--brand-wash)"
+                            : "transparent",
+                          padding: "4px 9px",
+                          cursor: "pointer",
+                        }}
+                      >
+                        {a.app_name ?? a.app_id}
+                      </button>
+                    ))}
+                  </div>
+                )}
 
-      <div style={{ display: "flex", gap: 16, alignItems: "flex-start", marginTop: 12 }}>
-        <PolicyDetailPanel app={selectedApp} />
-        <GroupsPanel groups={data?.access_groups ?? null} />
-      </div>
-
-      <SectionHeading>Service tokens</SectionHeading>
-      <FindingsTable
-        columns={TOKEN_COLUMNS}
-        rows={tokenRows}
-        loadingLabel="Loading service tokens…"
-        emptyState={{
-          heading: "No service tokens",
-          description: "This account has no service tokens configured.",
-        }}
-        pagination={tokenPagination}
+                <div style={{ display: "flex", gap: 16, alignItems: "flex-start", marginTop: 12 }}>
+                  <PolicyDetailPanel app={selectedApp} />
+                </div>
+              </div>
+            ),
+          },
+          {
+            key: "groups",
+            label: "Access Groups",
+            content: <GroupsPanel groups={data?.access_groups ?? null} />,
+          },
+          {
+            key: "service-tokens",
+            label: "Service tokens",
+            content: (
+              <FindingsTable
+                columns={TOKEN_COLUMNS}
+                rows={tokenRows}
+                loadingLabel="Loading service tokens…"
+                emptyState={{
+                  heading: "No service tokens",
+                  description: "This account has no service tokens configured.",
+                }}
+                pagination={tokenPagination}
+              />
+            ),
+          },
+        ]}
       />
     </div>
   );
