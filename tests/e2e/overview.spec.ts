@@ -48,6 +48,7 @@ const MOCK_ALERTS = {
     },
   ],
   unavailable_sources: [],
+  pagination: { page: 1, page_size: 5, total: 2, total_pages: 1 },
 };
 
 const MOCK_CHANGES = {
@@ -63,6 +64,7 @@ const MOCK_CHANGES = {
     },
   ],
   unavailable_sources: [],
+  pagination: { page: 1, page_size: 5, total: 1, total_pages: 1 },
 };
 
 async function mockModulePages(page: import("@playwright/test").Page) {
@@ -82,13 +84,13 @@ test.beforeEach(async ({ page }) => {
       contentType: "application/json",
       body: JSON.stringify(MOCK_SUMMARY),
     }));
-  await page.route("**/api/audit/alerts", (route) =>
+  await page.route("**/api/audit/alerts*", (route) =>
     route.fulfill({
       status: 200,
       contentType: "application/json",
       body: JSON.stringify(MOCK_ALERTS),
     }));
-  await page.route("**/api/audit/changes", (route) =>
+  await page.route("**/api/audit/changes*", (route) =>
     route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -147,11 +149,15 @@ test("US3/AC5 — an all-clear state renders when every module has zero findings
         unavailable_sources: [],
       }),
     }));
-  await page.route("**/api/audit/alerts", (route) =>
+  await page.route("**/api/audit/alerts*", (route) =>
     route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({ alerts: [], unavailable_sources: [] }),
+      body: JSON.stringify({
+        alerts: [],
+        unavailable_sources: [],
+        pagination: { page: 1, page_size: 5, total: 0, total_pages: 1 },
+      }),
     }));
   await page.goto("/");
 
@@ -180,4 +186,128 @@ test("FR-018 — a module reported unavailable is shown as not-available, not fo
   await page.goto("/");
 
   await expect(page.getByText("dns/record could not be read", { exact: false })).toBeVisible();
+});
+
+// specs/022-audit-list-pagination
+test("specs/022 US2 — more than 5 alerts shows a bounded top-5 with an accurate 'N more' indicator", async ({ page }) => {
+  const manyAlerts = Array.from({ length: 8 }, (_, i) => ({
+    id: `a${i}`,
+    module: "exposure",
+    kind: "hostname",
+    entity_label: `host-${i}.example.com`,
+    previous_status: "safe",
+    new_status: "warning",
+    detected_at: "2026-08-12T00:00:00Z",
+    acknowledged_at: null,
+  }));
+  await page.route("**/api/audit/alerts*", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        alerts: manyAlerts.slice(0, 5),
+        unavailable_sources: [],
+        pagination: { page: 1, page_size: 5, total: manyAlerts.length, total_pages: 2 },
+      }),
+    }));
+  await page.goto("/");
+
+  for (let i = 0; i < 5; i++) {
+    await expect(page.getByText(`host-${i}.example.com`)).toBeVisible();
+  }
+  for (let i = 5; i < 8; i++) {
+    await expect(page.getByText(`host-${i}.example.com`)).not.toBeVisible();
+  }
+  await expect(page.getByTestId("overview-alerts-more")).toHaveText("3 more — see full list");
+});
+
+test("specs/022 US2 — 5 or fewer alerts shows no 'more' indicator", async ({ page }) => {
+  // beforeEach's MOCK_ALERTS has 2 alerts, total: 2.
+  await page.goto("/");
+  await expect(page.getByTestId("overview-alerts-more")).not.toBeVisible();
+});
+
+test("specs/022 US2 — the 'more' indicator navigates to Audit & Drift's Unified alerts inbox tab", async ({ page }) => {
+  const manyAlerts = Array.from({ length: 7 }, (_, i) => ({
+    id: `a${i}`,
+    module: "exposure",
+    kind: "hostname",
+    entity_label: `host-${i}.example.com`,
+    previous_status: "safe",
+    new_status: "warning",
+    detected_at: "2026-08-12T00:00:00Z",
+    acknowledged_at: null,
+  }));
+  await page.route("**/api/audit/alerts*", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        alerts: manyAlerts.slice(0, 5),
+        unavailable_sources: [],
+        pagination: { page: 1, page_size: 5, total: manyAlerts.length, total_pages: 2 },
+      }),
+    }));
+  // AuditInventory's own required shell/route mocks, once navigated to.
+  await page.route("**/api/audit/log", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        since: "",
+        until: "",
+        unavailable: false,
+        total: 0,
+        truncated: false,
+        entries: [],
+      }),
+    }));
+  await page.route("**/api/dns/inventory", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ run_id: null, evaluated_at: null, zones: [] }),
+    }));
+  await page.route("**/api/zero-trust/inventory", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        run_id: null,
+        evaluated_at: null,
+        applications: [],
+        service_tokens: [],
+      }),
+    }));
+  await page.route("**/api/pages/inventory", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ run_id: null, evaluated_at: null, projects: [] }),
+    }));
+  await page.route("**/api/storage/inventory", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        run_id: null,
+        evaluated_at: null,
+        buckets: [],
+        kv_namespaces: [],
+        d1_databases: [],
+      }),
+    }));
+  await page.route("**/api/security/inventory", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ run_id: null, evaluated_at: null, zones: [], turnstile_widgets: [] }),
+    }));
+  await page.goto("/");
+
+  await page.getByTestId("overview-alerts-more").click();
+
+  await expect(page.getByRole("heading", { name: "Audit & Drift" })).toBeVisible();
+  await page.getByRole("tab", { name: "Unified alerts inbox" }).click();
+  await expect(page.getByTestId("findings-row-a0")).toBeVisible();
 });

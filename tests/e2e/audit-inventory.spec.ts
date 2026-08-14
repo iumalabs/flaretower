@@ -26,18 +26,20 @@ const MOCK_AUDIT_LOG = {
   ],
 };
 
+const MOCK_ALERT_A1 = {
+  id: "a1",
+  module: "security",
+  kind: "ssl_tls",
+  entity_label: "example.com",
+  previous_status: "safe",
+  new_status: "critical",
+  detected_at: "2026-08-10T06:00:00Z",
+  acknowledged_at: null,
+};
+
 const MOCK_AUDIT_ALERTS = {
   alerts: [
-    {
-      id: "a1",
-      module: "security",
-      kind: "ssl_tls",
-      entity_label: "example.com",
-      previous_status: "safe",
-      new_status: "critical",
-      detected_at: "2026-08-10T06:00:00Z",
-      acknowledged_at: null,
-    },
+    MOCK_ALERT_A1,
     {
       id: "a2",
       module: "storage",
@@ -49,7 +51,9 @@ const MOCK_AUDIT_ALERTS = {
       acknowledged_at: null,
     },
   ],
+  critical_alert: MOCK_ALERT_A1,
   unavailable_sources: [],
+  pagination: { page: 1, page_size: 50, total: 2, total_pages: 1 },
 };
 
 const MOCK_AUDIT_CHANGES = {
@@ -65,6 +69,7 @@ const MOCK_AUDIT_CHANGES = {
     },
   ],
   unavailable_sources: [],
+  pagination: { page: 1, page_size: 50, total: 1, total_pages: 1 },
 };
 
 const MOCK_AUDIT_SUMMARY = {
@@ -151,13 +156,13 @@ test.beforeEach(async ({ page }) => {
       contentType: "application/json",
       body: JSON.stringify(MOCK_AUDIT_LOG),
     }));
-  await page.route("**/api/audit/alerts", (route) =>
+  await page.route("**/api/audit/alerts*", (route) =>
     route.fulfill({
       status: 200,
       contentType: "application/json",
       body: JSON.stringify(MOCK_AUDIT_ALERTS),
     }));
-  await page.route("**/api/audit/changes", (route) =>
+  await page.route("**/api/audit/changes*", (route) =>
     route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -371,4 +376,109 @@ test("specs/021 FR-006 — the account-wide critical alert banner stays visible 
 
   await page.getByRole("tab", { name: "Account-wide posture summary" }).click();
   await expect(banner).toBeVisible();
+});
+
+// specs/022-audit-list-pagination
+test("specs/022 US1 — the Unified alerts inbox tab paginates: page footer, next/prev", async ({ page }) => {
+  const allAlerts = Array.from({ length: 5 }, (_, i) => ({
+    ...MOCK_ALERT_A1,
+    id: `alert-${i}`,
+    new_status: "warning",
+    entity_label: `entity-${i}`,
+  }));
+  await page.route("**/api/audit/alerts*", (route) => {
+    const url = new URL(route.request().url());
+    const requestedPage = Number(url.searchParams.get("page") ?? "1");
+    const pageSize = 2;
+    const start = (requestedPage - 1) * pageSize;
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        alerts: allAlerts.slice(start, start + pageSize),
+        critical_alert: null,
+        unavailable_sources: [],
+        pagination: {
+          page: requestedPage,
+          page_size: pageSize,
+          total: allAlerts.length,
+          total_pages: Math.ceil(allAlerts.length / pageSize),
+        },
+      }),
+    });
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Audit & Drift" }).click();
+  await page.getByRole("tab", { name: "Unified alerts inbox" }).click();
+
+  await expect(page.getByTestId("findings-row-alert-0")).toBeVisible();
+  await expect(page.getByTestId("pagination-status")).toHaveText("5 total · page 1 of 3");
+  await expect(page.getByTestId("pagination-prev")).toBeDisabled();
+
+  await page.getByTestId("pagination-next").click();
+  await expect(page.getByTestId("findings-row-alert-2")).toBeVisible();
+  await expect(page.getByTestId("findings-row-alert-0")).not.toBeVisible();
+  await expect(page.getByTestId("pagination-status")).toHaveText("5 total · page 2 of 3");
+});
+
+test("specs/022 US1 — the What changed tab paginates: page footer, next/prev", async ({ page }) => {
+  const allChanges = Array.from({ length: 5 }, (_, i) => ({
+    module: "security",
+    kind: "ssl_tls",
+    entity_label: `change-${i}`,
+    previous_status: "safe",
+    current_status: "warning",
+  }));
+  await page.route("**/api/audit/changes*", (route) => {
+    const url = new URL(route.request().url());
+    const requestedPage = Number(url.searchParams.get("page") ?? "1");
+    const pageSize = 2;
+    const start = (requestedPage - 1) * pageSize;
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        since: "2026-08-09T14:00:00Z",
+        until: "2026-08-10T14:00:00Z",
+        changes: allChanges.slice(start, start + pageSize),
+        unavailable_sources: [],
+        pagination: {
+          page: requestedPage,
+          page_size: pageSize,
+          total: allChanges.length,
+          total_pages: Math.ceil(allChanges.length / pageSize),
+        },
+      }),
+    });
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Audit & Drift" }).click();
+  await page.getByRole("tab", { name: "What changed" }).click();
+
+  await expect(page.getByTestId("findings-row-security/ssl_tls/change-0")).toBeVisible();
+  await expect(page.getByTestId("pagination-status")).toHaveText("5 total · page 1 of 3");
+
+  await page.getByTestId("pagination-next").click();
+  await expect(page.getByTestId("findings-row-security/ssl_tls/change-2")).toBeVisible();
+  await expect(page.getByTestId("pagination-status")).toHaveText("5 total · page 2 of 3");
+});
+
+test("specs/022 — critical_alert still shows the banner when the critical alert isn't on the current page", async ({ page }) => {
+  await page.route("**/api/audit/alerts*", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        alerts: [
+          { ...MOCK_ALERT_A1, id: "a2", new_status: "warning" },
+        ],
+        critical_alert: MOCK_ALERT_A1,
+        unavailable_sources: [],
+        pagination: { page: 1, page_size: 1, total: 2, total_pages: 2 },
+      }),
+    }));
+  await page.goto("/");
+  await page.getByRole("button", { name: "Audit & Drift" }).click();
+
+  await expect(page.getByText("An outstanding critical alert needs attention")).toBeVisible();
 });

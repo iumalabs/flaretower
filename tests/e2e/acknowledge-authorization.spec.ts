@@ -64,7 +64,7 @@ test.beforeEach(async ({ page }) => {
       contentType: "application/json",
       body: JSON.stringify({ run_id: null, evaluated_at: null, zones: [], turnstile_widgets: [] }),
     }));
-  await page.route("**/api/audit/alerts", (route) =>
+  await page.route("**/api/audit/alerts*", (route) =>
     route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -73,10 +73,16 @@ test.beforeEach(async ({ page }) => {
       // unconditionally (added by the T025 per-source-availability fix,
       // #299), which crashed on this mock predating that field. Pre-
       // existing gap, unrelated to this feature — found and fixed while
-      // running the full e2e suite for this PR.
-      body: JSON.stringify({ alerts: [MOCK_ALERT], unavailable_sources: [] }),
+      // running the full e2e suite for this PR. critical_alert/pagination
+      // are required the same way, added by specs/022-audit-list-pagination.
+      body: JSON.stringify({
+        alerts: [MOCK_ALERT],
+        critical_alert: MOCK_ALERT,
+        unavailable_sources: [],
+        pagination: { page: 1, page_size: 50, total: 1, total_pages: 1 },
+      }),
     }));
-  await page.route("**/api/audit/changes", (route) =>
+  await page.route("**/api/audit/changes*", (route) =>
     route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -85,6 +91,7 @@ test.beforeEach(async ({ page }) => {
         until: "2026-08-11T06:00:00Z",
         changes: [],
         unavailable_sources: [],
+        pagination: { page: 1, page_size: 50, total: 0, total_pages: 1 },
       }),
     }));
   await page.route("**/api/audit/summary", (route) =>

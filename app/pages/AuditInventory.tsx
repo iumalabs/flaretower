@@ -4,6 +4,7 @@ import { type ExposureStatus } from "../components/ExposureStatusBadge.tsx";
 import {
   FindingsTable,
   type FindingsTableColumn,
+  type FindingsTablePagination,
   type FindingsTableRow,
 } from "../components/FindingsTable.tsx";
 import { AlertBanner } from "../components/AlertBanner.tsx";
@@ -55,9 +56,21 @@ interface UnavailableSource {
   error: string;
 }
 
+interface PaginationEnvelope {
+  page: number;
+  page_size: number;
+  total: number;
+  total_pages: number;
+}
+
 interface AlertsResponse {
   alerts: UnifiedAlert[];
+  // Computed server-side across the full pre-pagination set, not just the
+  // current page (specs/022-audit-list-pagination research.md §6) — a
+  // critical alert on page 2 must still trigger the banner.
+  critical_alert: UnifiedAlert | null;
   unavailable_sources: UnavailableSource[];
+  pagination: PaginationEnvelope;
 }
 
 interface ChangeEntry {
@@ -73,6 +86,25 @@ interface ChangesResponse {
   until: string;
   changes: ChangeEntry[];
   unavailable_sources: UnavailableSource[];
+  pagination: PaginationEnvelope;
+}
+
+// One independent page/sort state per collection, matching every other
+// paginated page's own convention (e.g. StorageInventory.tsx).
+interface CollectionPageState {
+  page: number;
+  sortKey: string | null;
+  sortDir: 1 | -1;
+}
+
+const INITIAL_COLLECTION_STATE: CollectionPageState = { page: 1, sortKey: null, sortDir: 1 };
+
+function appendCollectionParams(query: URLSearchParams, state: CollectionPageState): void {
+  query.set("page", String(state.page));
+  if (state.sortKey) {
+    query.set("sort_key", state.sortKey);
+    query.set("sort_dir", state.sortDir === 1 ? "asc" : "desc");
+  }
 }
 
 interface PostureCounts {
@@ -102,16 +134,20 @@ async function fetchAuditLog(): Promise<AuditLogResponse> {
   return await res.json();
 }
 
-async function fetchAlerts(): Promise<AlertsResponse> {
-  const res = await fetch("/api/audit/alerts");
+async function fetchAlerts(state: CollectionPageState): Promise<AlertsResponse> {
+  const query = new URLSearchParams();
+  appendCollectionParams(query, state);
+  const res = await fetch(`/api/audit/alerts?${query}`);
   if (!res.ok) {
     throw new Error(`GET /api/audit/alerts failed: ${res.status}`);
   }
   return await res.json();
 }
 
-async function fetchChanges(): Promise<ChangesResponse> {
-  const res = await fetch("/api/audit/changes");
+async function fetchChanges(state: CollectionPageState): Promise<ChangesResponse> {
+  const query = new URLSearchParams();
+  appendCollectionParams(query, state);
+  const res = await fetch(`/api/audit/changes?${query}`);
   if (!res.ok) {
     throw new Error(`GET /api/audit/changes failed: ${res.status}`);
   }
@@ -547,22 +583,14 @@ export function AuditInventory(): JSX.Element {
   const [changesError, setChangesError] = useState<string | null>(null);
   const [summaryData, setSummaryData] = useState<SummaryResponse | null>(null);
   const [summaryError, setSummaryError] = useState<string | null>(null);
+  const [alertState, setAlertState] = useState<CollectionPageState>(INITIAL_COLLECTION_STATE);
+  const [changeState, setChangeState] = useState<CollectionPageState>(INITIAL_COLLECTION_STATE);
 
   useEffect(() => {
     fetchAuditLog()
       .then(setAuditLogData)
       .catch((err: unknown) =>
         setAuditLogError(err instanceof Error ? err.message : "failed to load audit log")
-      );
-    fetchAlerts()
-      .then(setData)
-      .catch((err: unknown) =>
-        setError(err instanceof Error ? err.message : "failed to load audit alerts")
-      );
-    fetchChanges()
-      .then(setChangesData)
-      .catch((err: unknown) =>
-        setChangesError(err instanceof Error ? err.message : "failed to load audit changes")
       );
     fetchSummary()
       .then(setSummaryData)
@@ -571,8 +599,64 @@ export function AuditInventory(): JSX.Element {
       );
   }, []);
 
+  useEffect(() => {
+    fetchAlerts(alertState)
+      .then(setData)
+      .catch((err: unknown) =>
+        setError(err instanceof Error ? err.message : "failed to load audit alerts")
+      );
+  }, [alertState]);
+
+  useEffect(() => {
+    fetchChanges(changeState)
+      .then(setChangesData)
+      .catch((err: unknown) =>
+        setChangesError(err instanceof Error ? err.message : "failed to load audit changes")
+      );
+  }, [changeState]);
+
   function handleAcknowledged(id: string) {
-    setData((prev) => prev && { ...prev, alerts: prev.alerts.filter((a) => a.id !== id) });
+    setData((prev) =>
+      prev && {
+        ...prev,
+        alerts: prev.alerts.filter((a) => a.id !== id),
+        // The acknowledged alert can no longer be "the" critical alert —
+        // cleared rather than left stale; a genuinely still-outstanding
+        // critical alert (this page or another) reappears on the next
+        // fetch (page/sort change), matching this feature's no-forced-
+        // re-fetch design (spec.md Edge Cases).
+        critical_alert: prev.critical_alert?.id === id ? null : prev.critical_alert,
+      }
+    );
+  }
+
+  function makeSortHandler(
+    setState: (updater: (s: CollectionPageState) => CollectionPageState) => void,
+  ) {
+    return (key: string) => {
+      setState((s) => ({
+        page: 1,
+        sortKey: key,
+        sortDir: s.sortKey === key ? (s.sortDir === 1 ? -1 : 1) : 1,
+      }));
+    };
+  }
+
+  function makePagination(
+    envelope: PaginationEnvelope | undefined,
+    state: CollectionPageState,
+    setState: (updater: (s: CollectionPageState) => CollectionPageState) => void,
+  ): FindingsTablePagination | undefined {
+    if (!envelope) return undefined;
+    return {
+      page: envelope.page,
+      pageSize: envelope.page_size,
+      total: envelope.total,
+      onPageChange: (page) => setState((s) => ({ ...s, page })),
+      sortKey: state.sortKey,
+      sortDir: state.sortDir,
+      onSortChange: makeSortHandler(setState),
+    };
   }
 
   if (error) {
@@ -592,10 +676,13 @@ export function AuditInventory(): JSX.Element {
     ? []
     : null;
 
-  // The single most urgent outstanding alert, account-wide (FR-013,
-  // US3/AC3 for the future Overview page's own banner — this module page
-  // gets the same treatment for its own unacknowledged alerts today).
-  const criticalAlert = alertRows?.find((r) => r.status === "critical");
+  const alertPagination = makePagination(data?.pagination, alertState, setAlertState);
+  const changePagination = makePagination(changesData?.pagination, changeState, setChangeState);
+
+  // The single most urgent outstanding alert, account-wide (FR-013) —
+  // computed server-side across the whole set, not just the current page
+  // (specs/022-audit-list-pagination research.md §6).
+  const criticalAlert = data?.critical_alert ? { data: data.critical_alert } : null;
 
   return (
     <div>
@@ -647,6 +734,7 @@ export function AuditInventory(): JSX.Element {
                     heading: "No outstanding alerts",
                     description: "Every module's alerts are either resolved or acknowledged.",
                   }}
+                  pagination={alertPagination}
                 />
               </div>
             ),
@@ -672,6 +760,7 @@ export function AuditInventory(): JSX.Element {
                           ? `No status changes since ${changesData.since}.`
                           : "No status changes in the observed window.",
                       }}
+                      pagination={changePagination}
                     />
                   )}
               </div>

@@ -44,9 +44,17 @@ interface UnifiedAlert {
   acknowledged_at: string | null;
 }
 
+interface PaginationEnvelope {
+  page: number;
+  page_size: number;
+  total: number;
+  total_pages: number;
+}
+
 interface AlertsResponse {
   alerts: UnifiedAlert[];
   unavailable_sources: UnavailableSource[];
+  pagination: PaginationEnvelope;
 }
 
 interface ChangeEntry {
@@ -62,6 +70,7 @@ interface ChangesResponse {
   until: string;
   changes: ChangeEntry[];
   unavailable_sources: UnavailableSource[];
+  pagination: PaginationEnvelope;
 }
 
 async function fetchSummary(): Promise<SummaryResponse> {
@@ -70,14 +79,25 @@ async function fetchSummary(): Promise<SummaryResponse> {
   return await res.json();
 }
 
+// specs/022-audit-list-pagination — Overview stays a bounded, most-severe-
+// first glance rather than gaining full pager controls of its own: a fixed
+// small page_size, always sorted by severity server-side (data-model.md),
+// with `pagination.total` telling the "N more" indicator how much is
+// hidden. Both endpoints already return this shape (spec 020's envelope).
+const OVERVIEW_SLICE_SIZE = 5;
+
 async function fetchAlerts(): Promise<AlertsResponse> {
-  const res = await fetch("/api/audit/alerts");
+  const res = await fetch(
+    `/api/audit/alerts?page=1&page_size=${OVERVIEW_SLICE_SIZE}&sort_key=severity`,
+  );
   if (!res.ok) throw new Error(`GET /api/audit/alerts failed: ${res.status}`);
   return await res.json();
 }
 
 async function fetchChanges(): Promise<ChangesResponse> {
-  const res = await fetch("/api/audit/changes");
+  const res = await fetch(
+    `/api/audit/changes?page=1&page_size=${OVERVIEW_SLICE_SIZE}&sort_key=severity`,
+  );
   if (!res.ok) throw new Error(`GET /api/audit/changes failed: ${res.status}`);
   return await res.json();
 }
@@ -242,14 +262,9 @@ function UnavailableModulesNotice(
   );
 }
 
-const SEVERITY_ORDER: Record<ExposureStatus, number> = {
-  critical: 0,
-  warning: 1,
-  safe: 2,
-  not_evaluated: 3,
-};
-
-export function OverviewPage(): JSX.Element {
+export function OverviewPage(
+  { onNavigateToAudit }: { onNavigateToAudit: () => void },
+): JSX.Element {
   const [summary, setSummary] = useState<SummaryResponse | null>(null);
   const [summaryError, setSummaryError] = useState<string | null>(null);
   const [alerts, setAlerts] = useState<AlertsResponse | null>(null);
@@ -324,9 +339,15 @@ export function OverviewPage(): JSX.Element {
   const allClear = totals.critical === 0 && totals.warning === 0 &&
     summary.unavailable_sources.length === 0 && (!alerts || alerts.alerts.length === 0);
 
-  const sortedAlerts = alerts
-    ? [...alerts.alerts].sort((a, b) => SEVERITY_ORDER[a.new_status] - SEVERITY_ORDER[b.new_status])
-    : null;
+  // Already severity-sorted server-side (fetchAlerts requests sort_key=severity)
+  // — no client-side re-sort needed, specs/022-audit-list-pagination.
+  const sortedAlerts = alerts ? alerts.alerts : null;
+  const moreAlerts = alerts && alerts.pagination.total > OVERVIEW_SLICE_SIZE
+    ? alerts.pagination.total - alerts.alerts.length
+    : 0;
+  const moreChanges = changes && changes.pagination.total > OVERVIEW_SLICE_SIZE
+    ? changes.pagination.total - changes.changes.length
+    : 0;
 
   return (
     <div>
@@ -373,7 +394,7 @@ export function OverviewPage(): JSX.Element {
             }}
           >
             <span style={{ fontSize: "var(--text-body-size)", fontWeight: 600 }}>Findings</span>
-            {sortedAlerts && (
+            {alerts && (
               <span
                 style={{
                   fontFamily: "var(--font-mono)",
@@ -381,7 +402,7 @@ export function OverviewPage(): JSX.Element {
                   color: "var(--fg-faint)",
                 }}
               >
-                {sortedAlerts.length} open · sorted by severity
+                {alerts.pagination.total} open · sorted by severity
               </span>
             )}
           </div>
@@ -398,6 +419,28 @@ export function OverviewPage(): JSX.Element {
             : sortedAlerts.map((a) => (
               <FindingRow key={a.id} alert={a} onAcknowledged={handleAcknowledged} />
             ))}
+          {moreAlerts > 0 && (
+            <button
+              type="button"
+              data-testid="overview-alerts-more"
+              onClick={onNavigateToAudit}
+              style={{
+                display: "block",
+                width: "100%",
+                textAlign: "left",
+                background: "none",
+                border: "none",
+                borderTop: "1px solid var(--rule-hairline)",
+                padding: "10px 18px",
+                fontFamily: "var(--font-mono)",
+                fontSize: "var(--text-meta-size)",
+                color: "var(--fg-faint)",
+                cursor: "pointer",
+              }}
+            >
+              {moreAlerts} more — see full list
+            </button>
+          )}
         </div>
 
         <div style={{ background: "var(--surface-1)", border: "1px solid var(--border)" }}>
@@ -455,6 +498,28 @@ export function OverviewPage(): JSX.Element {
                 </div>
               </div>
             ))}
+          {moreChanges > 0 && (
+            <button
+              type="button"
+              data-testid="overview-changes-more"
+              onClick={onNavigateToAudit}
+              style={{
+                display: "block",
+                width: "100%",
+                textAlign: "left",
+                background: "none",
+                border: "none",
+                borderTop: "1px solid var(--rule-hairline)",
+                padding: "10px 18px",
+                fontFamily: "var(--font-mono)",
+                fontSize: "var(--text-meta-size)",
+                color: "var(--fg-faint)",
+                cursor: "pointer",
+              }}
+            >
+              {moreChanges} more — see full list
+            </button>
+          )}
         </div>
       </div>
     </div>
