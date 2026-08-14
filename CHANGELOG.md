@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.7.1](https://github.com/iumalabs/flaretower/compare/v1.7.0...v1.7.1) (2026-08-14)
+
+
+### Bug Fixes
+
+* **concurrency:** bound how long withGlobalFetchSlot's fn() can hold a slot ([#391](https://github.com/iumalabs/flaretower/issues/391)) ([9c84b89](https://github.com/iumalabs/flaretower/commit/9c84b8931b079879b01786f5006205904cf2bf9a))
+
 ## [1.7.0](https://github.com/iumalabs/flaretower/compare/v1.6.2...v1.7.0) (2026-08-14)
 
 
