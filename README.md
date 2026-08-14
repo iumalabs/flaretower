@@ -100,6 +100,21 @@ role, timestamp) atomically with the role change itself, through the same shared
 mechanism every other mutating module already uses. No new Cloudflare API token scopes — this is
 FlareTower's own authorization state, not Cloudflare account state.
 
+Also post-v1.0: [**List Pagination**](specs/020-list-pagination/) — the Audit log previously
+fetched a single 100-event Cloudflare API page and silently stopped, and the six module dashboard
+tables (Workers, DNS, Storage, Security, Zero Trust, Pages) each rendered their entire result set
+in one unbroken table with no page controls. The Audit log's backend now follows Cloudflare's own
+pagination cursor up to a defined safe cap (1000 events), surfacing a "capped" indicator rather
+than presenting a partial result as complete; the six module dashboards paginate server-side
+(`page`/`page_size`/`sort_key`/`sort_dir`), with cross-collection critical findings (an exposed
+bucket, an open Access application, a critical zone) computed across each entity's whole result
+set so pagination can never hide the single most urgent finding on a different page. No new
+Cloudflare API token scopes. Found and fixed one pre-existing, unrelated bug while restructuring
+the Security module's response: its Certificates and WAF Custom Rules panels were serialized in
+their internal camelCase shape instead of the snake_case shape the frontend has always expected,
+silently rendering blank in production — nothing in the existing mocked e2e suite exercised the
+real route's serialization closely enough to catch it.
+
 ## Prerequisites
 
 - [Deno](https://deno.com) 2.9+. This project's only local toolchain — no `package.json`, no

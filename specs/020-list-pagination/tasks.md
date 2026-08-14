@@ -134,13 +134,13 @@ force it via a small `page_size`); confirm the table paginates instead of render
 
 ### Pages (verify row-unit first — research.md §2 flagged this unconfirmed)
 
-- [ ] T033 [P] [US2] Confirm `app/pages/PagesInventory.tsx`'s current table shape (flat
+- [x] T033 [P] [US2] Confirm `app/pages/PagesInventory.tsx`'s current table shape (flat
       one-row-per-Pages-project, per specs/015) before assuming a shape
-- [ ] T034 [P] [US2] Extend `GET /inventory` in `worker/modules/pages/routes.ts` per T033's
+- [x] T034 [P] [US2] Extend `GET /inventory` in `worker/modules/pages/routes.ts` per T033's
       confirmed shape
-- [ ] T035 [P] [US2] Unit tests in `tests/unit/pages-routes.test.ts`
-- [ ] T036 [US2] Extend `app/pages/PagesInventory.tsx` (depends on T034)
-- [ ] T037 [US2] Extend `tests/e2e/pages-inventory.spec.ts` (depends on T036)
+- [x] T035 [P] [US2] Unit tests in `tests/unit/pages-routes.test.ts`
+- [x] T036 [US2] Extend `app/pages/PagesInventory.tsx` (depends on T034)
+- [x] T037 [US2] Extend `tests/e2e/pages-inventory.spec.ts` (depends on T036)
 
 **Checkpoint**: all six module dashboards paginate server-side; Workers (T011–T014) is the
 reference implementation the other five modules' backend tasks mirror.
@@ -158,11 +158,11 @@ consulting any other source (spec.md's own Independent Test).
 
 **Depends on**: Phase 2 (T003 built the footer) and at least one module from Phase 4 wired to it.
 
-- [ ] T038 [US3] Add explicit first-page ("previous" disabled) and last-page ("next" disabled)
+- [x] T038 [US3] Add explicit first-page ("previous" disabled) and last-page ("next" disabled)
       assertions to each module's e2e pagination scenario from Phase 4 (T014, T018, T022, T027,
       T032, T037) rather than a new page — this story's behavior is a property of the shared
       footer (T003), not separate implementation
-- [ ] T039 [US3] Confirm total-count and current-position text is present and correct on every
+- [x] T039 [US3] Confirm total-count and current-position text is present and correct on every
       paginated table's first render (no page requested yet) across the same six e2e specs
 
 **Checkpoint**: all three user stories independently verified.
@@ -171,12 +171,12 @@ consulting any other source (spec.md's own Independent Test).
 
 ## Phase 6: Polish & Cross-Cutting
 
-- [ ] T040 Run `deno fmt --check`, `deno lint`, full-tree `deno check`, `deno task test` — zero
+- [x] T040 Run `deno fmt --check`, `deno lint`, full-tree `deno check`, `deno task test` — zero
       regressions across the whole suite, not just this feature's new tests
 - [ ] T041 Run `quickstart.md`'s manual scenarios against a real Cloudflare account (real-account
       dependency — leave unchecked here until actually run, per this project's established
       convention for every prior module)
-- [ ] T042 Update README's Status section with a one-paragraph entry for spec 020, matching the
+- [x] T042 Update README's Status section with a one-paragraph entry for spec 020, matching the
       existing per-spec documentation pattern (specs 012–019 each have one)
 
 ## Dependencies & Execution Order
