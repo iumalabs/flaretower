@@ -1,0 +1,43 @@
+name: D1 migrations
+
+# Applies pending worker/db/migrations/*.sql to both remote D1 databases on
+# every merge to main — Cloudflare Workers Builds deploys the Worker itself,
+# but never runs D1 migrations on its own, which is what left migrations
+# 0009-0013 unapplied against flaretower-production after specs 013-017
+# merged (issue: 5 module dashboards returning 500 in production because
+# their queries referenced columns/tables those migrations hadn't created
+# yet). Scoped to path changes under worker/db/migrations/ so unrelated
+# merges don't trigger a run.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "worker/db/migrations/**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: d1-migrations-${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    name: apply pending migrations
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - run: deno install
+
+      - name: apply production migrations
+        run: deno task db:migrations:apply:remote
+
+      - name: apply preview migrations
+        run: deno task db:migrations:apply:preview:remote
