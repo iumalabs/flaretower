@@ -139,8 +139,12 @@ test("US1 — every bucket, namespace, and database appears, none omitted", asyn
   await expect(page.getByTestId("findings-row-public-uploads")).toBeVisible();
   await expect(page.getByTestId("findings-row-private-backups")).toBeVisible();
   await expect(page.getByTestId("findings-row-loosely-covered-assets")).toBeVisible();
+
+  await page.getByRole("tab", { name: "KV namespaces" }).click();
   await expect(page.getByTestId("findings-row-kv-used")).toBeVisible();
   await expect(page.getByTestId("findings-row-kv-unused")).toBeVisible();
+
+  await page.getByRole("tab", { name: "D1 databases" }).click();
   await expect(page.getByTestId("findings-row-db-1")).toBeVisible();
 });
 
@@ -175,6 +179,7 @@ test("US2/AC4 — an enabled custom domain covered by a meaningfully scoped Acce
 });
 
 test("US3 — a namespace referenced by a Worker renders safe, an unreferenced one renders warning", async ({ page }) => {
+  await page.getByRole("tab", { name: "KV namespaces" }).click();
   const usedRow = page.getByTestId("findings-row-kv-used");
   await expect(usedRow.getByText("PROTECTED")).toBeVisible();
 
@@ -192,9 +197,11 @@ test("specs/016 US1 — Bound to shows the Worker name, a count, or an explicit 
   const noWorker = page.getByTestId("findings-row-private-backups");
   await expect(noWorker.getByText("none", { exact: true }).first()).toBeVisible();
 
+  await page.getByRole("tab", { name: "KV namespaces" }).click();
   const kvRow = page.getByTestId("findings-row-kv-used");
   await expect(kvRow.getByText("auth-broker", { exact: true })).toBeVisible();
 
+  await page.getByRole("tab", { name: "D1 databases" }).click();
   const d1Row = page.getByTestId("findings-row-db-1");
   await expect(d1Row.getByText("billing-api", { exact: true })).toBeVisible();
 });
@@ -208,6 +215,7 @@ test("specs/016 US2 — Custom domain shows the real domain or an explicit none 
 });
 
 test("specs/016 US3 — Tables/Size show real values, and an explicit not-available state when the detail fetch failed", async ({ page }) => {
+  await page.getByRole("tab", { name: "D1 databases" }).click();
   const withDetail = page.getByTestId("findings-row-db-1");
   await expect(withDetail.getByText("18", { exact: true })).toBeVisible();
   await expect(withDetail.getByText("860.0 KB", { exact: true })).toBeVisible();
@@ -245,9 +253,13 @@ test("specs/020 US2 — each of the 3 tables paginates independently", async ({ 
 
   await expect(page.getByTestId("findings-row-public-uploads")).toBeVisible();
   await expect(page.getByTestId("findings-row-loosely-covered-assets")).not.toBeVisible();
-  // Both kv rows still visible on their own single, unpaginated page.
+
+  // Both kv rows still visible on their own single, unpaginated page — on
+  // its own tab, since only one tab's content is ever rendered at once.
+  await page.getByRole("tab", { name: "KV namespaces" }).click();
   await expect(page.getByTestId("findings-row-kv-used")).toBeVisible();
   await expect(page.getByTestId("findings-row-kv-unused")).toBeVisible();
+  await page.getByRole("tab", { name: "R2 buckets" }).click();
 
   // Only the buckets table is paginated here (kv/d1 fit on one page each),
   // so pagination-status matches exactly one element.
@@ -256,4 +268,64 @@ test("specs/020 US2 — each of the 3 tables paginates independently", async ({ 
   await page.getByTestId("pagination-next").click();
   await expect(page.getByTestId("findings-row-loosely-covered-assets")).toBeVisible();
   await expect(page.getByTestId("findings-row-public-uploads")).not.toBeVisible();
+});
+
+// specs/021-dashboard-panel-tabs
+test("specs/021 US1 — three tabs replace the stacked blocks; only the active tab's table renders", async ({ page }) => {
+  await expect(page.getByRole("tab", { name: "R2 buckets" })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "KV namespaces" })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "D1 databases" })).toBeVisible();
+
+  // R2 buckets is the default/first tab.
+  await expect(page.getByTestId("findings-row-public-uploads")).toBeVisible();
+  await expect(page.getByTestId("findings-row-kv-used")).not.toBeVisible();
+  await expect(page.getByTestId("findings-row-db-1")).not.toBeVisible();
+
+  await page.getByRole("tab", { name: "KV namespaces" }).click();
+  await expect(page.getByTestId("findings-row-kv-used")).toBeVisible();
+  await expect(page.getByTestId("findings-row-public-uploads")).not.toBeVisible();
+
+  await page.getByRole("tab", { name: "D1 databases" }).click();
+  await expect(page.getByTestId("findings-row-db-1")).toBeVisible();
+  await expect(page.getByTestId("findings-row-kv-used")).not.toBeVisible();
+});
+
+test("specs/021 US2 — switching tabs and back preserves a table's page and sort", async ({ page }) => {
+  await page.unroute("**/api/storage/inventory*");
+  await page.route("**/api/storage/inventory*", (route) => {
+    const url = new URL(route.request().url());
+    const bucketPage = Number(url.searchParams.get("bucket_page") ?? "1");
+    const bucketSortDir = url.searchParams.get("bucket_sort_dir") ?? "asc";
+    const bucketPageSize = 2;
+    const sorted = [...MOCK_STORAGE_INVENTORY.buckets].sort((a, b) =>
+      bucketSortDir === "desc"
+        ? b.bucket_name.localeCompare(a.bucket_name)
+        : a.bucket_name.localeCompare(b.bucket_name)
+    );
+    const start = (bucketPage - 1) * bucketPageSize;
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ...MOCK_STORAGE_INVENTORY,
+        buckets: sorted.slice(start, start + bucketPageSize),
+        buckets_pagination: {
+          page: bucketPage,
+          page_size: bucketPageSize,
+          total: MOCK_STORAGE_INVENTORY.buckets.length,
+          total_pages: Math.ceil(MOCK_STORAGE_INVENTORY.buckets.length / bucketPageSize),
+        },
+      }),
+    });
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: "R2 / KV / D1" }).click();
+
+  await page.getByTestId("pagination-next").click();
+  await expect(page.getByTestId("pagination-status")).toHaveText("5 total · page 2 of 3");
+
+  await page.getByRole("tab", { name: "KV namespaces" }).click();
+  await page.getByRole("tab", { name: "R2 buckets" }).click();
+
+  await expect(page.getByTestId("pagination-status")).toHaveText("5 total · page 2 of 3");
 });

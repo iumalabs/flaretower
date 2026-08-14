@@ -8,6 +8,7 @@ import {
   type FindingsTableRow,
 } from "../components/FindingsTable.tsx";
 import { AlertBanner } from "../components/AlertBanner.tsx";
+import { TabStrip } from "../components/TabStrip.tsx";
 
 interface BucketFinding {
   bucket_name: string;
@@ -237,21 +238,6 @@ const D1_COLUMNS: FindingsTableColumn<D1Finding>[] = [
   reasonColumn<D1Finding>(),
 ];
 
-function SectionHeading({ children }: { children: string }): JSX.Element {
-  return (
-    <h2
-      style={{
-        fontFamily: "var(--font-sans)",
-        fontSize: "var(--text-section-size)",
-        fontWeight: "var(--text-section-weight)" as unknown as number,
-        margin: "24px 0 12px",
-      }}
-    >
-      {children}
-    </h2>
-  );
-}
-
 const INITIAL_COLLECTION_STATE: CollectionPageState = { page: 1, sortKey: null, sortDir: 1 };
 
 export function StorageInventory(): JSX.Element {
@@ -383,37 +369,57 @@ export function StorageInventory(): JSX.Element {
         />
       )}
 
-      <SectionHeading>R2 buckets</SectionHeading>
-      <FindingsTable
-        columns={BUCKET_COLUMNS}
-        rows={bucketRows}
-        loadingLabel="Loading R2 buckets…"
-        emptyState={{ heading: "No R2 buckets", description: "This account has no R2 buckets." }}
-        pagination={bucketPagination}
-      />
-
-      <SectionHeading>KV namespaces</SectionHeading>
-      <FindingsTable
-        columns={KV_COLUMNS}
-        rows={kvRows}
-        loadingLabel="Loading KV namespaces…"
-        emptyState={{
-          heading: "No KV namespaces",
-          description: "This account has no KV namespaces.",
-        }}
-        pagination={kvPagination}
-      />
-
-      <SectionHeading>D1 databases</SectionHeading>
-      <FindingsTable
-        columns={D1_COLUMNS}
-        rows={d1Rows}
-        loadingLabel="Loading D1 databases…"
-        emptyState={{
-          heading: "No D1 databases",
-          description: "This account has no D1 databases.",
-        }}
-        pagination={d1Pagination}
+      <TabStrip
+        tabs={[
+          {
+            key: "buckets",
+            label: "R2 buckets",
+            content: (
+              <FindingsTable
+                columns={BUCKET_COLUMNS}
+                rows={bucketRows}
+                loadingLabel="Loading R2 buckets…"
+                emptyState={{
+                  heading: "No R2 buckets",
+                  description: "This account has no R2 buckets.",
+                }}
+                pagination={bucketPagination}
+              />
+            ),
+          },
+          {
+            key: "kv",
+            label: "KV namespaces",
+            content: (
+              <FindingsTable
+                columns={KV_COLUMNS}
+                rows={kvRows}
+                loadingLabel="Loading KV namespaces…"
+                emptyState={{
+                  heading: "No KV namespaces",
+                  description: "This account has no KV namespaces.",
+                }}
+                pagination={kvPagination}
+              />
+            ),
+          },
+          {
+            key: "d1",
+            label: "D1 databases",
+            content: (
+              <FindingsTable
+                columns={D1_COLUMNS}
+                rows={d1Rows}
+                loadingLabel="Loading D1 databases…"
+                emptyState={{
+                  heading: "No D1 databases",
+                  description: "This account has no D1 databases.",
+                }}
+                pagination={d1Pagination}
+              />
+            ),
+          },
+        ]}
       />
     </div>
   );
