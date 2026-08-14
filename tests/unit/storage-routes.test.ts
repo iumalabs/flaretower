@@ -1,6 +1,11 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals, assertThrows } from "@std/assert";
 import { Hono } from "hono";
-import { boundToLabel, storageRoutes } from "../../worker/modules/storage/routes.ts";
+import {
+  boundToLabel,
+  buildStorageInventoryResponse,
+  storageRoutes,
+} from "../../worker/modules/storage/routes.ts";
+import { PaginationParamError } from "../../worker/pagination.ts";
 
 Deno.test("boundToLabel - none when referenced by zero Workers", () => {
   assertEquals(boundToLabel([]), "none");
@@ -12,6 +17,143 @@ Deno.test("boundToLabel - the single Worker's name when referenced by exactly on
 
 Deno.test("boundToLabel - a count, not a name list, when referenced by more than one", () => {
   assertEquals(boundToLabel(["worker-a", "worker-b", "worker-c"]), "3 workers");
+});
+
+// specs/020-list-pagination — buildStorageInventoryResponse() is pure
+// (extracted from the route handler), so these exercise the 3-independent-
+// collection pagination/sort/critical_finding logic directly, without a D1
+// mock for the three findings tables.
+function bucketRow(overrides: Partial<{
+  bucket_name: string;
+  status: string;
+  reason: string;
+  custom_domain: string | null;
+  bound_to_workers: string | null;
+}> = {}) {
+  return {
+    bucket_name: "b",
+    status: "safe",
+    reason: "private",
+    custom_domain: null,
+    bound_to_workers: null,
+    ...overrides,
+  };
+}
+function kvRow(overrides: Partial<{
+  namespace_id: string;
+  title: string;
+  status: string;
+  reason: string;
+  bound_to_workers: string | null;
+}> = {}) {
+  return {
+    namespace_id: "kv-1",
+    title: "kv",
+    status: "safe",
+    reason: "referenced",
+    bound_to_workers: null,
+    ...overrides,
+  };
+}
+function d1Row(overrides: Partial<{
+  database_uuid: string;
+  name: string;
+  status: string;
+  reason: string;
+  bound_to_workers: string | null;
+  num_tables: number | null;
+  file_size: number | null;
+}> = {}) {
+  return {
+    database_uuid: "db-1",
+    name: "d1",
+    status: "safe",
+    reason: "referenced",
+    bound_to_workers: null,
+    num_tables: 3,
+    file_size: 1024,
+    ...overrides,
+  };
+}
+
+Deno.test("buildStorageInventoryResponse - each collection paginates independently", () => {
+  const buckets = Array.from({ length: 3 }, (_, i) => bucketRow({ bucket_name: `b${i}` }));
+  const kv = Array.from(
+    { length: 2 },
+    (_, i) => kvRow({ namespace_id: `kv-${i}`, title: `kv${i}` }),
+  );
+  const d1 = [d1Row()];
+
+  const res = buildStorageInventoryResponse(buckets, kv, d1, "run-1", "2026-08-14T00:00:00Z", {
+    bucket: { page_size: "2" },
+  });
+
+  assertEquals(res.buckets.length, 2);
+  assertEquals(res.buckets_pagination, { page: 1, page_size: 2, total: 3, total_pages: 2 });
+  assertEquals(res.kv_namespaces.length, 2);
+  assertEquals(res.kv_namespaces_pagination, { page: 1, page_size: 50, total: 2, total_pages: 1 });
+  assertEquals(res.d1_databases.length, 1);
+  assertEquals(res.total_resources, 6);
+});
+
+Deno.test("buildStorageInventoryResponse - critical_finding priority: bucket > kv > d1", () => {
+  const buckets = [
+    bucketRow({ bucket_name: "exposed", status: "critical", reason: "public r2.dev" }),
+  ];
+  const kv = [kvRow({ status: "critical", reason: "unreferenced" })];
+  const d1 = [d1Row({ status: "critical", reason: "unreferenced" })];
+
+  const res = buildStorageInventoryResponse(buckets, kv, d1, "run-1", "t", {});
+  assertEquals(res.critical_finding, {
+    title: "An R2 bucket is publicly exposed",
+    target: "exposed",
+    reason: "public r2.dev",
+  });
+  assertEquals(res.total_exposed, 3);
+});
+
+Deno.test("buildStorageInventoryResponse - critical_finding falls through to kv, then d1, then null", () => {
+  const safeBucket = [bucketRow()];
+  const criticalKv = [kvRow({ title: "orphan-kv", status: "critical", reason: "unreferenced" })];
+  const res1 = buildStorageInventoryResponse(safeBucket, criticalKv, [], "run-1", "t", {});
+  assertEquals(res1.critical_finding?.title, "A KV namespace needs attention");
+  assertEquals(res1.critical_finding?.target, "orphan-kv");
+
+  const res2 = buildStorageInventoryResponse([], [], [], "run-1", "t", {});
+  assertEquals(res2.critical_finding, null);
+});
+
+Deno.test("buildStorageInventoryResponse - critical_finding reflects the whole collection, not just the paginated page", () => {
+  // Default sort is by name ascending — "a-safe" sorts onto page 1,
+  // "z-critical" onto page 2 (page_size 1), and must still be found.
+  const buckets = [
+    bucketRow({ bucket_name: "a-safe" }),
+    bucketRow({ bucket_name: "z-critical", status: "critical", reason: "exposed" }),
+  ];
+  const res = buildStorageInventoryResponse(buckets, [], [], "run-1", "t", {
+    bucket: { page: "1", page_size: "1" },
+  });
+  assertEquals(res.buckets.map((b) => b.bucket_name), ["a-safe"]);
+  assertEquals(res.critical_finding?.target, "z-critical");
+});
+
+Deno.test("buildStorageInventoryResponse - sorts a collection by a whitelisted key, descending", () => {
+  const d1 = [
+    d1Row({ name: "small", num_tables: 1 }),
+    d1Row({ name: "big", num_tables: 9 }),
+  ];
+  const res = buildStorageInventoryResponse([], [], d1, "run-1", "t", {
+    d1: { sort_key: "num_tables", sort_dir: "desc" },
+  });
+  assertEquals(res.d1_databases.map((d) => d.name), ["big", "small"]);
+});
+
+Deno.test("buildStorageInventoryResponse - rejects an invalid sort_key for any one collection", () => {
+  assertThrows(
+    () =>
+      buildStorageInventoryResponse([], [kvRow()], [], "run-1", "t", { kv: { sort_key: "nope" } }),
+    PaginationParamError,
+  );
 });
 
 // A minimal mock focused only on the alert tables' SELECT/UPDATE shape

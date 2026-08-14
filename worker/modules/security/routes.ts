@@ -7,6 +7,7 @@ import {
   listTurnstileWidgets,
   listZones,
 } from "./inventory.ts";
+import { type PageQuery, paginateArray, PaginationParamError } from "../../pagination.ts";
 import { mapWithConcurrency } from "../../concurrency.ts";
 import {
   classifyCertificateExpiry,
@@ -564,11 +565,145 @@ async function fetchWafCustomRulesPanel(
   return perZoneRules.flat();
 }
 
+interface ZoneFindingOut {
+  zone_id: string;
+  zone_name: string;
+  overall_status: string;
+  ssl_tls: { status: string; reason: string };
+  dnssec?: { status: string; reason: string };
+  waf?: { status: string; reason: string };
+  rate_limiting?: { status: string; reason: string };
+  bot_fight_mode?: { status: string; reason: string };
+  always_use_https?: { status: string; reason: string };
+  min_tls_version?: { status: string; reason: string };
+}
+
+const ZONE_SORT: Record<string, (r: ZoneFindingOut) => string | number> = {
+  zone: (r) => r.zone_name,
+};
+const CERT_SORT: Record<string, (r: ZoneCertificate) => string | number> = {
+  zone: (r) => r.zoneName,
+};
+const WAF_RULE_SORT: Record<string, (r: CustomWafRule) => string | number> = {
+  zone: (r) => r.zoneName,
+};
+
+// Same priority order as the frontend's zoneChecks()/criticalCheckDescription()
+// (SecurityPostureInventory.tsx) — mirrored here so critical_finding can be
+// computed across the WHOLE zones list, not just whichever page is loaded
+// (same pagination-must-not-hide-a-critical-row fix as DNS/Storage).
+function describeZoneCriticalCheck(zone: ZoneFindingOut): string {
+  const checks: Array<[string, { status: string; reason: string } | undefined]> = [
+    ["SSL/TLS", zone.ssl_tls],
+    ["DNSSEC", zone.dnssec],
+    ["WAF", zone.waf],
+    ["Rate limiting", zone.rate_limiting],
+    ["Bot fight mode", zone.bot_fight_mode],
+    ["Always HTTPS", zone.always_use_https],
+    ["Min TLS version", zone.min_tls_version],
+  ];
+  const [label, check] = checks.find(([, c]) => c?.status === "critical") ??
+    ["SSL/TLS", zone.ssl_tls];
+  return `${label}: ${check!.reason}`;
+}
+
+export interface SecurityInventoryQuery {
+  zone?: PageQuery;
+  certificate?: PageQuery;
+  wafRule?: PageQuery;
+}
+
+// Pure — same extraction rationale as DNS/Storage/Workers: independently
+// testable pagination/sort/critical-finding logic across 3 collections
+// (zones is D1-backed; certificates/waf_custom_rules are live-fetched and
+// nullable on total fetch failure — pagination is skipped, not faked, when
+// null).
+export function buildSecurityInventoryResponse(
+  zones: ZoneFindingOut[],
+  certificates: ZoneCertificate[] | null,
+  wafCustomRules: CustomWafRule[] | null,
+  turnstileWidgets: TurnstileWidget[] | null,
+  runId: string | null,
+  evaluatedAt: string | null,
+  query: SecurityInventoryQuery,
+) {
+  const zonePage = paginateArray(zones, query.zone ?? {}, ZONE_SORT, "zone");
+  const criticalZone = zones.find((z) => z.overall_status === "critical") ?? null;
+
+  const certPage = certificates !== null
+    ? paginateArray(certificates, query.certificate ?? {}, CERT_SORT, "zone")
+    : null;
+  const wafRulePage = wafCustomRules !== null
+    ? paginateArray(wafCustomRules, query.wafRule ?? {}, WAF_RULE_SORT, "zone")
+    : null;
+
+  return {
+    run_id: runId,
+    evaluated_at: evaluatedAt,
+    critical_finding: criticalZone
+      ? {
+        zone_name: criticalZone.zone_name,
+        description: describeZoneCriticalCheck(criticalZone),
+      }
+      : null,
+    zones: zonePage.items,
+    zones_pagination: zonePage.pagination,
+    // Bug fix incidental to this restructuring, not scoped to pagination:
+    // these two panels' rows were previously returned as-fetched (camelCase
+    // — zoneName/expiresOn), while the frontend's ZoneCertificate/
+    // CustomWafRule interfaces and every existing e2e mock have always
+    // expected snake_case, matching every other field in this same
+    // response. That mismatch meant these two panels silently rendered
+    // blank/"not available" in production — the mocked e2e suite never
+    // exercises this route's actual serialization, so it never caught it.
+    certificates: certPage?.items.map((c) => ({
+      zone_id: c.zoneId,
+      zone_name: c.zoneName,
+      hosts: c.hosts,
+      issuer: c.issuer,
+      expires_on: c.expiresOn,
+      status: c.status,
+    })) ?? null,
+    certificates_pagination: certPage?.pagination ?? null,
+    waf_custom_rules: wafRulePage?.items.map((r) => ({
+      zone_id: r.zoneId,
+      zone_name: r.zoneName,
+      description: r.description,
+      expression: r.expression,
+      action: r.action,
+      enabled: r.enabled,
+      status: r.status,
+    })) ?? null,
+    waf_custom_rules_pagination: wafRulePage?.pagination ?? null,
+    turnstile_widgets: serializeTurnstileWidgets(turnstileWidgets),
+  };
+}
+
 // Every zone always produces exactly one ssl_tls_findings row per run
 // (data-model.md) — the most reliable table to source "did a run
 // happen" from, same pattern as Module 4's pages_subdomain_findings.
 securityRoutes.get("/inventory", async (c) => {
   const creds = { accountId: c.env.CF_ACCOUNT_ID, apiToken: c.env.CF_API_TOKEN };
+  const query: SecurityInventoryQuery = {
+    zone: {
+      page: c.req.query("zone_page"),
+      page_size: c.req.query("zone_page_size"),
+      sort_key: c.req.query("zone_sort_key"),
+      sort_dir: c.req.query("zone_sort_dir"),
+    },
+    certificate: {
+      page: c.req.query("certificate_page"),
+      page_size: c.req.query("certificate_page_size"),
+      sort_key: c.req.query("certificate_sort_key"),
+      sort_dir: c.req.query("certificate_sort_dir"),
+    },
+    wafRule: {
+      page: c.req.query("waf_rule_page"),
+      page_size: c.req.query("waf_rule_page_size"),
+      sort_key: c.req.query("waf_rule_sort_key"),
+      sort_dir: c.req.query("waf_rule_sort_dir"),
+    },
+  };
 
   // Same null-on-total-failure idiom `buildSecurityInventory()` uses for
   // this exact fetch (inventory.ts) — a scoped-down token (missing
@@ -577,7 +712,7 @@ securityRoutes.get("/inventory", async (c) => {
   // is fetched once here, alongside the D1 read and turnstile fetch, and
   // shared by both panels below instead of each issuing its own GET
   // /zones (fetchCertificatesPanel's own comment).
-  const [latest, turnstileWidgets, zones] = await Promise.all([
+  const [latest, turnstileWidgets, zonesForPanels] = await Promise.all([
     c.env.DB.prepare(
       `SELECT run_id, evaluated_at FROM ssl_tls_findings ORDER BY evaluated_at DESC LIMIT 1`,
     ).first<{ run_id: string; evaluated_at: string }>(),
@@ -585,64 +720,65 @@ securityRoutes.get("/inventory", async (c) => {
     listZones(creds).catch(() => null),
   ]);
   const [certificates, wafCustomRules] = await Promise.all([
-    fetchCertificatesPanel(creds, zones),
-    fetchWafCustomRulesPanel(creds, zones),
+    fetchCertificatesPanel(creds, zonesForPanels),
+    fetchWafCustomRulesPanel(creds, zonesForPanels),
   ]);
 
-  if (!latest) {
-    return c.json({
-      run_id: null,
-      evaluated_at: null,
-      zones: [],
-      certificates,
-      waf_custom_rules: wafCustomRules,
-      turnstile_widgets: serializeTurnstileWidgets(turnstileWidgets),
-    });
-  }
+  try {
+    if (!latest) {
+      return c.json(
+        buildSecurityInventoryResponse(
+          [],
+          certificates,
+          wafCustomRules,
+          turnstileWidgets,
+          null,
+          null,
+          query,
+        ),
+      );
+    }
 
-  const [
-    { results: sslTlsRows },
-    { results: dnssecRows },
-    { results: wafRows },
-    { results: rateLimitingRows },
-    { results: botFightModeRows },
-    { results: alwaysHttpsRows },
-    { results: minTlsRows },
-  ] = await Promise.all([
-    c.env.DB.prepare(
-      `SELECT zone_id, zone_name, status, reason FROM ssl_tls_findings WHERE run_id = ? ORDER BY zone_name`,
-    ).bind(latest.run_id).all<SslTlsFindingRow>(),
-    c.env.DB.prepare(
-      `SELECT zone_id, status, reason FROM dnssec_findings WHERE run_id = ?`,
-    ).bind(latest.run_id).all<DnssecFindingRow>(),
-    c.env.DB.prepare(
-      `SELECT zone_id, status, reason FROM waf_findings WHERE run_id = ?`,
-    ).bind(latest.run_id).all<WafFindingRow>(),
-    c.env.DB.prepare(
-      `SELECT zone_id, status, reason FROM rate_limiting_findings WHERE run_id = ?`,
-    ).bind(latest.run_id).all<RateLimitingFindingRow>(),
-    c.env.DB.prepare(
-      `SELECT zone_id, status, reason FROM bot_fight_mode_findings WHERE run_id = ?`,
-    ).bind(latest.run_id).all<BotFightModeFindingRow>(),
-    c.env.DB.prepare(
-      `SELECT zone_id, status, reason FROM always_https_findings WHERE run_id = ?`,
-    ).bind(latest.run_id).all<AlwaysHttpsFindingRow>(),
-    c.env.DB.prepare(
-      `SELECT zone_id, status, reason FROM min_tls_findings WHERE run_id = ?`,
-    ).bind(latest.run_id).all<MinTlsFindingRow>(),
-  ]);
+    const [
+      { results: sslTlsRows },
+      { results: dnssecRows },
+      { results: wafRows },
+      { results: rateLimitingRows },
+      { results: botFightModeRows },
+      { results: alwaysHttpsRows },
+      { results: minTlsRows },
+    ] = await Promise.all([
+      c.env.DB.prepare(
+        `SELECT zone_id, zone_name, status, reason FROM ssl_tls_findings WHERE run_id = ? ORDER BY zone_name`,
+      ).bind(latest.run_id).all<SslTlsFindingRow>(),
+      c.env.DB.prepare(
+        `SELECT zone_id, status, reason FROM dnssec_findings WHERE run_id = ?`,
+      ).bind(latest.run_id).all<DnssecFindingRow>(),
+      c.env.DB.prepare(
+        `SELECT zone_id, status, reason FROM waf_findings WHERE run_id = ?`,
+      ).bind(latest.run_id).all<WafFindingRow>(),
+      c.env.DB.prepare(
+        `SELECT zone_id, status, reason FROM rate_limiting_findings WHERE run_id = ?`,
+      ).bind(latest.run_id).all<RateLimitingFindingRow>(),
+      c.env.DB.prepare(
+        `SELECT zone_id, status, reason FROM bot_fight_mode_findings WHERE run_id = ?`,
+      ).bind(latest.run_id).all<BotFightModeFindingRow>(),
+      c.env.DB.prepare(
+        `SELECT zone_id, status, reason FROM always_https_findings WHERE run_id = ?`,
+      ).bind(latest.run_id).all<AlwaysHttpsFindingRow>(),
+      c.env.DB.prepare(
+        `SELECT zone_id, status, reason FROM min_tls_findings WHERE run_id = ?`,
+      ).bind(latest.run_id).all<MinTlsFindingRow>(),
+    ]);
 
-  const dnssecByZone = new Map(dnssecRows.map((r) => [r.zone_id, r]));
-  const wafByZone = new Map(wafRows.map((r) => [r.zone_id, r]));
-  const rateLimitingByZone = new Map(rateLimitingRows.map((r) => [r.zone_id, r]));
-  const botFightModeByZone = new Map(botFightModeRows.map((r) => [r.zone_id, r]));
-  const alwaysHttpsByZone = new Map(alwaysHttpsRows.map((r) => [r.zone_id, r]));
-  const minTlsByZone = new Map(minTlsRows.map((r) => [r.zone_id, r]));
+    const dnssecByZone = new Map(dnssecRows.map((r) => [r.zone_id, r]));
+    const wafByZone = new Map(wafRows.map((r) => [r.zone_id, r]));
+    const rateLimitingByZone = new Map(rateLimitingRows.map((r) => [r.zone_id, r]));
+    const botFightModeByZone = new Map(botFightModeRows.map((r) => [r.zone_id, r]));
+    const alwaysHttpsByZone = new Map(alwaysHttpsRows.map((r) => [r.zone_id, r]));
+    const minTlsByZone = new Map(minTlsRows.map((r) => [r.zone_id, r]));
 
-  return c.json({
-    run_id: latest.run_id,
-    evaluated_at: latest.evaluated_at,
-    zones: sslTlsRows.map((s) => {
+    const zonesOut: ZoneFindingOut[] = sslTlsRows.map((s) => {
       const dnssec = dnssecByZone.get(s.zone_id);
       const waf = wafByZone.get(s.zone_id);
       const rateLimiting = rateLimitingByZone.get(s.zone_id);
@@ -681,11 +817,25 @@ securityRoutes.get("/inventory", async (c) => {
         min_tls_version: minTlsVersion &&
           { status: minTlsVersion.status, reason: minTlsVersion.reason },
       };
-    }),
-    certificates,
-    waf_custom_rules: wafCustomRules,
-    turnstile_widgets: serializeTurnstileWidgets(turnstileWidgets),
-  });
+    });
+
+    return c.json(
+      buildSecurityInventoryResponse(
+        zonesOut,
+        certificates,
+        wafCustomRules,
+        turnstileWidgets,
+        latest.run_id,
+        latest.evaluated_at,
+        query,
+      ),
+    );
+  } catch (err) {
+    if (err instanceof PaginationParamError) {
+      return c.json({ error: err.message }, 400);
+    }
+    throw err;
+  }
 });
 
 interface SslTlsAlertRow {

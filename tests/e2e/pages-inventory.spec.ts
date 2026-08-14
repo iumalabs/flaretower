@@ -3,6 +3,11 @@ import { expect, test } from "@playwright/test";
 const MOCK_PAGES_INVENTORY = {
   run_id: "run-1",
   evaluated_at: "2026-08-08T12:00:00Z",
+  critical_finding: {
+    project_name: "empty-project",
+    reason: "no Access application covers this hostname",
+  },
+  projects_pagination: { page: 1, page_size: 50, total: 2, total_pages: 1 },
   projects: [
     {
       project_name: "marketing-site",
@@ -82,7 +87,7 @@ test.beforeEach(async ({ page }) => {
         service_tokens: [],
       }),
     }));
-  await page.route("**/api/pages/inventory", (route) =>
+  await page.route("**/api/pages/inventory*", (route) =>
     route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -156,7 +161,7 @@ test("last build recency clamps a future timestamp to '0s ago', never negative",
       MOCK_PAGES_INVENTORY.projects[1],
     ],
   };
-  await page.route("**/api/pages/inventory", (route) =>
+  await page.route("**/api/pages/inventory*", (route) =>
     route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -167,4 +172,45 @@ test("last build recency clamps a future timestamp to '0s ago', never negative",
 
   const row = page.getByTestId("findings-row-marketing-site");
   await expect(row.getByText("0s ago", { exact: false })).toBeVisible();
+});
+
+test("specs/020 US2 — projects paginate: page footer, next/prev, boundary disabled states", async ({ page }) => {
+  const allProjects = Array.from({ length: 5 }, (_, i) => ({
+    ...MOCK_PAGES_INVENTORY.projects[0],
+    project_name: `project-${i}`,
+  }));
+  await page.route("**/api/pages/inventory*", (route) => {
+    const url = new URL(route.request().url());
+    const requestedPage = Number(url.searchParams.get("page") ?? "1");
+    const pageSize = 2;
+    const start = (requestedPage - 1) * pageSize;
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ...MOCK_PAGES_INVENTORY,
+        critical_finding: null,
+        projects: allProjects.slice(start, start + pageSize),
+        projects_pagination: {
+          page: requestedPage,
+          page_size: pageSize,
+          total: allProjects.length,
+          total_pages: Math.ceil(allProjects.length / pageSize),
+        },
+      }),
+    });
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Pages" }).click();
+
+  await expect(page.getByTestId("findings-row-project-0")).toBeVisible();
+  await expect(page.getByTestId("findings-row-project-2")).not.toBeVisible();
+  await expect(page.getByTestId("pagination-status")).toHaveText("5 total · page 1 of 3");
+  await expect(page.getByTestId("pagination-prev")).toBeDisabled();
+
+  await page.getByTestId("pagination-next").click();
+  await page.getByTestId("pagination-next").click();
+  await expect(page.getByTestId("findings-row-project-4")).toBeVisible();
+  await expect(page.getByTestId("pagination-status")).toHaveText("5 total · page 3 of 3");
+  await expect(page.getByTestId("pagination-next")).toBeDisabled();
 });

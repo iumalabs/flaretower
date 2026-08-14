@@ -87,9 +87,17 @@ function createMockD1(): D1Database {
         }
         if (/FROM dns_findings WHERE run_id = \?/i.test(sql)) {
           const runId = bound[0];
-          return Promise.resolve({
-            results: dnsFindings.filter((r) => r.run_id === runId) as unknown as T[],
-          });
+          // Real D1 honors this query's own `ORDER BY zone_name, record_name,
+          // record_type` — sorted here too, since buildDnsInventoryResponse
+          // (routes.ts) relies on row order to pick its default zone.
+          const results = dnsFindings
+            .filter((r) => r.run_id === runId)
+            .sort((a, b) =>
+              a.zone_name.localeCompare(b.zone_name) ||
+              a.record_name.localeCompare(b.record_name) ||
+              a.record_type.localeCompare(b.record_type)
+            );
+          return Promise.resolve({ results: results as unknown as T[] });
         }
         return Promise.resolve({ results: [] as T[] });
       },
@@ -192,21 +200,97 @@ Deno.test("GET /inventory - a zone with zero DNS records still appears, with an 
 
   assertEquals(res.status, 200);
   const body = await res.json() as {
-    zones: { zone_name: string; records: unknown[] }[];
+    zone_summaries: { zone_name: string; record_count: number }[];
+    selected_zone: string;
+    records: unknown[];
   };
 
-  const zoneNames = body.zones.map((z) => z.zone_name);
+  const zoneNames = body.zone_summaries.map((z) => z.zone_name);
   assertEquals(zoneNames.includes("full.example.com"), true);
   // This is the bug T026 fixes: previously an empty zone contributed zero
-  // dns_findings rows, so it was entirely absent from `zones` here rather
-  // than present with `records: []`.
+  // dns_findings rows, so it was entirely absent here rather than present
+  // with record_count: 0.
   assertEquals(zoneNames.includes("empty.example.com"), true);
 
-  const emptyZone = body.zones.find((z) => z.zone_name === "empty.example.com");
-  assertEquals(emptyZone?.records, []);
+  const emptySummary = body.zone_summaries.find((z) => z.zone_name === "empty.example.com");
+  assertEquals(emptySummary?.record_count, 0);
 
-  const fullZone = body.zones.find((z) => z.zone_name === "full.example.com");
-  assertEquals(fullZone?.records.length, 1);
+  const fullSummary = body.zone_summaries.find((z) => z.zone_name === "full.example.com");
+  assertEquals(fullSummary?.record_count, 1);
+
+  // Default selection is alphabetically first ("empty.example.com" < "full...").
+  assertEquals(body.selected_zone, "empty.example.com");
+  assertEquals(body.records, []);
+});
+
+Deno.test("GET /inventory - the zone query param selects which zone's records are returned/paginated", async () => {
+  const db = createMockD1();
+  const env = { DB: db, CF_ACCOUNT_ID: "acct-1", CF_API_TOKEN: "fake-token" };
+
+  await withMockFetch(
+    [
+      ["/zones", () =>
+        jsonResponse({
+          success: true,
+          result: [{ id: "zone-1", name: "full.example.com" }],
+          errors: [],
+        })],
+      ["/zones/zone-1/dns_records", () =>
+        jsonResponse({
+          success: true,
+          result: [
+            {
+              name: "a.full.example.com",
+              type: "A",
+              content: "1.1.1.1",
+              proxiable: true,
+              proxied: true,
+            },
+            {
+              name: "b.full.example.com",
+              type: "A",
+              content: "2.2.2.2",
+              proxiable: true,
+              proxied: false,
+            },
+          ],
+          errors: [],
+        })],
+      [
+        "/security-center/insights",
+        () => jsonResponse({ success: true, result: { issues: [] }, errors: [] }),
+      ],
+    ],
+    () => runDnsEvaluation(env, "interactive"),
+  );
+
+  const app = new Hono<{ Bindings: { DB: D1Database } }>();
+  app.route("/", dnsRoutes);
+  const res = await app.request("/inventory?zone=full.example.com&sort_key=name&page_size=1", {}, {
+    DB: db,
+  });
+
+  assertEquals(res.status, 200);
+  const body = await res.json() as {
+    total_records: number;
+    selected_zone: string;
+    records: Array<{ record_name: string }>;
+    records_pagination: { page: number; page_size: number; total: number; total_pages: number };
+  };
+
+  assertEquals(body.total_records, 2);
+  assertEquals(body.selected_zone, "full.example.com");
+  assertEquals(body.records.length, 1);
+  assertEquals(body.records[0].record_name, "a.full.example.com");
+  assertEquals(body.records_pagination, { page: 1, page_size: 1, total: 2, total_pages: 2 });
+});
+
+Deno.test("GET /inventory - an invalid page_size returns 400, not a silent fallback", async () => {
+  const db = createMockD1();
+  const app = new Hono<{ Bindings: { DB: D1Database } }>();
+  app.route("/", dnsRoutes);
+  const res = await app.request("/inventory?page_size=0", {}, { DB: db });
+  assertEquals(res.status, 400);
 });
 
 // A separate, minimal mock focused only on dns_alerts' SELECT/UPDATE shape

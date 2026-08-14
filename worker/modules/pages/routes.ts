@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { requireRole } from "../../auth/access-jwt.ts";
+import { type PageQuery, paginateArray, PaginationParamError } from "../../pagination.ts";
 import { buildPagesInventory } from "./inventory.ts";
 import {
   evaluateCustomDomains,
@@ -253,43 +254,91 @@ export function deriveProductionDomain(domains: readonly DomainFindingRow[]): st
   return domains.find((d) => d.status === "safe")?.domain_name ?? null;
 }
 
+interface ProjectRowOut {
+  project_name: string;
+  production_domain: string | null;
+  production_branch: string | null;
+  last_build_status: string | null;
+  last_build_reason: string | null;
+  last_build_created_at: string | null;
+  health_status: string;
+  health_reason: string;
+  subdomain: { subdomain: string; status: string; reason: string };
+  deployment: { deployment_id: string | null; status: string; reason: string } | null;
+  domains: Array<{ domain_name: string; status: string; reason: string }>;
+}
+
+const PROJECT_SORT: Record<string, (r: ProjectRowOut) => string | number> = {
+  project: (r) => r.project_name,
+  domain: (r) => r.production_domain ?? "",
+  branch: (r) => r.production_branch ?? "",
+};
+
+// Pure — same extraction rationale as every other paginated module.
+export function buildPagesInventoryResponse(
+  projects: ProjectRowOut[],
+  runId: string | null,
+  evaluatedAt: string | null,
+  query: PageQuery,
+) {
+  const page = paginateArray(projects, query, PROJECT_SORT, "project");
+  // Computed across the whole list, not just the paginated page — same
+  // pagination-must-not-hide-a-critical-row fix as every prior module.
+  const criticalProject = projects.find((p) => p.health_status === "critical") ?? null;
+
+  return {
+    run_id: runId,
+    evaluated_at: evaluatedAt,
+    critical_finding: criticalProject
+      ? { project_name: criticalProject.project_name, reason: criticalProject.health_reason }
+      : null,
+    projects: page.items,
+    projects_pagination: page.pagination,
+  };
+}
+
 // Every project always produces exactly one pages_subdomain_findings row
 // per run (data-model.md), even a project with zero custom domains — the
 // most reliable table to source "did a run happen" from.
 pagesRoutes.get("/inventory", async (c) => {
+  const query: PageQuery = {
+    page: c.req.query("page"),
+    page_size: c.req.query("page_size"),
+    sort_key: c.req.query("sort_key"),
+    sort_dir: c.req.query("sort_dir"),
+  };
+
   const latest = await c.env.DB.prepare(
     `SELECT run_id, evaluated_at FROM pages_subdomain_findings ORDER BY evaluated_at DESC LIMIT 1`,
   ).first<{ run_id: string; evaluated_at: string }>();
 
-  if (!latest) {
-    return c.json({ run_id: null, evaluated_at: null, projects: [] });
-  }
+  try {
+    if (!latest) {
+      return c.json(buildPagesInventoryResponse([], null, null, query));
+    }
 
-  const [{ results: subdomainRows }, { results: deploymentRows }, { results: domainRows }] =
-    await Promise.all([
-      c.env.DB.prepare(
-        `SELECT project_name, subdomain, status, reason, production_branch FROM pages_subdomain_findings WHERE run_id = ? ORDER BY project_name`,
-      ).bind(latest.run_id).all<SubdomainFindingRow>(),
-      c.env.DB.prepare(
-        `SELECT project_name, deployment_id, status, reason, created_at FROM pages_deployment_findings WHERE run_id = ?`,
-      ).bind(latest.run_id).all<DeploymentFindingRow>(),
-      c.env.DB.prepare(
-        `SELECT project_name, domain_name, status, reason FROM pages_domain_findings WHERE run_id = ? ORDER BY domain_name`,
-      ).bind(latest.run_id).all<DomainFindingRow>(),
-    ]);
+    const [{ results: subdomainRows }, { results: deploymentRows }, { results: domainRows }] =
+      await Promise.all([
+        c.env.DB.prepare(
+          `SELECT project_name, subdomain, status, reason, production_branch FROM pages_subdomain_findings WHERE run_id = ? ORDER BY project_name`,
+        ).bind(latest.run_id).all<SubdomainFindingRow>(),
+        c.env.DB.prepare(
+          `SELECT project_name, deployment_id, status, reason, created_at FROM pages_deployment_findings WHERE run_id = ?`,
+        ).bind(latest.run_id).all<DeploymentFindingRow>(),
+        c.env.DB.prepare(
+          `SELECT project_name, domain_name, status, reason FROM pages_domain_findings WHERE run_id = ? ORDER BY domain_name`,
+        ).bind(latest.run_id).all<DomainFindingRow>(),
+      ]);
 
-  const deploymentByProject = new Map(deploymentRows.map((d) => [d.project_name, d]));
-  const domainsByProject = new Map<string, DomainFindingRow[]>();
-  for (const row of domainRows) {
-    const existing = domainsByProject.get(row.project_name) ?? [];
-    existing.push(row);
-    domainsByProject.set(row.project_name, existing);
-  }
+    const deploymentByProject = new Map(deploymentRows.map((d) => [d.project_name, d]));
+    const domainsByProject = new Map<string, DomainFindingRow[]>();
+    for (const row of domainRows) {
+      const existing = domainsByProject.get(row.project_name) ?? [];
+      existing.push(row);
+      domainsByProject.set(row.project_name, existing);
+    }
 
-  return c.json({
-    run_id: latest.run_id,
-    evaluated_at: latest.evaluated_at,
-    projects: subdomainRows.map((s) => {
+    const projects: ProjectRowOut[] = subdomainRows.map((s) => {
       const deployment = deploymentByProject.get(s.project_name) ?? null;
       const domains = domainsByProject.get(s.project_name) ?? [];
       return {
@@ -320,8 +369,15 @@ pagesRoutes.get("/inventory", async (c) => {
           reason: d.reason,
         })),
       };
-    }),
-  });
+    });
+
+    return c.json(buildPagesInventoryResponse(projects, latest.run_id, latest.evaluated_at, query));
+  } catch (err) {
+    if (err instanceof PaginationParamError) {
+      return c.json({ error: err.message }, 400);
+    }
+    throw err;
+  }
 });
 
 interface DomainAlertRow {

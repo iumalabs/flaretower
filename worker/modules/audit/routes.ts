@@ -115,7 +115,7 @@ auditRoutes.get("/log", async (c) => {
   const since = new Date(now.getTime() - SEVEN_DAYS_MS);
 
   try {
-    const entries = await fetchAccountAuditLog(creds, since);
+    const { entries, truncated } = await fetchAccountAuditLog(creds, since);
     return c.json({
       since: since.toISOString(),
       until: now.toISOString(),
@@ -127,6 +127,8 @@ auditRoutes.get("/log", async (c) => {
         target: e.target,
         result_summary: e.resultSummary,
       })),
+      total: entries.length,
+      truncated,
       unavailable: false,
     });
   } catch {
@@ -134,6 +136,8 @@ auditRoutes.get("/log", async (c) => {
       since: since.toISOString(),
       until: now.toISOString(),
       entries: [],
+      total: 0,
+      truncated: false,
       unavailable: true,
     });
   }

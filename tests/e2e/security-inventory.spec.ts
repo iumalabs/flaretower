@@ -3,6 +3,14 @@ import { expect, test } from "@playwright/test";
 const MOCK_SECURITY_INVENTORY = {
   run_id: "run-1",
   evaluated_at: "2026-08-10T12:00:00Z",
+  critical_finding: {
+    zone_name: "insecure.example.com",
+    description:
+      "SSL/TLS: SSL/TLS mode is Flexible — the connection between Cloudflare and the origin is unencrypted",
+  },
+  zones_pagination: { page: 1, page_size: 50, total: 2, total_pages: 1 },
+  certificates_pagination: { page: 1, page_size: 50, total: 2, total_pages: 1 },
+  waf_custom_rules_pagination: { page: 1, page_size: 50, total: 3, total_pages: 1 },
   zones: [
     {
       zone_id: "zone-1",
@@ -145,7 +153,7 @@ test.beforeEach(async ({ page }) => {
         d1_databases: [],
       }),
     }));
-  await page.route("**/api/security/inventory", (route) =>
+  await page.route("**/api/security/inventory*", (route) =>
     route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -237,13 +245,17 @@ test("US3 — WAF Custom Rules panel labels every rule with its real zone; a ski
 // off the zones/turnstile_widgets arrays being empty, since a real
 // completed run can legitimately produce empty arrays too.
 test("a completed run against a zero-zone account renders confirmed-empty, not 'no evaluation runs yet'", async ({ page }) => {
-  await page.route("**/api/security/inventory", (route) =>
+  await page.route("**/api/security/inventory*", (route) =>
     route.fulfill({
       status: 200,
       contentType: "application/json",
       body: JSON.stringify({
         run_id: "run-2",
         evaluated_at: "2026-08-12T00:00:00Z",
+        critical_finding: null,
+        zones_pagination: { page: 1, page_size: 50, total: 0, total_pages: 1 },
+        certificates_pagination: { page: 1, page_size: 50, total: 0, total_pages: 1 },
+        waf_custom_rules_pagination: { page: 1, page_size: 50, total: 0, total_pages: 1 },
         zones: [],
         certificates: [],
         waf_custom_rules: [],
@@ -263,13 +275,20 @@ test("a completed run against a zero-zone account renders confirmed-empty, not '
 // check actually made the zone critical, not always SSL/TLS — a zone can
 // be critical via any one of its 7 checks.
 test("critical-alert banner describes the check that's actually critical, not always SSL/TLS", async ({ page }) => {
-  await page.route("**/api/security/inventory", (route) =>
+  await page.route("**/api/security/inventory*", (route) =>
     route.fulfill({
       status: 200,
       contentType: "application/json",
       body: JSON.stringify({
         run_id: "run-3",
         evaluated_at: "2026-08-13T00:00:00Z",
+        critical_finding: {
+          zone_name: "waf-gap.example.com",
+          description: "WAF: no WAF managed ruleset deployed, or every rule in it is disabled",
+        },
+        zones_pagination: { page: 1, page_size: 50, total: 1, total_pages: 1 },
+        certificates_pagination: { page: 1, page_size: 50, total: 0, total_pages: 1 },
+        waf_custom_rules_pagination: { page: 1, page_size: 50, total: 0, total_pages: 1 },
         zones: [
           {
             zone_id: "zone-3",
@@ -305,12 +324,66 @@ test("critical-alert banner describes the check that's actually critical, not al
   await expect(page.getByText("SSL/TLS mode is Full (strict)", { exact: false })).not.toBeVisible();
 });
 
-test("no evaluation run yet (run_id null) still renders the 'trigger one' message", async ({ page }) => {
-  await page.route("**/api/security/inventory", (route) =>
+test("specs/020 US2 — the zones table paginates independently of the Certificates/WAF panels", async ({ page }) => {
+  const allZones = Array.from({ length: 3 }, (_, i) => ({
+    zone_id: `z${i}`,
+    zone_name: `z${i}.test`,
+    overall_status: "safe",
+    ssl_tls: { status: "safe", reason: "strict" },
+  }));
+  await page.route("**/api/security/inventory*", (route) => {
+    const url = new URL(route.request().url());
+    const zonePage = Number(url.searchParams.get("zone_page") ?? "1");
+    const zonePageSize = 2;
+    const start = (zonePage - 1) * zonePageSize;
     route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({ run_id: null, evaluated_at: null, zones: [], turnstile_widgets: [] }),
+      body: JSON.stringify({
+        run_id: "run-4",
+        evaluated_at: "2026-08-14T00:00:00Z",
+        critical_finding: null,
+        zones: allZones.slice(start, start + zonePageSize),
+        zones_pagination: {
+          page: zonePage,
+          page_size: zonePageSize,
+          total: allZones.length,
+          total_pages: Math.ceil(allZones.length / zonePageSize),
+        },
+        certificates: [],
+        certificates_pagination: { page: 1, page_size: 50, total: 0, total_pages: 1 },
+        waf_custom_rules: [],
+        waf_custom_rules_pagination: { page: 1, page_size: 50, total: 0, total_pages: 1 },
+        turnstile_widgets: [],
+      }),
+    });
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Security Posture" }).click();
+
+  await expect(page.getByTestId("findings-row-z0")).toBeVisible();
+  await expect(page.getByTestId("findings-row-z2")).not.toBeVisible();
+  await expect(page.getByTestId("pagination-status")).toHaveText("3 total · page 1 of 2");
+
+  await page.getByTestId("pagination-next").click();
+  await expect(page.getByTestId("findings-row-z2")).toBeVisible();
+});
+
+test("no evaluation run yet (run_id null) still renders the 'trigger one' message", async ({ page }) => {
+  await page.route("**/api/security/inventory*", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        run_id: null,
+        evaluated_at: null,
+        critical_finding: null,
+        zones_pagination: { page: 1, page_size: 50, total: 0, total_pages: 1 },
+        certificates_pagination: { page: 1, page_size: 50, total: 0, total_pages: 1 },
+        waf_custom_rules_pagination: { page: 1, page_size: 50, total: 0, total_pages: 1 },
+        zones: [],
+        turnstile_widgets: [],
+      }),
     }));
   await page.goto("/");
   await page.getByRole("button", { name: "Security Posture" }).click();

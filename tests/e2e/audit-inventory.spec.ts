@@ -4,6 +4,8 @@ const MOCK_AUDIT_LOG = {
   since: "2026-08-06T12:00:00Z",
   until: "2026-08-13T12:00:00Z",
   unavailable: false,
+  total: 2,
+  truncated: false,
   entries: [
     {
       occurred_at: "2026-08-13T09:04:12Z",
@@ -194,6 +196,8 @@ test("specs/018 US1 — a confirmed-empty window renders distinctly from an unav
         since: "2026-08-06T12:00:00Z",
         until: "2026-08-13T12:00:00Z",
         unavailable: false,
+        total: 0,
+        truncated: false,
         entries: [],
       }),
     }));
@@ -220,6 +224,33 @@ test("specs/018 US1 — an unavailable Audit Logs API shows an explicit unavaila
   await page.getByRole("button", { name: "Audit & Drift" }).click();
 
   await expect(page.getByText("Audit log could not be retrieved.")).toBeVisible();
+});
+
+test("specs/020 US1 — the true total event count is shown, not just the rendered rows", async ({ page }) => {
+  await expect(page.getByTestId("audit-log-total")).toHaveText("2 events");
+  await expect(page.getByTestId("audit-log-capped")).not.toBeVisible();
+});
+
+test("specs/020 US1 — a capped result is clearly indicated, not shown as if complete", async ({ page }) => {
+  await page.route("**/api/audit/log", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        since: "2026-08-06T12:00:00Z",
+        until: "2026-08-13T12:00:00Z",
+        unavailable: false,
+        total: 1000,
+        truncated: true,
+        entries: MOCK_AUDIT_LOG.entries,
+      }),
+    }));
+  await page.goto("/");
+  await page.getByRole("button", { name: "Audit & Drift" }).click();
+
+  await expect(page.getByTestId("audit-log-total")).toHaveText("1000 events");
+  await expect(page.getByTestId("audit-log-capped")).toBeVisible();
+  await expect(page.getByTestId("audit-log-capped")).toContainText("capped");
 });
 
 test("specs/018 US2 — the source filter narrows the Audit log to Dashboard-only or API-only entries", async ({ page }) => {
