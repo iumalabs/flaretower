@@ -4,6 +4,7 @@ import { type ExposureStatus } from "../components/ExposureStatusBadge.tsx";
 import {
   FindingsTable,
   type FindingsTableColumn,
+  type FindingsTablePagination,
   type FindingsTableRow,
 } from "../components/FindingsTable.tsx";
 import { AlertBanner } from "../components/AlertBanner.tsx";
@@ -42,16 +43,54 @@ interface AccessGroupEntry {
   referenced_by_app_count: number;
 }
 
+interface PaginationEnvelope {
+  page: number;
+  page_size: number;
+  total: number;
+  total_pages: number;
+}
+
 interface ZeroTrustInventoryResponse {
   run_id: string | null;
   evaluated_at: string | null;
+  critical_finding:
+    | { kind: "application" | "service_token"; title: string; target: string; description: string }
+    | null;
   applications: AppFinding[];
+  applications_pagination: PaginationEnvelope;
   service_tokens: TokenFinding[];
+  service_tokens_pagination: PaginationEnvelope;
   access_groups: AccessGroupEntry[] | null;
 }
 
-async function fetchZeroTrustInventory(): Promise<ZeroTrustInventoryResponse> {
-  const res = await fetch("/api/zero-trust/inventory");
+interface CollectionPageState {
+  page: number;
+  sortKey: string | null;
+  sortDir: 1 | -1;
+}
+
+const INITIAL_COLLECTION_STATE: CollectionPageState = { page: 1, sortKey: null, sortDir: 1 };
+
+function appendCollectionParams(
+  query: URLSearchParams,
+  prefix: string,
+  state: CollectionPageState,
+): void {
+  query.set(`${prefix}_page`, String(state.page));
+  if (state.sortKey) {
+    query.set(`${prefix}_sort_key`, state.sortKey);
+    query.set(`${prefix}_sort_dir`, state.sortDir === 1 ? "asc" : "desc");
+  }
+}
+
+async function fetchZeroTrustInventory(
+  appState: CollectionPageState,
+  tokenState: CollectionPageState,
+): Promise<ZeroTrustInventoryResponse> {
+  const query = new URLSearchParams();
+  appendCollectionParams(query, "app", appState);
+  appendCollectionParams(query, "token", tokenState);
+  const res = await fetch(`/api/zero-trust/inventory?${query}`);
   if (!res.ok) {
     throw new Error(`GET /api/zero-trust/inventory failed: ${res.status}`);
   }
@@ -349,17 +388,36 @@ export function ZeroTrustInventory(): JSX.Element {
   const [data, setData] = useState<ZeroTrustInventoryResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selectedAppId, setSelectedAppId] = useState<string | null>(null);
+  const [appState, setAppState] = useState<CollectionPageState>(INITIAL_COLLECTION_STATE);
+  const [tokenState, setTokenState] = useState<CollectionPageState>(INITIAL_COLLECTION_STATE);
 
   useEffect(() => {
-    fetchZeroTrustInventory()
+    fetchZeroTrustInventory(appState, tokenState)
       .then((res) => {
+        // Same FR-008 out-of-range recovery as every other paginated module.
+        let needsRecovery = false;
+        if (
+          res.applications.length === 0 && res.applications_pagination.total > 0 &&
+          appState.page > res.applications_pagination.total_pages
+        ) {
+          setAppState((s) => ({ ...s, page: res.applications_pagination.total_pages }));
+          needsRecovery = true;
+        }
+        if (
+          res.service_tokens.length === 0 && res.service_tokens_pagination.total > 0 &&
+          tokenState.page > res.service_tokens_pagination.total_pages
+        ) {
+          setTokenState((s) => ({ ...s, page: res.service_tokens_pagination.total_pages }));
+          needsRecovery = true;
+        }
+        if (needsRecovery) return;
         setData(res);
         setSelectedAppId((prev) => prev ?? res.applications[0]?.app_id ?? null);
       })
       .catch((err: unknown) =>
         setError(err instanceof Error ? err.message : "failed to load Zero Trust inventory")
       );
-  }, []);
+  }, [appState, tokenState]);
 
   if (error) {
     return <p style={{ color: "var(--status-critical-fg)" }}>{error}</p>;
@@ -398,13 +456,48 @@ export function ZeroTrustInventory(): JSX.Element {
     ? data.service_tokens.map((t) => ({ id: t.token_id, status: t.status, data: t }))
     : null;
 
-  // The single most urgent finding across both sections (FR-013) —
-  // applications checked first, since an open Access application is a
-  // higher-severity exposure class than an expired token.
-  const criticalApp = appRows?.find((r) => r.status === "critical");
-  const criticalToken = tokenRows?.find((r) => r.status === "critical");
+  // Computed server-side across the whole list, not just whichever page is
+  // loaded (worker/modules/zero-trust/routes.ts) — FR-013's single most
+  // urgent finding can't be hidden by pagination.
+  const criticalFinding = data?.critical_finding ?? null;
 
   const selectedApp = data?.applications.find((a) => a.app_id === selectedAppId);
+
+  function makeSortHandler(
+    setState: (updater: (s: CollectionPageState) => CollectionPageState) => void,
+  ) {
+    return (key: string) => {
+      setState((s) => ({
+        page: 1,
+        sortKey: key,
+        sortDir: s.sortKey === key ? (s.sortDir === 1 ? -1 : 1) : 1,
+      }));
+    };
+  }
+
+  function makePagination(
+    envelope: PaginationEnvelope | undefined,
+    state: CollectionPageState,
+    setState: (updater: (s: CollectionPageState) => CollectionPageState) => void,
+  ): FindingsTablePagination | undefined {
+    if (!envelope) return undefined;
+    return {
+      page: envelope.page,
+      pageSize: envelope.page_size,
+      total: envelope.total,
+      onPageChange: (page) => setState((s) => ({ ...s, page })),
+      sortKey: state.sortKey,
+      sortDir: state.sortDir,
+      onSortChange: makeSortHandler(setState),
+    };
+  }
+
+  const appPagination = makePagination(data?.applications_pagination, appState, setAppState);
+  const tokenPagination = makePagination(
+    data?.service_tokens_pagination,
+    tokenState,
+    setTokenState,
+  );
 
   return (
     <div>
@@ -425,22 +518,15 @@ export function ZeroTrustInventory(): JSX.Element {
         </p>
       )}
 
-      {(criticalApp || criticalToken) && (
+      {criticalFinding && (
         <AlertBanner
           scope="module"
-          finding={criticalApp
-            ? {
-              severity: "critical",
-              title: "An Access application has no effective policy",
-              target: criticalApp.data.app_domain,
-              description: criticalApp.data.reason,
-            }
-            : {
-              severity: "critical",
-              title: "A service token needs attention",
-              target: criticalToken!.data.token_name,
-              description: criticalToken!.data.reason,
-            }}
+          finding={{
+            severity: "critical",
+            title: criticalFinding.title,
+            target: criticalFinding.target,
+            description: criticalFinding.description,
+          }}
         />
       )}
 
@@ -457,6 +543,7 @@ export function ZeroTrustInventory(): JSX.Element {
             columns={APP_COLUMNS}
             rows={appRows}
             loadingLabel="Loading applications…"
+            pagination={appPagination}
           />
         )}
 
@@ -499,6 +586,7 @@ export function ZeroTrustInventory(): JSX.Element {
           heading: "No service tokens",
           description: "This account has no service tokens configured.",
         }}
+        pagination={tokenPagination}
       />
     </div>
   );

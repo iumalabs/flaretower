@@ -3,6 +3,14 @@ import { expect, test } from "@playwright/test";
 const MOCK_ZT_INVENTORY = {
   run_id: "run-1",
   evaluated_at: "2026-08-07T12:00:00Z",
+  critical_finding: {
+    kind: "service_token",
+    title: "A service token needs attention",
+    target: "old-ci-token",
+    description: "expired",
+  },
+  applications_pagination: { page: 1, page_size: 50, total: 4, total_pages: 1 },
+  service_tokens_pagination: { page: 1, page_size: 50, total: 3, total_pages: 1 },
   applications: [
     {
       app_id: "app-open",
@@ -113,7 +121,7 @@ test.beforeEach(async ({ page }) => {
       contentType: "application/json",
       body: JSON.stringify({ run_id: null, evaluated_at: null, zones: [] }),
     }));
-  await page.route("**/api/zero-trust/inventory", (route) =>
+  await page.route("**/api/zero-trust/inventory*", (route) =>
     route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -206,8 +214,8 @@ test("specs/014 US3 — the Groups panel shows real reference counts, including 
 });
 
 test("specs/014 US3 — a Groups-fetch failure shows an explicit 'not available' state without blocking the table", async ({ page }) => {
-  await page.unroute("**/api/zero-trust/inventory");
-  await page.route("**/api/zero-trust/inventory", (route) =>
+  await page.unroute("**/api/zero-trust/inventory*");
+  await page.route("**/api/zero-trust/inventory*", (route) =>
     route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -225,13 +233,16 @@ test("specs/014 US3 — a Groups-fetch failure shows an explicit 'not available'
 // empty-state message must be driven by `run_id`, not by array emptiness,
 // so "never evaluated" and "evaluated, found nothing" read differently.
 test("T026 — a completed run with zero apps and zero tokens shows a distinct message from 'never evaluated'", async ({ page }) => {
-  await page.route("**/api/zero-trust/inventory", (route) =>
+  await page.route("**/api/zero-trust/inventory*", (route) =>
     route.fulfill({
       status: 200,
       contentType: "application/json",
       body: JSON.stringify({
         run_id: "run-empty",
         evaluated_at: "2026-08-12T00:00:00Z",
+        critical_finding: null,
+        applications_pagination: { page: 1, page_size: 50, total: 0, total_pages: 1 },
+        service_tokens_pagination: { page: 1, page_size: 50, total: 0, total_pages: 1 },
         applications: [],
         service_tokens: [],
         access_groups: [],
@@ -246,13 +257,16 @@ test("T026 — a completed run with zero apps and zero tokens shows a distinct m
 });
 
 test("T026 — a run_id of null renders the 'never evaluated' message, not the empty-account message", async ({ page }) => {
-  await page.route("**/api/zero-trust/inventory", (route) =>
+  await page.route("**/api/zero-trust/inventory*", (route) =>
     route.fulfill({
       status: 200,
       contentType: "application/json",
       body: JSON.stringify({
         run_id: null,
         evaluated_at: null,
+        critical_finding: null,
+        applications_pagination: { page: 1, page_size: 50, total: 0, total_pages: 1 },
+        service_tokens_pagination: { page: 1, page_size: 50, total: 0, total_pages: 1 },
         applications: [],
         service_tokens: [],
         access_groups: [],
@@ -262,4 +276,40 @@ test("T026 — a run_id of null renders the 'never evaluated' message, not the e
   await page.getByRole("button", { name: "Zero Trust" }).click();
 
   await expect(page.getByText("No evaluation runs yet.")).toBeVisible();
+});
+
+test("specs/020 US2 — Access applications paginate independently of Service tokens", async ({ page }) => {
+  const apps = MOCK_ZT_INVENTORY.applications;
+  await page.route("**/api/zero-trust/inventory*", (route) => {
+    const url = new URL(route.request().url());
+    const appPage = Number(url.searchParams.get("app_page") ?? "1");
+    const appPageSize = 2;
+    const start = (appPage - 1) * appPageSize;
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ...MOCK_ZT_INVENTORY,
+        applications: apps.slice(start, start + appPageSize),
+        applications_pagination: {
+          page: appPage,
+          page_size: appPageSize,
+          total: apps.length,
+          total_pages: Math.ceil(apps.length / appPageSize),
+        },
+      }),
+    });
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Zero Trust" }).click();
+
+  await expect(page.getByTestId("findings-row-app-open")).toBeVisible();
+  await expect(page.getByTestId("findings-row-app-bypass")).not.toBeVisible();
+  // Service tokens (3, fits one page) show no pager of their own.
+  await expect(page.getByTestId("findings-row-tok-expired")).toBeVisible();
+  await expect(page.getByTestId("findings-row-tok-healthy")).toBeVisible();
+
+  await expect(page.getByTestId("pagination-status")).toHaveText("4 total · page 1 of 2");
+  await page.getByTestId("pagination-next").click();
+  await expect(page.getByTestId("findings-row-app-bypass")).toBeVisible();
 });

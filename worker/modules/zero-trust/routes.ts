@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { requireRole } from "../../auth/access-jwt.ts";
+import { type PageQuery, paginateArray, PaginationParamError } from "../../pagination.ts";
 import { buildZeroTrustInventory, listAccessGroups, listIdentityProviders } from "./inventory.ts";
 import { evaluateApplications, evaluateServiceTokens } from "./evaluate.ts";
 import { diffForAppAlerts, diffForTokenAlerts } from "./alerts.ts";
@@ -267,7 +268,103 @@ async function fetchAccessGroupsPanel(
   );
 }
 
+interface AppFindingOut {
+  app_id: string;
+  app_name: string | null;
+  app_domain: string;
+  status: string;
+  reason: string;
+  policy_count: number | null;
+  covered_hostname_count: number | null;
+  identity_summary: string | null;
+  session_duration: string | null;
+  policy_rules: PolicyRuleLine[][];
+}
+interface TokenFindingOut {
+  token_id: string;
+  token_name: string;
+  expires_at: string | null;
+  status: string;
+  reason: string;
+}
+
+const APP_SORT: Record<string, (r: AppFindingOut) => string | number> = {
+  application: (r) => r.app_domain,
+  policies: (r) => r.policy_count ?? -1,
+};
+const TOKEN_SORT: Record<string, (r: TokenFindingOut) => string | number> = {
+  name: (r) => r.token_name,
+};
+
+export interface ZeroTrustInventoryQuery {
+  app?: PageQuery;
+  token?: PageQuery;
+}
+
+// Pure — same extraction rationale as every other paginated module.
+// access_groups is deliberately NOT paginated here (out of scope, plain
+// list UI, not a FindingsTable — research.md §2 only requires confirming
+// each module's actual shape, not that every list in it gets a pager).
+export function buildZeroTrustInventoryResponse(
+  applications: AppFindingOut[],
+  serviceTokens: TokenFindingOut[],
+  accessGroups: ReturnType<typeof serializeAccessGroup>[] | null,
+  runId: string | null,
+  evaluatedAt: string | null,
+  query: ZeroTrustInventoryQuery,
+) {
+  const appPage = paginateArray(applications, query.app ?? {}, APP_SORT, "application");
+  const tokenPage = paginateArray(serviceTokens, query.token ?? {}, TOKEN_SORT, "name");
+
+  // Same priority as the frontend previously computed client-side:
+  // applications checked first (a higher-severity exposure class than an
+  // expired token), across the WHOLE list, not just the paginated page.
+  const criticalApp = applications.find((a) => a.status === "critical");
+  const criticalToken = serviceTokens.find((t) => t.status === "critical");
+  const criticalFinding = criticalApp
+    ? {
+      kind: "application" as const,
+      title: "An Access application has no effective policy",
+      target: criticalApp.app_domain,
+      description: criticalApp.reason,
+    }
+    : criticalToken
+    ? {
+      kind: "service_token" as const,
+      title: "A service token needs attention",
+      target: criticalToken.token_name,
+      description: criticalToken.reason,
+    }
+    : null;
+
+  return {
+    run_id: runId,
+    evaluated_at: evaluatedAt,
+    critical_finding: criticalFinding,
+    applications: appPage.items,
+    applications_pagination: appPage.pagination,
+    service_tokens: tokenPage.items,
+    service_tokens_pagination: tokenPage.pagination,
+    access_groups: accessGroups,
+  };
+}
+
 zeroTrustRoutes.get("/inventory", async (c) => {
+  const query: ZeroTrustInventoryQuery = {
+    app: {
+      page: c.req.query("app_page"),
+      page_size: c.req.query("app_page_size"),
+      sort_key: c.req.query("app_sort_key"),
+      sort_dir: c.req.query("app_sort_dir"),
+    },
+    token: {
+      page: c.req.query("token_page"),
+      page_size: c.req.query("token_page_size"),
+      sort_key: c.req.query("token_sort_key"),
+      sort_dir: c.req.query("token_sort_dir"),
+    },
+  };
+
   // The latest run is determined from zt_evaluation_runs — a shared,
   // run-scoped source of truth — not from either findings table alone.
   // Gating on zt_app_findings alone (the prior behavior) silently dropped
@@ -279,34 +376,26 @@ zeroTrustRoutes.get("/inventory", async (c) => {
     `SELECT run_id, evaluated_at FROM zt_evaluation_runs ORDER BY evaluated_at DESC LIMIT 1`,
   ).first<{ run_id: string; evaluated_at: string }>();
 
-  if (!latestRun) {
-    const accessGroups = await fetchAccessGroupsPanel(c.env, []);
-    return c.json({
-      run_id: null,
-      evaluated_at: null,
-      applications: [],
-      service_tokens: [],
-      access_groups: accessGroups,
-    });
-  }
+  try {
+    if (!latestRun) {
+      const accessGroups = await fetchAccessGroupsPanel(c.env, []);
+      return c.json(buildZeroTrustInventoryResponse([], [], accessGroups, null, null, query));
+    }
 
-  const [{ results: appRows }, { results: tokenRows }] = await Promise.all([
-    c.env.DB.prepare(
-      `SELECT app_id, app_domain, status, reason, app_name, policy_count, covered_hostname_count,
-              identity_summary, session_duration, policy_rules_json, referenced_group_ids
-       FROM zt_app_findings WHERE run_id = ? ORDER BY app_domain`,
-    ).bind(latestRun.run_id).all<AppFindingRow>(),
-    c.env.DB.prepare(
-      `SELECT token_id, token_name, expires_at, status, reason FROM zt_token_findings WHERE run_id = ? ORDER BY token_name`,
-    ).bind(latestRun.run_id).all<TokenFindingRow>(),
-  ]);
+    const [{ results: appRows }, { results: tokenRows }] = await Promise.all([
+      c.env.DB.prepare(
+        `SELECT app_id, app_domain, status, reason, app_name, policy_count, covered_hostname_count,
+                identity_summary, session_duration, policy_rules_json, referenced_group_ids
+         FROM zt_app_findings WHERE run_id = ? ORDER BY app_domain`,
+      ).bind(latestRun.run_id).all<AppFindingRow>(),
+      c.env.DB.prepare(
+        `SELECT token_id, token_name, expires_at, status, reason FROM zt_token_findings WHERE run_id = ? ORDER BY token_name`,
+      ).bind(latestRun.run_id).all<TokenFindingRow>(),
+    ]);
 
-  const accessGroups = await fetchAccessGroupsPanel(c.env, appRows);
+    const accessGroups = await fetchAccessGroupsPanel(c.env, appRows);
 
-  return c.json({
-    run_id: latestRun.run_id,
-    evaluated_at: latestRun.evaluated_at,
-    applications: appRows.map((a) => ({
+    const applications: AppFindingOut[] = appRows.map((a) => ({
       app_id: a.app_id,
       app_name: a.app_name,
       app_domain: a.app_domain,
@@ -319,16 +408,31 @@ zeroTrustRoutes.get("/inventory", async (c) => {
       policy_rules: a.policy_rules_json
         ? JSON.parse(a.policy_rules_json) as PolicyRuleLine[][]
         : [],
-    })),
-    service_tokens: tokenRows.map((t) => ({
+    }));
+    const serviceTokens: TokenFindingOut[] = tokenRows.map((t) => ({
       token_id: t.token_id,
       token_name: t.token_name,
       expires_at: t.expires_at,
       status: t.status,
       reason: t.reason,
-    })),
-    access_groups: accessGroups,
-  });
+    }));
+
+    return c.json(
+      buildZeroTrustInventoryResponse(
+        applications,
+        serviceTokens,
+        accessGroups,
+        latestRun.run_id,
+        latestRun.evaluated_at,
+        query,
+      ),
+    );
+  } catch (err) {
+    if (err instanceof PaginationParamError) {
+      return c.json({ error: err.message }, 400);
+    }
+    throw err;
+  }
 });
 
 interface AppAlertRow {

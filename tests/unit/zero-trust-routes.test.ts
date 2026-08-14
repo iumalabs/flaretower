@@ -1,6 +1,10 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals, assertThrows } from "@std/assert";
 import { Hono } from "hono";
-import { zeroTrustRoutes } from "../../worker/modules/zero-trust/routes.ts";
+import {
+  buildZeroTrustInventoryResponse,
+  zeroTrustRoutes,
+} from "../../worker/modules/zero-trust/routes.ts";
+import { PaginationParamError } from "../../worker/pagination.ts";
 
 // specs/014-access-dashboard: GET /inventory now also live-fetches Access
 // Groups/Identity Providers (routes.ts's fetchAccessGroupsPanel), which use
@@ -264,6 +268,122 @@ Deno.test("GET /inventory - Access Groups panel: real reference counts and rule 
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+// specs/020-list-pagination — buildZeroTrustInventoryResponse() is pure
+// (extracted from the route handler), so these exercise the 2-collection
+// pagination/sort/critical_finding logic directly.
+function appOut(overrides: Partial<{
+  app_id: string;
+  app_domain: string;
+  status: string;
+  reason: string;
+  policy_count: number | null;
+}> = {}) {
+  return {
+    app_id: "app-1",
+    app_name: null,
+    app_domain: "app-1.example.com",
+    status: "safe",
+    reason: "scoped policy",
+    policy_count: 1,
+    covered_hostname_count: 1,
+    identity_summary: null,
+    session_duration: null,
+    policy_rules: [],
+    ...overrides,
+  };
+}
+function tokenOut(
+  overrides: Partial<{ token_id: string; token_name: string; status: string; reason: string }> = {},
+) {
+  return {
+    token_id: "tok-1",
+    token_name: "ci-token",
+    expires_at: null,
+    status: "safe",
+    reason: "in use",
+    ...overrides,
+  };
+}
+
+Deno.test("buildZeroTrustInventoryResponse - applications and service_tokens paginate independently", () => {
+  const apps = Array.from(
+    { length: 3 },
+    (_, i) => appOut({ app_id: `a${i}`, app_domain: `a${i}.test` }),
+  );
+  const tokens = Array.from(
+    { length: 2 },
+    (_, i) => tokenOut({ token_id: `t${i}`, token_name: `t${i}` }),
+  );
+
+  const res = buildZeroTrustInventoryResponse(apps, tokens, null, "run-1", "t", {
+    app: { page_size: "2" },
+  });
+
+  assertEquals(res.applications.length, 2);
+  assertEquals(res.applications_pagination, { page: 1, page_size: 2, total: 3, total_pages: 2 });
+  assertEquals(res.service_tokens.length, 2);
+  assertEquals(res.service_tokens_pagination, { page: 1, page_size: 50, total: 2, total_pages: 1 });
+});
+
+Deno.test("buildZeroTrustInventoryResponse - critical_finding: an open application wins over a critical token", () => {
+  const apps = [
+    appOut({ status: "critical", app_domain: "open.example.com", reason: "no policy" }),
+  ];
+  const tokens = [tokenOut({ status: "critical", reason: "unused" })];
+
+  const res = buildZeroTrustInventoryResponse(apps, tokens, null, "run-1", "t", {});
+  assertEquals(res.critical_finding, {
+    kind: "application",
+    title: "An Access application has no effective policy",
+    target: "open.example.com",
+    description: "no policy",
+  });
+});
+
+Deno.test("buildZeroTrustInventoryResponse - critical_finding falls back to a token, then null", () => {
+  const safeApp = [appOut()];
+  const criticalToken = [
+    tokenOut({ status: "critical", token_name: "stale-token", reason: "unused" }),
+  ];
+  const res1 = buildZeroTrustInventoryResponse(safeApp, criticalToken, null, "run-1", "t", {});
+  assertEquals(res1.critical_finding, {
+    kind: "service_token",
+    title: "A service token needs attention",
+    target: "stale-token",
+    description: "unused",
+  });
+
+  const res2 = buildZeroTrustInventoryResponse([], [], null, "run-1", "t", {});
+  assertEquals(res2.critical_finding, null);
+});
+
+Deno.test("buildZeroTrustInventoryResponse - critical_finding reflects the whole list, not just the paginated page", () => {
+  const apps = [
+    appOut({ app_id: "a-safe", app_domain: "a-safe.test" }),
+    appOut({
+      app_id: "z-open",
+      app_domain: "z-open.test",
+      status: "critical",
+      reason: "no policy",
+    }),
+  ];
+  const res = buildZeroTrustInventoryResponse(apps, [], null, "run-1", "t", {
+    app: { page: "1", page_size: "1" },
+  });
+  assertEquals(res.applications.map((a) => a.app_domain), ["a-safe.test"]);
+  assertEquals(res.critical_finding?.target, "z-open.test");
+});
+
+Deno.test("buildZeroTrustInventoryResponse - rejects an invalid sort_key for either collection", () => {
+  assertThrows(
+    () =>
+      buildZeroTrustInventoryResponse([], [tokenOut()], null, "run-1", "t", {
+        token: { sort_key: "nope" },
+      }),
+    PaginationParamError,
+  );
 });
 
 // A separate, minimal mock focused only on the alert tables'
