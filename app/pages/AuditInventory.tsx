@@ -21,6 +21,13 @@ interface AuditLogResponse {
   since: string;
   until: string;
   entries: AuditLogEntry[];
+  // Total events actually retrieved (== entries.length) — surfaced
+  // separately so a UI change to entries doesn't silently drop this.
+  total: number;
+  // true = the backend's safe fetch cap was hit before Cloudflare's own
+  // pages ran out — entries is real but not exhaustive for the window
+  // (specs/020-list-pagination FR-012: never present this as complete).
+  truncated: boolean;
   // true = the underlying Cloudflare Audit Logs API call itself failed —
   // distinct from a successful call that confirmed zero activity in the
   // window (spec.md FR-003).
@@ -369,6 +376,25 @@ function AuditLogPanel({ data, error }: { data: AuditLogResponse | null; error: 
 
   return (
     <div>
+      <div
+        style={{
+          display: "flex",
+          gap: 10,
+          alignItems: "baseline",
+          marginBottom: 8,
+          fontFamily: "var(--font-mono)",
+          fontSize: "var(--text-label-size)",
+          color: "var(--fg-faint)",
+        }}
+      >
+        <span data-testid="audit-log-total">{data.total} events</span>
+        {data.truncated && (
+          <span data-testid="audit-log-capped" style={{ color: "var(--status-warning)" }}>
+            capped at {data.total} — more events exist in this window than shown
+          </span>
+        )}
+      </div>
+
       <div style={{ display: "flex", gap: 8, marginBottom: 12, alignItems: "center" }}>
         {SOURCE_FILTERS.map((f) => (
           <button

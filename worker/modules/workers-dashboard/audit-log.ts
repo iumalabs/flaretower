@@ -25,45 +25,86 @@ interface RawAuditLogResponse {
   result?: RawAuditLogEntry[];
 }
 
+export interface AuditLogFetchResult {
+  entries: RecentChangeEntry[];
+  // True when AUDIT_LOG_FETCH_CAP was hit before Cloudflare's own pages ran
+  // out — the result is real but not exhaustive (specs/020-list-pagination
+  // FR-012's "no silent caps" requirement: callers must surface this, never
+  // present a capped result as complete).
+  truncated: boolean;
+}
+
+// Matches the order of magnitude of analytics.ts's own ANALYTICS_ROW_LIMIT —
+// both exist for the same reason (Cloudflare's own API is unbounded per
+// account; this project's "no silent caps" convention requires a defined,
+// surfaced stopping point rather than fetching forever).
+const AUDIT_LOG_FETCH_CAP = 1000;
+const PAGE_SIZE = 100;
+
 // The account/zone-scoped Audit Logs endpoint — read-only, per research.md
-// §4's new `Audit Logs Read` scope.
+// §4's new `Audit Logs Read` scope. Follows Cloudflare's own page/per_page
+// pagination itself (specs/020-list-pagination research.md §1 — this API is
+// offset-based, not an opaque cursor token) up to AUDIT_LOG_FETCH_CAP, so a
+// caller sees every event in the window rather than only the first 100.
 export async function fetchAccountAuditLog(
   creds: CloudflareCredentials,
   since: Date,
   fetchImpl: typeof fetch = fetch,
-): Promise<RecentChangeEntry[]> {
-  const url = new URL(
-    `https://api.cloudflare.com/client/v4/accounts/${creds.accountId}/audit_logs`,
-  );
-  url.searchParams.set("since", since.toISOString());
-  url.searchParams.set("per_page", "100");
+): Promise<AuditLogFetchResult> {
+  const entries: RecentChangeEntry[] = [];
+  let page = 1;
 
-  // Gated by the invocation-wide semaphore (worker/concurrency.ts) — every
-  // module's cfFetch() goes through it, so the true total in-flight
-  // connection count across all of them together never exceeds the
-  // Workers runtime's 6-per-invocation limit, not just this one module's
-  // own fan-out.
-  const res = await withGlobalFetchSlot(() =>
-    fetchImpl(url.toString(), {
-      headers: { Authorization: `Bearer ${creds.apiToken}` },
-    })
-  );
+  while (true) {
+    const url = new URL(
+      `https://api.cloudflare.com/client/v4/accounts/${creds.accountId}/audit_logs`,
+    );
+    url.searchParams.set("since", since.toISOString());
+    url.searchParams.set("per_page", String(PAGE_SIZE));
+    url.searchParams.set("page", String(page));
 
-  if (!res.ok) {
-    throw new Error(`Cloudflare Audit Logs API returned HTTP ${res.status}`);
+    // Gated by the invocation-wide semaphore (worker/concurrency.ts) — every
+    // module's cfFetch() goes through it, so the true total in-flight
+    // connection count across all of them together never exceeds the
+    // Workers runtime's 6-per-invocation limit, not just this one module's
+    // own fan-out.
+    const res = await withGlobalFetchSlot(() =>
+      fetchImpl(url.toString(), {
+        headers: { Authorization: `Bearer ${creds.apiToken}` },
+      })
+    );
+
+    if (!res.ok) {
+      throw new Error(`Cloudflare Audit Logs API returned HTTP ${res.status}`);
+    }
+
+    const body = await res.json() as RawAuditLogResponse;
+    const rawPage = body.result ?? [];
+
+    for (const e of rawPage) {
+      entries.push({
+        occurredAt: e.when ?? "",
+        actor: e.actor?.email ?? e.actor?.type ?? "unknown",
+        actorSource: e.interface?.type ?? "api",
+        action: e.action?.type ?? "unknown action",
+        target: e.resource?.type ?? "unknown",
+        resultSummary: summarizeValueChange(e.oldValue, e.newValue),
+      });
+    }
+
+    // Cap check first: a page can both hit the cap AND be Cloudflare's last
+    // page at once, and "capped" must win — an untrimmed, over-cap result
+    // reported as "not truncated" would violate FR-012 (no silent caps).
+    if (entries.length >= AUDIT_LOG_FETCH_CAP) {
+      return { entries: entries.slice(0, AUDIT_LOG_FETCH_CAP), truncated: true };
+    }
+
+    // A shorter-than-requested page means this was Cloudflare's last page —
+    // no more data to follow the cursor into.
+    if (rawPage.length < PAGE_SIZE) {
+      return { entries, truncated: false };
+    }
+    page++;
   }
-
-  const body = await res.json() as RawAuditLogResponse;
-  const entries = body.result ?? [];
-
-  return entries.map((e) => ({
-    occurredAt: e.when ?? "",
-    actor: e.actor?.email ?? e.actor?.type ?? "unknown",
-    actorSource: e.interface?.type ?? "api",
-    action: e.action?.type ?? "unknown action",
-    target: e.resource?.type ?? "unknown",
-    resultSummary: summarizeValueChange(e.oldValue, e.newValue),
-  }));
 }
 
 function summarizeValueChange(oldValue: unknown, newValue: unknown): string | null {

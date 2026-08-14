@@ -69,12 +69,16 @@ Deno.test("GET /log - maps real entries, since defaults to 7 days before now", a
     until: string;
     unavailable: boolean;
     entries: Array<{ occurred_at: string; actor: string; actor_source: string }>;
+    total: number;
+    truncated: boolean;
   };
 
   assertEquals(body.unavailable, false);
   assertEquals(body.entries.length, 1);
   assertEquals(body.entries[0].actor, "user@example.com");
   assertEquals(body.entries[0].actor_source, "dashboard");
+  assertEquals(body.total, 1);
+  assertEquals(body.truncated, false);
 
   const sinceMs = new Date(body.since).getTime();
   const untilMs = new Date(body.until).getTime();
@@ -104,6 +108,36 @@ Deno.test("GET /log - unavailable: true when the Cloudflare API responds with a 
 
   assertEquals(body.unavailable, true);
   assertEquals(body.entries, []);
+});
+
+Deno.test("GET /log - forwards truncated: true when the fetch cap is hit (specs/020-list-pagination)", async () => {
+  // Every page full (100 entries) so fetchAccountAuditLog() keeps following
+  // the cursor all the way to its 1000-entry cap instead of stopping early.
+  globalThis.fetch = ((input: RequestInfo | URL) => {
+    const url = new URL(input as string);
+    const page = url.searchParams.get("page");
+    return Promise.resolve(
+      new Response(
+        JSON.stringify({
+          result: Array.from({ length: 100 }, (_, i) => ({
+            when: "2026-08-13T09:04:12Z",
+            actor: { email: `user-${page}-${i}@example.com` },
+            interface: { type: "dashboard" },
+            action: { type: "zone.settings.change" },
+            resource: { type: "zone" },
+          })),
+        }),
+        { status: 200 },
+      ),
+    );
+  }) as typeof fetch;
+
+  const res = await app(NOOP_DB)("/log");
+  const body = await res.json() as { total: number; truncated: boolean; entries: unknown[] };
+
+  assertEquals(body.total, 1000);
+  assertEquals(body.entries.length, 1000);
+  assertEquals(body.truncated, true);
 });
 
 Deno.test("GET /changes - 400 on a malformed since value", async () => {

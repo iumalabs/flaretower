@@ -138,7 +138,7 @@ export async function buildWorkersDashboard(env: Env): Promise<WorkersDashboard>
     workerItems.flatMap((item) => item.hostnames.map((h) => h.hostname)),
   );
   const recentChanges: RecentChangeEntry[] = auditLogResult
-    ? filterWorkersRelevant(auditLogResult, knownWorkerHostnames)
+    ? filterWorkersRelevant(auditLogResult.entries, knownWorkerHostnames)
     : [];
 
   return {
