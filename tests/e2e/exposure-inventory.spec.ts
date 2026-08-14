@@ -62,17 +62,27 @@ test.beforeEach(async ({ page }) => {
       contentType: "application/json",
       body: JSON.stringify({ modules: [], unavailable_sources: [] }),
     }));
-  await page.route("**/api/audit/alerts", (route) =>
+  await page.route("**/api/audit/alerts*", (route) =>
     route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({ alerts: [], unavailable_sources: [] }),
+      body: JSON.stringify({
+        alerts: [],
+        unavailable_sources: [],
+        pagination: { page: 1, page_size: 5, total: 0, total_pages: 1 },
+      }),
     }));
-  await page.route("**/api/audit/changes", (route) =>
+  await page.route("**/api/audit/changes*", (route) =>
     route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({ since: "", until: "", changes: [], unavailable_sources: [] }),
+      body: JSON.stringify({
+        since: "",
+        until: "",
+        changes: [],
+        unavailable_sources: [],
+        pagination: { page: 1, page_size: 5, total: 0, total_pages: 1 },
+      }),
     }));
   // "overview" is now the default page (tasks.md T033) — navigate into
   // Exposure explicitly, matching every other module's spec convention.

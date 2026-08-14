@@ -19,7 +19,15 @@ import {
 } from "./lib/module-badge-counts.ts";
 
 const PAGES = [
-  { key: "overview", label: "Overview", render: () => <OverviewPage /> },
+  // onNavigateToAudit is a no-op here — this entry's render() is never
+  // actually invoked (the JSX below special-cases "overview" so it gets
+  // the real setPage-backed callback instead); this placeholder only
+  // exists to satisfy OverviewPage's required prop for the type checker.
+  {
+    key: "overview",
+    label: "Overview",
+    render: () => <OverviewPage onNavigateToAudit={() => {}} />,
+  },
   { key: "workers", label: "Workers", render: () => <WorkersDashboardPage /> },
   { key: "exposure", label: "Exposure", render: () => <ExposureInventory /> },
   { key: "dns", label: "DNS", render: () => <DnsInventory /> },
@@ -109,7 +117,15 @@ export function App(): JSX.Element {
       />
       <div style={{ flex: 1, minWidth: 0 }}>
         <PageErrorBoundary key={page}>
-          {active.render()}
+          {
+            // specs/022-audit-list-pagination — Overview's "N more" links need
+            // to reach Audit & Drift; it's the only page needing a navigation
+            // callback, so it's special-cased here rather than widening every
+            // PAGES entry's render() signature for one caller.
+            page === "overview"
+              ? <OverviewPage onNavigateToAudit={() => setPage("audit")} />
+              : active.render()
+          }
         </PageErrorBoundary>
       </div>
     </div>
