@@ -7,7 +7,8 @@
 **Input**: Design documents from `/specs/014-access-dashboard/`
 
 **Prerequisites**: [plan.md](./plan.md), [spec.md](./spec.md), [research.md](./research.md),
-[data-model.md](./data-model.md), [contracts/api.md](./contracts/api.md), [quickstart.md](./quickstart.md)
+[data-model.md](./data-model.md), [contracts/api.md](./contracts/api.md),
+[quickstart.md](./quickstart.md)
 
 **Tests**: Included and REQUIRED (constitution Principle VI).
 
@@ -25,9 +26,9 @@ session duration, alongside the existing unchanged health status.
 
 ### Tests for User Story 1
 
-- [x] T001 [P] [US1] Unit test in `tests/unit/zero-trust-inventory.test.ts`: `listIdentityProviders()`
-      parses id→name; application parsing captures `session_duration` and `self_hosted_domains`
-      (falling back to `[domain]`).
+- [x] T001 [P] [US1] Unit test in `tests/unit/zero-trust-inventory.test.ts`:
+      `listIdentityProviders()` parses id→name; application parsing captures `session_duration` and
+      `self_hosted_domains` (falling back to `[domain]`).
 - [x] T002 [P] [US1] Playwright e2e test in `tests/e2e/zero-trust-inventory.spec.ts` (mocked
       `GET /api/zero-trust/inventory`): table shows policy count, covered-hostname count (with a
       "+N" indicator for a multi-hostname app), identity summary (including the "— none —" and
@@ -37,9 +38,9 @@ session duration, alongside the existing unchanged health status.
 
 - [x] T003 [US1] Add `worker/db/migrations/0010_zt_app_findings_add_policy_detail.sql`: 5 nullable
       columns per data-model.md.
-- [x] T004 [P] [US1] Extend `worker/modules/zero-trust/types.ts`: `AccessApplication`/`AppEvaluation`
-      gain `policyCount`, `coveredHostnames`, `identitySummary`, `sessionDuration`, `policyRules`
-      (data-model.md). New `PolicyRuleLine` type.
+- [x] T004 [P] [US1] Extend `worker/modules/zero-trust/types.ts`:
+      `AccessApplication`/`AppEvaluation` gain `policyCount`, `coveredHostnames`, `identitySummary`,
+      `sessionDuration`, `policyRules` (data-model.md). New `PolicyRuleLine` type.
 - [x] T005 [US1] Implement `listIdentityProviders()` in `worker/modules/zero-trust/inventory.ts`
       (research.md §2) and extend `listAccessApplications()` to capture `session_duration`,
       `self_hosted_domains`/`domain`, and each policy's full `include`/`require`/`exclude` raw rule
@@ -106,21 +107,21 @@ degrades gracefully on fetch failure without blocking the rest of the page.
 - [x] T015 [P] [US3] Unit test: group-reference-count computation — a group referenced by N
       applications' policies counts N; an unreferenced group counts 0, never omitted.
 - [x] T016 [P] [US3] Playwright e2e test: a group's reference count matches mocked data; a group
-      with 0 references still appears; a mocked Groups-fetch failure shows the panel's own
-      "not available" state while the table and policy detail render normally.
+      with 0 references still appears; a mocked Groups-fetch failure shows the panel's own "not
+      available" state while the table and policy detail render normally.
 
 ### Implementation for User Story 3
 
 - [x] T017 [P] [US3] Implement `listAccessGroups()` in `inventory.ts` (research.md §3) — returns
       `null` on total failure, distinct from `[]`.
-- [x] T018 [US3] Implement the reference-count computation (pure function, scans every
-      application's raw policy rules for a `group` rule matching each group's id) and the group's
-      own rule-summary via `rule-humanizer.ts` (T011). Depends on T011, T017.
+- [x] T018 [US3] Implement the reference-count computation (pure function, scans every application's
+      raw policy rules for a `group` rule matching each group's id) and the group's own rule-summary
+      via `rule-humanizer.ts` (T011). Depends on T011, T017.
 - [x] T019 [US3] Extend `routes.ts`'s `GET /inventory` (T007) to live-fetch Access Groups (T017,
       T018) on every request — NOT part of `runZeroTrustEvaluation`'s persisted pipeline
       (research.md §3) — and include `access_groups` (`null` on failure) in the response.
-- [x] T020 [US3] Extend `ZeroTrustInventory.tsx` (T013): render the Groups panel, with its own
-      empty and "not available" states, independent of the table's/policy detail's own states.
+- [x] T020 [US3] Extend `ZeroTrustInventory.tsx` (T013): render the Groups panel, with its own empty
+      and "not available" states, independent of the table's/policy detail's own states.
 
 **Checkpoint**: All 3 user stories independently functional — Module 014 is feature-complete per
 spec.md.
@@ -129,9 +130,16 @@ spec.md.
 
 ## Final Phase: Polish & Cross-Cutting Concerns
 
-- [ ] T021 [P] Confirm live (quickstart.md) whether Groups/Identity Providers need a token scope
+- [x] T021 [P] Confirm live (quickstart.md) whether Groups/Identity Providers need a token scope
       beyond `Access: Apps and Policies Read` (research.md §6); update README's token-scope table if
-      a new scope is actually required, otherwise leave it unchanged.
+      a new scope is actually required, otherwise leave it unchanged. **Groups: confirmed
+      2026-08-14/15** — `Access: Groups Read` (the narrower scope, not the combined
+      `Access: Organizations, Identity Providers, and Groups Read`) was genuinely missing in
+      production (issue #401: `access_groups` was `null` until added); README updated. **Identity
+      Providers: inconclusive** — production currently shows `identity_summary: "— none —"` on every
+      application, which is also the expected output for an account with no `login_method` policy
+      rules at all, so this doesn't distinguish "scope missing" from "genuinely no such rules" —
+      left unconfirmed in README rather than guessing.
 - [ ] T022 [P] Run all 3 quickstart.md scenarios end-to-end against a real scratch Cloudflare test
       account (real-account dependency, same as every prior module's equivalent task).
 - [x] T023 [P] `deno fmt` + `deno lint` pass across every touched file.
@@ -140,17 +148,17 @@ spec.md.
 
 ## Dependencies & Execution Order
 
-US1 (table columns) is the MVP and has no dependency on US2/US3. US2 (policy detail) depends on US1's
-richer `AppEvaluation` existing but is otherwise independent of US3. US3 (Groups) is independent of
-US2 but reuses US2's `rule-humanizer.ts` for group rule summaries, so T018 depends on T011.
-`routes.ts`/`ZeroTrustInventory.tsx` are touched across all three stories — implementation tasks for
-each are sequenced accordingly (T007→T012's caller, T019, T020 each extend the prior story's version
-of the same files).
+US1 (table columns) is the MVP and has no dependency on US2/US3. US2 (policy detail) depends on
+US1's richer `AppEvaluation` existing but is otherwise independent of US3. US3 (Groups) is
+independent of US2 but reuses US2's `rule-humanizer.ts` for group rule summaries, so T018 depends on
+T011. `routes.ts`/`ZeroTrustInventory.tsx` are touched across all three stories — implementation
+tasks for each are sequenced accordingly (T007→T012's caller, T019, T020 each extend the prior
+story's version of the same files).
 
 ### Parallel Opportunities
 
-T001/T002 in parallel; T004 parallel with T003 (different files); T009/T010 in parallel; T014/T015/T016
-in parallel; T017 parallel with T011 (independent until T018 needs both).
+T001/T002 in parallel; T004 parallel with T003 (different files); T009/T010 in parallel;
+T014/T015/T016 in parallel; T017 parallel with T011 (independent until T018 needs both).
 
 ---
 
@@ -178,5 +186,5 @@ exist.
 - research.md §3's correction (dropping the mockup's fabricated Group member count) is a deliberate,
   documented departure from the visual mockup's own placeholder data — don't "fix" T017/T018 to try
   to recover a number Cloudflare's API doesn't actually provide.
-- Run `quickstart.md` in full (T022) before considering Module 014 done — same real-account caveat as
-  every prior module.
+- Run `quickstart.md` in full (T022) before considering Module 014 done — same real-account caveat
+  as every prior module.
