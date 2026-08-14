@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.7.0](https://github.com/iumalabs/flaretower/compare/v1.6.2...v1.7.0) (2026-08-14)
+
+
+### Features
+
+* server-side pagination for Audit log and all 6 module dashboards (spec 020) ([#389](https://github.com/iumalabs/flaretower/issues/389)) ([c6f1431](https://github.com/iumalabs/flaretower/commit/c6f14316b7c4cf385de07babfcccfcf149aeca38))
+
+
+### Bug Fixes
+
+* **findings-table:** contain horizontal overflow within the table instead of the page ([#388](https://github.com/iumalabs/flaretower/issues/388)) ([04c0f0e](https://github.com/iumalabs/flaretower/commit/04c0f0ec910a1cd2462c5513d25d836aac81041e))
+* **workers-dashboard:** convert CPU time quantiles from microseconds to milliseconds ([#386](https://github.com/iumalabs/flaretower/issues/386)) ([918081e](https://github.com/iumalabs/flaretower/commit/918081ebcf3fe08820d8507af482885aec8a5ee0))
+
 ## [1.6.2](https://github.com/iumalabs/flaretower/compare/v1.6.1...v1.6.2) (2026-08-13)
 
 
