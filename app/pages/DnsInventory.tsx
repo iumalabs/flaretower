@@ -4,6 +4,7 @@ import { type ExposureStatus } from "../components/ExposureStatusBadge.tsx";
 import {
   FindingsTable,
   type FindingsTableColumn,
+  type FindingsTablePagination,
   type FindingsTableRow,
 } from "../components/FindingsTable.tsx";
 import { AlertBanner } from "../components/AlertBanner.tsx";
@@ -21,15 +22,28 @@ interface DnsRecordFinding {
   reason: string;
 }
 
-interface ZoneFinding {
+interface ZoneSummary {
   zone_name: string;
-  records: DnsRecordFinding[];
+  record_count: number;
+}
+
+interface PaginationEnvelope {
+  page: number;
+  page_size: number;
+  total: number;
+  total_pages: number;
 }
 
 interface DnsInventoryResponse {
   run_id: string | null;
   evaluated_at: string | null;
-  zones: ZoneFinding[];
+  total_records: number;
+  total_dangling: number;
+  zone_summaries: ZoneSummary[];
+  selected_zone: string | null;
+  critical_finding: { record_name: string; reason: string } | null;
+  records: DnsRecordFinding[];
+  records_pagination: PaginationEnvelope;
 }
 
 interface FlatFinding {
@@ -44,8 +58,21 @@ interface FlatFinding {
   reason: string;
 }
 
-async function fetchDnsInventory(): Promise<DnsInventoryResponse> {
-  const res = await fetch("/api/dns/inventory");
+interface DnsPageParams {
+  zone: string | null;
+  page: number;
+  sortKey: string | null;
+  sortDir: 1 | -1;
+}
+
+async function fetchDnsInventory(params: DnsPageParams): Promise<DnsInventoryResponse> {
+  const query = new URLSearchParams({ page: String(params.page) });
+  if (params.zone) query.set("zone", params.zone);
+  if (params.sortKey) {
+    query.set("sort_key", params.sortKey);
+    query.set("sort_dir", params.sortDir === 1 ? "asc" : "desc");
+  }
+  const res = await fetch(`/api/dns/inventory?${query}`);
   if (!res.ok) {
     throw new Error(`GET /api/dns/inventory failed: ${res.status}`);
   }
@@ -186,33 +213,60 @@ export function DnsInventory(): JSX.Element {
   const [data, setData] = useState<DnsInventoryResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selectedZone, setSelectedZone] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const [sortKey, setSortKey] = useState<string | null>(null);
+  const [sortDir, setSortDir] = useState<1 | -1>(1);
 
   useEffect(() => {
-    fetchDnsInventory()
+    fetchDnsInventory({ zone: selectedZone, page, sortKey, sortDir })
       .then((res) => {
+        // The requested page no longer exists (e.g. the zone shrank between
+        // loads) but the zone genuinely has records — recover to the true
+        // last page rather than showing an empty zone (FR-008).
+        if (
+          res.records.length === 0 && res.records_pagination.total > 0 &&
+          page > res.records_pagination.total_pages
+        ) {
+          setPage(res.records_pagination.total_pages);
+          return;
+        }
         setData(res);
-        // Default to the first zone (spec.md's own convention) — only set
-        // once, when nothing is selected yet, so a later re-fetch doesn't
-        // silently reset an operator's manual zone selection.
-        setSelectedZone((prev) => prev ?? res.zones[0]?.zone_name ?? null);
+        // Default to the first zone the backend picked (spec.md's own
+        // convention) — only set once, when nothing is selected yet, so a
+        // later re-fetch doesn't silently reset an operator's manual zone
+        // selection.
+        setSelectedZone((prev) => prev ?? res.selected_zone);
       })
       .catch((err: unknown) =>
         setError(err instanceof Error ? err.message : "failed to load DNS inventory")
       );
-  }, []);
+  }, [selectedZone, page, sortKey, sortDir]);
 
   if (error) {
     return <p style={{ color: "var(--status-critical-fg)" }}>{error}</p>;
   }
 
-  const zone = data?.zones.find((z) => z.zone_name === selectedZone) ?? null;
+  function switchZone(zoneName: string) {
+    setSelectedZone(zoneName);
+    setPage(1);
+  }
 
-  const rows: FindingsTableRow<FlatFinding>[] | null = zone
-    ? zone.records.map((r) => ({
-      id: `${zone.zone_name}:${r.type}:${r.record_name}:${r.content}`,
+  function handleSortChange(key: string) {
+    if (sortKey === key) {
+      setSortDir((d) => (d === 1 ? -1 : 1));
+    } else {
+      setSortKey(key);
+      setSortDir(1);
+    }
+    setPage(1);
+  }
+
+  const rows: FindingsTableRow<FlatFinding>[] | null = data
+    ? data.records.map((r) => ({
+      id: `${data.selected_zone}:${r.type}:${r.record_name}:${r.content}`,
       status: r.status,
       data: {
-        zone_name: zone.zone_name,
+        zone_name: data.selected_zone ?? "",
         record_name: r.record_name,
         type: r.type,
         content: r.content,
@@ -223,14 +277,19 @@ export function DnsInventory(): JSX.Element {
         reason: r.reason,
       },
     }))
-    : (data ? [] : null); // data loaded but no zones at all -> [], not still-loading null
+    : null;
 
-  const criticalRow = rows?.find((r) => r.status === "critical");
-  const totalRecords = data?.zones.reduce((sum, z) => sum + z.records.length, 0) ?? 0;
-  const totalDangling = data?.zones.reduce(
-    (sum, z) => sum + z.records.filter((r) => r.status === "critical").length,
-    0,
-  ) ?? 0;
+  const pagination: FindingsTablePagination | undefined = data
+    ? {
+      page: data.records_pagination.page,
+      pageSize: data.records_pagination.page_size,
+      total: data.records_pagination.total,
+      onPageChange: setPage,
+      sortKey,
+      sortDir,
+      onSortChange: handleSortChange,
+    }
+    : undefined;
 
   return (
     <div>
@@ -247,24 +306,26 @@ export function DnsInventory(): JSX.Element {
       </h1>
       {data && (
         <p style={{ color: "var(--fg-faint)", fontSize: "var(--text-meta-size)", marginTop: 0 }}>
-          {data.zones.length} zones · {totalRecords} records · {totalDangling} dangling target
-          {totalDangling === 1 ? "" : "s"} · run {data.run_id}
+          {data.zone_summaries.length} zones · {data.total_records} records · {data.total_dangling}
+          {" "}
+          dangling target
+          {data.total_dangling === 1 ? "" : "s"} · run {data.run_id}
         </p>
       )}
 
-      {criticalRow && (
+      {data?.critical_finding && (
         <AlertBanner
           scope="module"
           finding={{
             severity: "critical",
             title: "A DNS record needs attention",
-            target: criticalRow.data.record_name,
-            description: criticalRow.data.reason,
+            target: data.critical_finding.record_name,
+            description: data.critical_finding.reason,
           }}
         />
       )}
 
-      {data && data.zones.length > 0 && (
+      {data && data.zone_summaries.length > 0 && (
         <div
           style={{
             display: "flex",
@@ -273,13 +334,13 @@ export function DnsInventory(): JSX.Element {
             borderBottom: "1px solid var(--border)",
           }}
         >
-          {data.zones.map((z) => {
+          {data.zone_summaries.map((z) => {
             const active = z.zone_name === selectedZone;
             return (
               <button
                 key={z.zone_name}
                 type="button"
-                onClick={() => setSelectedZone(z.zone_name)}
+                onClick={() => switchZone(z.zone_name)}
                 style={{
                   display: "flex",
                   alignItems: "center",
@@ -308,7 +369,7 @@ export function DnsInventory(): JSX.Element {
                     color: "var(--fg-faint)",
                   }}
                 >
-                  {z.records.length}
+                  {z.record_count}
                 </span>
               </button>
             );
@@ -316,22 +377,19 @@ export function DnsInventory(): JSX.Element {
         </div>
       )}
 
-      {zone && zone.records.length === 0
+      {data && data.selected_zone && data.records.length === 0
         ? (
           <EmptyState
-            heading={`No DNS records in ${zone.zone_name}`}
+            heading={`No DNS records in ${data.selected_zone}`}
             description="This zone has no records to show."
           />
         )
         : (
           <FindingsTable
             // Remounts on every zone switch so FindingsTable's own local
-            // filter/sort/expanded state resets — without this, a status
-            // filter set on one zone (e.g. "critical") silently persists
-            // into a zone with zero matches for it, hiding that zone's real
-            // records behind an un-clearable "no findings match" message
-            // (its filter chip doesn't render either, since it's derived
-            // from the new zone's own status counts).
+            // expanded-row state resets — without this, an expanded row's id
+            // from one zone could coincidentally collide with another zone's
+            // row id and stay open unexpectedly.
             key={selectedZone ?? undefined}
             columns={COLUMNS}
             rows={rows}
@@ -340,6 +398,7 @@ export function DnsInventory(): JSX.Element {
               heading: "No DNS zones in this account",
               description: "No evaluation runs yet. Trigger one via POST /api/dns/evaluate.",
             }}
+            pagination={pagination}
           />
         )}
     </div>

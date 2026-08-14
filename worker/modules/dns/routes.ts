@@ -3,6 +3,7 @@ import { requireRole } from "../../auth/access-jwt.ts";
 import { buildDnsInventory, listDanglingInsights } from "./inventory.ts";
 import { evaluateDnsInventory, isPlatformTargetDomain } from "./evaluate.ts";
 import { diffForDnsAlerts, dnsRecordKey } from "./alerts.ts";
+import { type PageQuery, paginateArray, PaginationParamError } from "../../pagination.ts";
 import type { DnsExposureStatus, ZoneEvaluation } from "./types.ts";
 
 interface Env {
@@ -161,21 +162,43 @@ interface FindingRow {
   reason: string;
 }
 
-dnsRoutes.get("/inventory", async (c) => {
-  const latest = await c.env.DB.prepare(
-    `SELECT run_id, evaluated_at FROM dns_findings ORDER BY evaluated_at DESC LIMIT 1`,
-  ).first<{ run_id: string; evaluated_at: string }>();
+interface DnsRecordOut {
+  record_name: string;
+  type: string;
+  content: string;
+  proxy_capable: boolean;
+  proxied: boolean | null;
+  ttl: number | null;
+  is_platform_target: boolean;
+  status: string;
+  reason: string;
+}
 
-  if (!latest) {
-    return c.json({ run_id: null, evaluated_at: null, zones: [] });
-  }
+export interface DnsInventoryQuery extends PageQuery {
+  zone?: string;
+}
 
-  const { results: rows } = await c.env.DB.prepare(
-    `SELECT zone_name, record_name, record_type, content, proxy_capable, proxied, ttl, status, reason
-     FROM dns_findings WHERE run_id = ?
-     ORDER BY zone_name, record_name, record_type`,
-  ).bind(latest.run_id).all<FindingRow>();
+// Only the 3 columns the frontend actually renders as sortable
+// (DnsInventory.tsx's COLUMNS) — content/proxy/reason have no sortValue
+// there today, so there's nothing to whitelist for them.
+const DNS_RECORD_SORT: Record<string, (r: DnsRecordOut) => string | number> = {
+  type: (r) => r.type,
+  name: (r) => r.record_name,
+  ttl: (r) => r.ttl ?? -1,
+};
 
+// Pure — extracted so the zone-summary/pagination logic is testable without
+// a D1 mock (GET /inventory's own single unfiltered-by-zone SELECT is
+// unchanged, so the existing mock-D1 test harness for that query still
+// applies unmodified). Takes every row for the run (across all zones, as
+// today) and does the per-zone grouping, account-wide totals, zone
+// selection, and pagination/sort in plain JS.
+export function buildDnsInventoryResponse(
+  rows: FindingRow[],
+  runId: string | null,
+  evaluatedAt: string | null,
+  query: DnsInventoryQuery,
+) {
   const byZone = new Map<string, FindingRow[]>();
   for (const row of rows) {
     // Ensures the zone key exists even when its only row is the empty-zone
@@ -186,24 +209,89 @@ dnsRoutes.get("/inventory", async (c) => {
     list.push(row);
   }
 
-  return c.json({
-    run_id: latest.run_id,
-    evaluated_at: latest.evaluated_at,
-    zones: Array.from(byZone.entries()).map(([zone_name, records]) => ({
-      zone_name,
-      records: records.map((r) => ({
-        record_name: r.record_name,
-        type: r.record_type,
-        content: r.content,
-        proxy_capable: r.proxy_capable === 1,
-        proxied: r.proxied === null ? null : r.proxied === 1,
-        ttl: r.ttl,
-        is_platform_target: isPlatformTargetDomain(r.content),
-        status: r.status,
-        reason: r.reason,
-      })),
-    })),
-  });
+  const zoneSummaries = Array.from(byZone.entries()).map(([zone_name, records]) => ({
+    zone_name,
+    record_count: records.length,
+  }));
+  const totalRecords = zoneSummaries.reduce((sum, z) => sum + z.record_count, 0);
+  const totalDangling =
+    rows.filter((r) => r.record_type !== EMPTY_ZONE_RECORD_TYPE && r.status === "critical").length;
+
+  // Defaults to the first zone (query order == `ORDER BY zone_name` below,
+  // same "first zone" convention DnsInventory.tsx used to pick client-side)
+  // when no `zone` is requested. An unrecognized `zone` name is treated as
+  // lenient-empty (0 records) rather than a 400 — the frontend only ever
+  // sends a name it already got from zone_summaries, so this only matters
+  // for a stale/manual query, and "no records" is a safe, honest answer.
+  const selectedZone = query.zone ?? zoneSummaries[0]?.zone_name ?? null;
+  const zoneRecords = selectedZone ? (byZone.get(selectedZone) ?? []) : [];
+
+  const outRecords: DnsRecordOut[] = zoneRecords.map((r) => ({
+    record_name: r.record_name,
+    type: r.record_type,
+    content: r.content,
+    proxy_capable: r.proxy_capable === 1,
+    proxied: r.proxied === null ? null : r.proxied === 1,
+    ttl: r.ttl,
+    is_platform_target: isPlatformTargetDomain(r.content),
+    status: r.status,
+    reason: r.reason,
+  }));
+
+  const { items: records, pagination } = paginateArray(outRecords, query, DNS_RECORD_SORT, "name");
+
+  // Scoped to the whole selected zone, not just the current page — the
+  // frontend's alert banner surfaces the zone's worst finding regardless of
+  // which page happens to be showing (pagination must not hide a critical
+  // record that's simply on a different page).
+  const criticalFinding = outRecords.find((r) => r.status === "critical") ?? null;
+
+  return {
+    run_id: runId,
+    evaluated_at: evaluatedAt,
+    total_records: totalRecords,
+    total_dangling: totalDangling,
+    zone_summaries: zoneSummaries,
+    selected_zone: selectedZone,
+    critical_finding: criticalFinding
+      ? { record_name: criticalFinding.record_name, reason: criticalFinding.reason }
+      : null,
+    records,
+    records_pagination: pagination,
+  };
+}
+
+dnsRoutes.get("/inventory", async (c) => {
+  const query: DnsInventoryQuery = {
+    zone: c.req.query("zone"),
+    page: c.req.query("page"),
+    page_size: c.req.query("page_size"),
+    sort_key: c.req.query("sort_key"),
+    sort_dir: c.req.query("sort_dir"),
+  };
+
+  const latest = await c.env.DB.prepare(
+    `SELECT run_id, evaluated_at FROM dns_findings ORDER BY evaluated_at DESC LIMIT 1`,
+  ).first<{ run_id: string; evaluated_at: string }>();
+
+  try {
+    if (!latest) {
+      return c.json(buildDnsInventoryResponse([], null, null, query));
+    }
+
+    const { results: rows } = await c.env.DB.prepare(
+      `SELECT zone_name, record_name, record_type, content, proxy_capable, proxied, ttl, status, reason
+       FROM dns_findings WHERE run_id = ?
+       ORDER BY zone_name, record_name, record_type`,
+    ).bind(latest.run_id).all<FindingRow>();
+
+    return c.json(buildDnsInventoryResponse(rows, latest.run_id, latest.evaluated_at, query));
+  } catch (err) {
+    if (err instanceof PaginationParamError) {
+      return c.json({ error: err.message }, 400);
+    }
+    throw err;
+  }
 });
 
 interface AlertRow {

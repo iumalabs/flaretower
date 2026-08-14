@@ -97,3 +97,43 @@ export function resolveSortDir(rawSortDir: string | undefined): "ASC" | "DESC" {
   if (rawSortDir === "desc") return "DESC";
   throw new PaginationParamError(`invalid sort_dir: ${rawSortDir}`);
 }
+
+export interface PageQuery {
+  page?: string;
+  page_size?: string;
+  sort_key?: string;
+  sort_dir?: string;
+}
+
+// Sorts and slices an already-scoped, in-memory array of rows to one page.
+// Every paginated module route (research.md §2 — DNS/Security/Zero
+// Trust/Pages/Storage's rows aren't huge per account, and are already
+// fetched from D1 unfiltered-by-page since D1 reads are Worker-internal —
+// only the eventual HTTP response to the browser needs to be one page, per
+// FR-010) uses this instead of pushing LIMIT/OFFSET/ORDER BY into SQL,
+// which would otherwise mean hand-writing and testing that per module.
+// Throws PaginationParamError on invalid page/page_size/sort_key/sort_dir.
+export function paginateArray<T>(
+  items: readonly T[],
+  query: PageQuery,
+  sortWhitelist: Record<string, (item: T) => string | number>,
+  defaultSortKey: string,
+): { items: T[]; pagination: PaginationEnvelope } {
+  const params = parsePaginationParams(query.page, query.page_size);
+  const sort = resolveSortColumn(query.sort_key, sortWhitelist, defaultSortKey);
+  const dir = resolveSortDir(query.sort_dir);
+  const dirMult = dir === "DESC" ? -1 : 1;
+
+  const sorted = [...items].sort((a, b) => {
+    const av = sort.column(a);
+    const bv = sort.column(b);
+    const cmp = av < bv ? -1 : av > bv ? 1 : 0;
+    return cmp * dirMult;
+  });
+
+  const { limit, offset } = toLimitOffset(params);
+  return {
+    items: sorted.slice(offset, offset + limit),
+    pagination: buildEnvelope(params, items.length),
+  };
+}

@@ -4,14 +4,7 @@ import { fetchWorkersAnalytics } from "./analytics.ts";
 import { fetchAccountAuditLog, filterWorkersRelevant } from "./audit-log.ts";
 import { getWorkerLastDeployTimes } from "./inventory.ts";
 import { classifyEnvironment, rollUpExposureStatus } from "./classify.ts";
-import {
-  buildEnvelope,
-  PaginationParamError,
-  parsePaginationParams,
-  resolveSortColumn,
-  resolveSortDir,
-  toLimitOffset,
-} from "../../pagination.ts";
+import { type PageQuery, paginateArray, PaginationParamError } from "../../pagination.ts";
 import type {
   AccountSummary,
   ExposureStatus,
@@ -254,41 +247,14 @@ const WORKER_SORT_ACCESSORS: Record<string, (w: WorkerDashboardRow) => string | 
   "last-deploy": (w) => w.lastDeployAt ?? "",
 };
 
-export interface WorkersPageQuery {
-  page?: string;
-  page_size?: string;
-  sort_key?: string;
-  sort_dir?: string;
-}
-
 // Pure, extracted from the route handler for the same reason
 // buildAccountSummary/serializeDashboard already are (this file's own
 // established convention) — buildWorkersDashboard() makes 4+ live
 // Cloudflare API calls, so testing the route end-to-end would mean mocking
-// all of them just to cover ~20 lines of pagination arithmetic. Throws
-// PaginationParamError on invalid query values, same as every other
-// paginated module route.
-export function paginateWorkers(
-  workers: WorkerDashboardRow[],
-  query: WorkersPageQuery,
-): { workers: WorkerDashboardRow[]; pagination: ReturnType<typeof buildEnvelope> } {
-  const params = parsePaginationParams(query.page, query.page_size);
-  const sort = resolveSortColumn(query.sort_key, WORKER_SORT_ACCESSORS, "worker");
-  const dir = resolveSortDir(query.sort_dir);
-  const dirMult = dir === "DESC" ? -1 : 1;
-
-  const sorted = [...workers].sort((a, b) => {
-    const av = sort.column(a);
-    const bv = sort.column(b);
-    const cmp = av < bv ? -1 : av > bv ? 1 : 0;
-    return cmp * dirMult;
-  });
-
-  const { limit, offset } = toLimitOffset(params);
-  return {
-    workers: sorted.slice(offset, offset + limit),
-    pagination: buildEnvelope(params, workers.length),
-  };
+// all of them just to cover a couple lines of pagination wiring.
+export function paginateWorkers(workers: WorkerDashboardRow[], query: PageQuery) {
+  const { items, pagination } = paginateArray(workers, query, WORKER_SORT_ACCESSORS, "worker");
+  return { workers: items, pagination };
 }
 
 workersDashboardRoutes.get("/dashboard", async (c) => {

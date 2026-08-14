@@ -1,98 +1,183 @@
 import { expect, test } from "@playwright/test";
 
-const MOCK_DNS_INVENTORY = {
-  run_id: "run-1",
-  evaluated_at: "2026-08-07T12:00:00Z",
-  zones: [
-    {
-      zone_name: "example.com",
-      records: [
-        {
-          record_name: "old-blog.example.com",
-          type: "CNAME",
-          content: "old-blog.herokuapp.com",
-          proxy_capable: true,
-          proxied: false,
-          ttl: 300,
-          is_platform_target: false,
-          status: "critical",
-          reason: "dangling CNAME target",
-        },
-        {
-          record_name: "api.example.com",
-          type: "A",
-          content: "203.0.113.10",
-          proxy_capable: true,
-          proxied: false,
-          ttl: 300,
-          is_platform_target: false,
-          status: "warning",
-          reason: "DNS-only — bypasses Cloudflare protection",
-        },
-        {
-          record_name: "example.com",
-          type: "MX",
-          content: "10 mail.example.com",
-          proxy_capable: false,
-          proxied: null,
-          ttl: 3600,
-          is_platform_target: false,
-          status: "safe",
-          reason: "not proxy-capable",
-        },
-        {
-          record_name: "unknown.example.com",
-          type: "A",
-          content: "203.0.113.20",
-          proxy_capable: true,
-          proxied: false,
-          ttl: 300,
-          is_platform_target: false,
-          status: "not_evaluated",
-          reason: "could not evaluate dangling-target status (Security Insights API error)",
-        },
-        {
-          record_name: "_dmarc.example.com",
-          type: "TXT",
-          content: "v=DMARC1; p=none",
-          proxy_capable: false,
-          proxied: null,
-          ttl: 3600,
-          is_platform_target: false,
-          status: "warning",
-          reason: "DMARC policy provides no enforcement (p=none)",
-        },
-        {
-          record_name: "docs.example.com",
-          type: "CNAME",
-          content: "example-docs.pages.dev",
-          proxy_capable: true,
-          proxied: true,
-          ttl: 1,
-          is_platform_target: true,
-          status: "safe",
-          reason: "proxied through Cloudflare",
-        },
-      ],
-    },
-    {
-      zone_name: "second.example",
-      records: [
-        {
-          record_name: "second.example",
-          type: "A",
-          content: "203.0.113.99",
-          proxy_capable: true,
-          proxied: true,
-          ttl: 1,
-          is_platform_target: false,
-          status: "safe",
-          reason: "proxied through Cloudflare",
-        },
-      ],
-    },
-  ],
+interface MockDnsRecord {
+  record_name: string;
+  type: string;
+  content: string;
+  proxy_capable: boolean;
+  proxied: boolean | null;
+  ttl: number | null;
+  is_platform_target: boolean;
+  status: string;
+  reason: string;
+}
+
+interface MockZone {
+  zone_name: string;
+  records: MockDnsRecord[];
+}
+
+const MOCK_ZONES: MockZone[] = [
+  {
+    zone_name: "example.com",
+    records: [
+      {
+        record_name: "old-blog.example.com",
+        type: "CNAME",
+        content: "old-blog.herokuapp.com",
+        proxy_capable: true,
+        proxied: false,
+        ttl: 300,
+        is_platform_target: false,
+        status: "critical",
+        reason: "dangling CNAME target",
+      },
+      {
+        record_name: "api.example.com",
+        type: "A",
+        content: "203.0.113.10",
+        proxy_capable: true,
+        proxied: false,
+        ttl: 300,
+        is_platform_target: false,
+        status: "warning",
+        reason: "DNS-only — bypasses Cloudflare protection",
+      },
+      {
+        record_name: "example.com",
+        type: "MX",
+        content: "10 mail.example.com",
+        proxy_capable: false,
+        proxied: null,
+        ttl: 3600,
+        is_platform_target: false,
+        status: "safe",
+        reason: "not proxy-capable",
+      },
+      {
+        record_name: "unknown.example.com",
+        type: "A",
+        content: "203.0.113.20",
+        proxy_capable: true,
+        proxied: false,
+        ttl: 300,
+        is_platform_target: false,
+        status: "not_evaluated",
+        reason: "could not evaluate dangling-target status (Security Insights API error)",
+      },
+      {
+        record_name: "_dmarc.example.com",
+        type: "TXT",
+        content: "v=DMARC1; p=none",
+        proxy_capable: false,
+        proxied: null,
+        ttl: 3600,
+        is_platform_target: false,
+        status: "warning",
+        reason: "DMARC policy provides no enforcement (p=none)",
+      },
+      {
+        record_name: "docs.example.com",
+        type: "CNAME",
+        content: "example-docs.pages.dev",
+        proxy_capable: true,
+        proxied: true,
+        ttl: 1,
+        is_platform_target: true,
+        status: "safe",
+        reason: "proxied through Cloudflare",
+      },
+    ],
+  },
+  {
+    zone_name: "second.example",
+    records: [
+      {
+        record_name: "second.example",
+        type: "A",
+        content: "203.0.113.99",
+        proxy_capable: true,
+        proxied: true,
+        ttl: 1,
+        is_platform_target: false,
+        status: "safe",
+        reason: "proxied through Cloudflare",
+      },
+    ],
+  },
+];
+
+const SORTS: Record<string, (r: MockDnsRecord) => string | number> = {
+  type: (r) => r.type,
+  name: (r) => r.record_name,
+  ttl: (r) => r.ttl ?? -1,
 };
+
+// Mirrors worker/modules/dns/routes.ts's buildDnsInventoryResponse() closely
+// enough to exercise the real zone/page/sort query-param contract from the
+// browser, instead of a single static JSON blob — zone switching and
+// pagination are now real network round-trips, not client-side slicing.
+function mockDnsResponse(zones: MockZone[], url: URL) {
+  const zoneSummaries = zones.map((z) => ({
+    zone_name: z.zone_name,
+    record_count: z.records.length,
+  }));
+  const totalRecords = zoneSummaries.reduce((sum, z) => sum + z.record_count, 0);
+  const totalDangling = zones.reduce(
+    (sum, z) => sum + z.records.filter((r) => r.status === "critical").length,
+    0,
+  );
+
+  const requestedZone = url.searchParams.get("zone");
+  const selectedZoneName = requestedZone ?? zoneSummaries[0]?.zone_name ?? null;
+  const zoneRecords = zones.find((z) => z.zone_name === selectedZoneName)?.records ?? [];
+
+  const sortKey = url.searchParams.get("sort_key") ?? "name";
+  const sortDir = url.searchParams.get("sort_dir") === "desc" ? -1 : 1;
+  const sorted = [...zoneRecords].sort((a, b) => {
+    const av = SORTS[sortKey](a);
+    const bv = SORTS[sortKey](b);
+    const cmp = av < bv ? -1 : av > bv ? 1 : 0;
+    return cmp * sortDir;
+  });
+
+  const page = Number(url.searchParams.get("page") ?? "1");
+  const pageSize = Number(url.searchParams.get("page_size") ?? "50");
+  const start = (page - 1) * pageSize;
+  const pageRecords = sorted.slice(start, start + pageSize);
+
+  const critical = zoneRecords.find((r) => r.status === "critical") ?? null;
+
+  return {
+    run_id: "run-1",
+    evaluated_at: "2026-08-07T12:00:00Z",
+    total_records: totalRecords,
+    total_dangling: totalDangling,
+    zone_summaries: zoneSummaries,
+    selected_zone: selectedZoneName,
+    critical_finding: critical
+      ? { record_name: critical.record_name, reason: critical.reason }
+      : null,
+    records: pageRecords,
+    records_pagination: {
+      page,
+      page_size: pageSize,
+      total: zoneRecords.length,
+      total_pages: Math.max(1, Math.ceil(zoneRecords.length / pageSize)),
+    },
+  };
+}
+
+function routeDnsInventory(page: import("@playwright/test").Page, zones: MockZone[]) {
+  return page.route("**/api/dns/inventory*", (route) => {
+    const url = new URL(route.request().url());
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(mockDnsResponse(zones, url)),
+    });
+  });
+}
 
 test.beforeEach(async ({ page }) => {
   await page.route("**/api/exposure/inventory", (route) =>
@@ -101,19 +186,14 @@ test.beforeEach(async ({ page }) => {
       contentType: "application/json",
       body: JSON.stringify({ run_id: null, evaluated_at: null, workers: [] }),
     }));
-  await page.route("**/api/dns/inventory", (route) =>
-    route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify(MOCK_DNS_INVENTORY),
-    }));
+  await routeDnsInventory(page, MOCK_ZONES);
   await page.route("**/api/audit/summary", (route) =>
     route.fulfill({
       status: 200,
       contentType: "application/json",
       body: JSON.stringify({ modules: [], unavailable_sources: [] }),
     }));
-  await page.route("**/api/workers/dashboard", (route) =>
+  await page.route("**/api/workers/dashboard*", (route) =>
     route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -129,6 +209,7 @@ test.beforeEach(async ({ page }) => {
           cpu_p99_ms: null,
         },
         workers: [],
+        workers_pagination: { page: 1, page_size: 50, total: 0, total_pages: 1 },
         recent_changes: [],
         unavailable: [],
       }),
@@ -253,22 +334,65 @@ test("specs/013 US3 — a record pointing at a Cloudflare platform domain shows 
 });
 
 test("specs/013 US1 — a zone with zero records shows its own empty state when selected", async ({ page }) => {
-  await page.unroute("**/api/dns/inventory");
-  await page.route("**/api/dns/inventory", (route) =>
-    route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({
-        ...MOCK_DNS_INVENTORY,
-        zones: [
-          ...MOCK_DNS_INVENTORY.zones,
-          { zone_name: "empty.example", records: [] },
-        ],
-      }),
-    }));
+  await page.unroute("**/api/dns/inventory*");
+  await routeDnsInventory(page, [...MOCK_ZONES, { zone_name: "empty.example", records: [] }]);
   await page.goto("/");
   await page.getByRole("button", { name: "DNS" }).click();
   await page.getByRole("button", { name: "empty.example" }).click();
 
   await expect(page.getByText("No DNS records in empty.example")).toBeVisible();
+});
+
+test("specs/020 US2 — a zone's records paginate: page footer, next/prev, boundary disabled states", async ({ page }) => {
+  const bigZone: MockZone = {
+    zone_name: "big.example",
+    records: Array.from({ length: 5 }, (_, i) => ({
+      record_name: `r${i}.big.example`,
+      type: "A",
+      content: `10.0.0.${i}`,
+      proxy_capable: true,
+      proxied: false,
+      ttl: 300,
+      is_platform_target: false,
+      status: "safe",
+      reason: "proxied through Cloudflare",
+    })),
+  };
+  await page.unroute("**/api/dns/inventory*");
+  await page.route("**/api/dns/inventory*", (route) => {
+    const url = new URL(route.request().url());
+    const body = mockDnsResponse([bigZone], url);
+    // Force a small page size so 5 records need multiple pages, without a
+    // real backend page_size query param round-trip in this test.
+    const pageSize = 2;
+    const page_ = Number(url.searchParams.get("page") ?? "1");
+    const start = (page_ - 1) * pageSize;
+    body.records = bigZone.records.slice(start, start + pageSize) as typeof body.records;
+    body.records_pagination = {
+      page: page_,
+      page_size: pageSize,
+      total: bigZone.records.length,
+      total_pages: Math.ceil(bigZone.records.length / pageSize),
+    };
+    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: "DNS" }).click();
+
+  await expect(row(page, "big.example", "A", "r0.big.example", "10.0.0.0")).toBeVisible();
+  await expect(row(page, "big.example", "A", "r2.big.example", "10.0.0.2")).not.toBeVisible();
+  await expect(page.getByTestId("pagination-status")).toHaveText("5 total · page 1 of 3");
+  await expect(page.getByTestId("pagination-prev")).toBeDisabled();
+
+  await page.getByTestId("pagination-next").click();
+  await expect(row(page, "big.example", "A", "r2.big.example", "10.0.0.2")).toBeVisible();
+  await expect(page.getByTestId("pagination-status")).toHaveText("5 total · page 2 of 3");
+});
+
+test("specs/020 US2 — switching zones resets to page 1", async ({ page }) => {
+  await page.getByRole("button", { name: "second.example" }).click();
+  await expect(page.getByTestId("findings-row-second.example:A:second.example:203.0.113.99"))
+    .toBeVisible();
+  // A small, single-page zone shows no pagination footer at all (FR-004).
+  await expect(page.getByTestId("pagination-footer")).not.toBeVisible();
 });
