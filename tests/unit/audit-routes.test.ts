@@ -140,6 +140,235 @@ Deno.test("GET /log - forwards truncated: true when the fetch cap is hit (specs/
   assertEquals(body.truncated, true);
 });
 
+// specs/022-audit-list-pagination — a mock D1 that returns real alert rows
+// across several distinct sources' alertsTable, matching the exact column
+// shape queryOneSource() (inbox.ts) SELECTs: id, entity_label,
+// previous_status, new_status, detected_at, acknowledged_at. Only tables
+// named below produce rows; every other AUDIT_SOURCES table resolves to
+// empty, matching how `.all()` on an unmocked-but-recognized table behaves.
+function createAlertsMockD1(
+  rowsByTable: Record<string, {
+    id: string;
+    entity_label: string;
+    previous_status: string | null;
+    new_status: string;
+    detected_at: string;
+    acknowledged_at: string | null;
+  }[]>,
+): D1Database {
+  return {
+    prepare(sql: string) {
+      const table = sql.match(/FROM\s+(\w+)/i)?.[1] ?? "";
+      const statement = {
+        bind() {
+          return statement;
+        },
+        all<T>() {
+          return Promise.resolve({ results: (rowsByTable[table] ?? []) as T[] });
+        },
+      };
+      return statement;
+    },
+  } as unknown as D1Database;
+}
+
+function alertRow(overrides: Partial<{
+  id: string;
+  entity_label: string;
+  previous_status: string | null;
+  new_status: string;
+  detected_at: string;
+  acknowledged_at: string | null;
+}> = {}) {
+  return {
+    id: "a1",
+    entity_label: "example.com",
+    previous_status: "safe",
+    new_status: "warning",
+    detected_at: "2026-08-10T00:00:00Z",
+    acknowledged_at: null,
+    ...overrides,
+  };
+}
+
+// specs/022-audit-list-pagination — same two-query-per-source mock shape
+// tests/unit/audit-changes.test.ts uses directly against computeChanges();
+// duplicated here (rather than imported) since it's a small, route-test-
+// local fixture, not shared production code.
+function createMockChangesD1(
+  latestRows: Record<string, Record<string, unknown>[]>,
+  atCutoffRows: Record<string, Record<string, unknown>[]>,
+): D1Database {
+  return {
+    prepare(sql: string) {
+      const isCutoffQuery = /evaluated_at <= \?/.test(sql);
+      const table = sql.match(/FROM\s+(\w+)/i)?.[1] ?? "";
+      const statement = {
+        bind() {
+          return statement;
+        },
+        all<T>() {
+          const rows = isCutoffQuery ? (atCutoffRows[table] ?? []) : (latestRows[table] ?? []);
+          return Promise.resolve({ results: rows as T[] });
+        },
+      };
+      return statement;
+    },
+  } as unknown as D1Database;
+}
+
+Deno.test("GET /alerts - paginates the merged cross-source result, page_size honored", async () => {
+  const db = createAlertsMockD1({
+    exposure_alerts: [
+      alertRow({ id: "a1", entity_label: "b-host", detected_at: "2026-08-10T00:00:00Z" }),
+    ],
+    dns_alerts: [
+      alertRow({ id: "a2", entity_label: "a-record", detected_at: "2026-08-11T00:00:00Z" }),
+    ],
+    zt_app_alerts: [
+      alertRow({ id: "a3", entity_label: "c-app", detected_at: "2026-08-09T00:00:00Z" }),
+    ],
+  });
+
+  const res = await app(db)("/alerts?page=1&page_size=2");
+  assertEquals(res.status, 200);
+  const body = await res.json() as {
+    alerts: { id: string }[];
+    pagination: { page: number; page_size: number; total: number; total_pages: number };
+  };
+
+  assertEquals(body.alerts.length, 2);
+  assertEquals(body.pagination, { page: 1, page_size: 2, total: 3, total_pages: 2 });
+});
+
+Deno.test("GET /alerts - default sort is by detected_at descending (unchanged from pre-pagination behavior)", async () => {
+  const db = createAlertsMockD1({
+    exposure_alerts: [alertRow({ id: "older", detected_at: "2026-08-09T00:00:00Z" })],
+    dns_alerts: [alertRow({ id: "newer", detected_at: "2026-08-11T00:00:00Z" })],
+  });
+
+  const res = await app(db)("/alerts");
+  const body = await res.json() as { alerts: { id: string }[] };
+
+  assertEquals(body.alerts.map((a) => a.id), ["newer", "older"]);
+});
+
+Deno.test("GET /alerts - sort_key=severity ranks critical first, matching Overview's ordering", async () => {
+  const db = createAlertsMockD1({
+    exposure_alerts: [alertRow({ id: "warn", new_status: "warning" })],
+    dns_alerts: [alertRow({ id: "crit", new_status: "critical" })],
+    zt_app_alerts: [alertRow({ id: "safe", new_status: "safe" })],
+  });
+
+  const res = await app(db)("/alerts?sort_key=severity");
+  const body = await res.json() as { alerts: { id: string }[] };
+
+  assertEquals(body.alerts.map((a) => a.id), ["crit", "warn", "safe"]);
+});
+
+Deno.test("GET /alerts - an invalid sort_key returns 400, not a silent fallback", async () => {
+  const res = await app(createAlertsMockD1({}))("/alerts?sort_key=nope");
+  assertEquals(res.status, 400);
+});
+
+Deno.test("GET /alerts - an invalid page_size returns 400, not a silent fallback", async () => {
+  const res = await app(createAlertsMockD1({}))("/alerts?page_size=0");
+  assertEquals(res.status, 400);
+});
+
+Deno.test("GET /alerts - critical_alert surfaces from the full set even when it's not on the requested page", async () => {
+  const db = createAlertsMockD1({
+    exposure_alerts: [alertRow({ id: "a1", detected_at: "2026-08-11T00:00:00Z" })],
+    dns_alerts: [
+      alertRow({ id: "crit", new_status: "critical", detected_at: "2026-08-09T00:00:00Z" }),
+    ],
+  });
+
+  // page_size=1, default sort (detected desc) puts "a1" (newer) on page 1
+  // and "crit" (older) on page 2 — critical_alert must still be non-null.
+  const res = await app(db)("/alerts?page=1&page_size=1");
+  const body = await res.json() as {
+    alerts: { id: string }[];
+    critical_alert: { id: string } | null;
+  };
+
+  assertEquals(body.alerts.map((a) => a.id), ["a1"]);
+  assertEquals(body.critical_alert?.id, "crit");
+});
+
+Deno.test("GET /alerts - critical_alert is null when nothing is critical", async () => {
+  const db = createAlertsMockD1({
+    exposure_alerts: [alertRow({ id: "a1", new_status: "warning" })],
+  });
+
+  const res = await app(db)("/alerts");
+  const body = await res.json() as { critical_alert: unknown };
+
+  assertEquals(body.critical_alert, null);
+});
+
+Deno.test("GET /changes - paginates the merged cross-source result", async () => {
+  const db = createMockChangesD1(
+    {
+      exposure_findings: [{ hostname: "b-host", status: "critical" }],
+      dns_findings: [{
+        zone_name: "a-record",
+        record_name: "a-record",
+        record_type: "A",
+        status: "warning",
+      }],
+    },
+    {
+      exposure_findings: [{ hostname: "b-host", status: "safe" }],
+      dns_findings: [{
+        zone_name: "a-record",
+        record_name: "a-record",
+        record_type: "A",
+        status: "safe",
+      }],
+    },
+  );
+
+  const res = await app(db)("/changes?since=2026-08-09T00:00:00Z&page_size=1");
+  assertEquals(res.status, 200);
+  const body = await res.json() as {
+    changes: { entity_label: string }[];
+    pagination: { total: number; total_pages: number };
+  };
+
+  assertEquals(body.changes.length, 1);
+  assertEquals(body.pagination.total, 2);
+  assertEquals(body.pagination.total_pages, 2);
+});
+
+Deno.test("GET /changes - sort_key=severity ranks critical first", async () => {
+  const db = createMockChangesD1(
+    {
+      exposure_findings: [{ hostname: "warn-host", status: "warning" }],
+      dns_findings: [{
+        zone_name: "crit-rec",
+        record_name: "crit-rec",
+        record_type: "A",
+        status: "critical",
+      }],
+    },
+    {
+      exposure_findings: [{ hostname: "warn-host", status: "safe" }],
+      dns_findings: [{
+        zone_name: "crit-rec",
+        record_name: "crit-rec",
+        record_type: "A",
+        status: "safe",
+      }],
+    },
+  );
+
+  const res = await app(db)("/changes?since=2026-08-09T00:00:00Z&sort_key=severity");
+  const body = await res.json() as { changes: { entity_label: string }[] };
+
+  assertEquals(body.changes[0].entity_label.includes("crit-rec"), true);
+});
+
 Deno.test("GET /changes - 400 on a malformed since value", async () => {
   const res = await app(NOOP_DB)("/changes?since=banana");
   assertEquals(res.status, 400);

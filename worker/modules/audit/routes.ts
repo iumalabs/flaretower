@@ -1,10 +1,16 @@
 import { Hono } from "hono";
 import { requireRole } from "../../auth/access-jwt.ts";
-import { acknowledgeAlert, queryUnifiedAlerts } from "./inbox.ts";
-import { computeChanges } from "./changes.ts";
+import { acknowledgeAlert, queryUnifiedAlerts, type UnifiedAlert } from "./inbox.ts";
+import { type ChangeEntry, computeChanges } from "./changes.ts";
 import { computePostureSummary } from "./summary.ts";
 import type { UnavailableSource } from "./sources.ts";
 import { fetchAccountAuditLog } from "../workers-dashboard/audit-log.ts";
+import {
+  type PageQuery,
+  paginateArray,
+  type PaginationEnvelope,
+  PaginationParamError,
+} from "../../pagination.ts";
 
 // Same wire shape from all three endpoints (FR-010 / spec.md Edge Cases
 // bullet 2) — a source whose D1 read rejected outright, distinct from
@@ -25,20 +31,78 @@ const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 
 const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
 
+// specs/022-audit-list-pagination — shared critical-first ranking for the
+// `severity` sort key on both /alerts and /changes, moved server-side from
+// OverviewPage.tsx's identical client-side SEVERITY_ORDER (data-model.md) so
+// Overview's own bounded top-N request can ask for it directly. Falls back
+// to sorting last (Infinity) for a status this map doesn't recognize,
+// rather than throwing — the alert/change itself is still valid data.
+const SEVERITY_RANK: Record<string, number> = {
+  critical: 0,
+  warning: 1,
+  safe: 2,
+  not_evaluated: 3,
+};
+function severityRank(status: string): number {
+  return SEVERITY_RANK[status] ?? Infinity;
+}
+
+const ALERT_SORT: Record<string, (a: UnifiedAlert) => string | number> = {
+  entity: (a) => a.entityLabel,
+  // Negated so paginateArray's default ascending direction yields
+  // newest-first — matching queryUnifiedAlerts()'s own pre-pagination sort
+  // (`detectedAt DESC`) as the default view when no sort_dir is requested.
+  // No UI column exposes this key for an explicit click-to-sort toggle
+  // (ALERT_COLUMNS only makes "entity" clickable), so there's no user-facing
+  // direction-icon mismatch to worry about.
+  detected: (a) => -Date.parse(a.detectedAt),
+  severity: (a) => severityRank(a.newStatus),
+};
+
+function alertJson(a: UnifiedAlert) {
+  return {
+    id: a.id,
+    module: a.module,
+    kind: a.kind,
+    entity_label: a.entityLabel,
+    previous_status: a.previousStatus,
+    new_status: a.newStatus,
+    detected_at: a.detectedAt,
+    acknowledged_at: a.acknowledgedAt,
+  };
+}
+
 auditRoutes.get("/alerts", async (c) => {
   const { alerts, unavailableSources } = await queryUnifiedAlerts(c.env.DB);
+
+  // specs/022-audit-list-pagination — computed against the full pre-
+  // pagination array, not `paged.items`, so a critical alert on page 2
+  // still surfaces the banner (mirrors every other module's server-side
+  // critical_finding pattern, spec 020). `alerts` is already sorted
+  // detectedAt DESC by queryUnifiedAlerts(), so this picks the most
+  // recently detected critical alert, matching the pre-pagination
+  // frontend's own `alertRows.find(...)` behavior exactly.
+  const criticalAlert = alerts.find((a) => a.newStatus === "critical") ?? null;
+
+  let paged: { items: UnifiedAlert[]; pagination: PaginationEnvelope };
+  try {
+    const query: PageQuery = {
+      page: c.req.query("page"),
+      page_size: c.req.query("page_size"),
+      sort_key: c.req.query("sort_key"),
+      sort_dir: c.req.query("sort_dir"),
+    };
+    paged = paginateArray(alerts, query, ALERT_SORT, "detected");
+  } catch (err) {
+    if (err instanceof PaginationParamError) return c.json({ error: err.message }, 400);
+    throw err;
+  }
+
   return c.json({
-    alerts: alerts.map((a) => ({
-      id: a.id,
-      module: a.module,
-      kind: a.kind,
-      entity_label: a.entityLabel,
-      previous_status: a.previousStatus,
-      new_status: a.newStatus,
-      detected_at: a.detectedAt,
-      acknowledged_at: a.acknowledgedAt,
-    })),
+    alerts: paged.items.map(alertJson),
+    critical_alert: criticalAlert ? alertJson(criticalAlert) : null,
     unavailable_sources: toUnavailableSourcesJson(unavailableSources),
+    pagination: paged.pagination,
   });
 });
 
@@ -58,6 +122,11 @@ auditRoutes.post("/alerts/:module/:kind/:id/acknowledge", requireRole("admin"), 
   return c.json({ id: result.id, acknowledged_at: result.acknowledgedAt });
 });
 
+const CHANGE_SORT: Record<string, (ch: ChangeEntry) => string | number> = {
+  entity: (ch) => ch.entityLabel,
+  severity: (ch) => severityRank(ch.currentStatus),
+};
+
 auditRoutes.get("/changes", async (c) => {
   const now = new Date();
   const sinceParam = c.req.query("since");
@@ -74,10 +143,24 @@ auditRoutes.get("/changes", async (c) => {
 
   const { changes, unavailableSources } = await computeChanges(c.env.DB, since);
 
+  let paged: { items: ChangeEntry[]; pagination: PaginationEnvelope };
+  try {
+    const query: PageQuery = {
+      page: c.req.query("page"),
+      page_size: c.req.query("page_size"),
+      sort_key: c.req.query("sort_key"),
+      sort_dir: c.req.query("sort_dir"),
+    };
+    paged = paginateArray(changes, query, CHANGE_SORT, "entity");
+  } catch (err) {
+    if (err instanceof PaginationParamError) return c.json({ error: err.message }, 400);
+    throw err;
+  }
+
   return c.json({
     since,
     until: now.toISOString(),
-    changes: changes.map((ch) => ({
+    changes: paged.items.map((ch) => ({
       module: ch.module,
       kind: ch.kind,
       entity_label: ch.entityLabel,
@@ -85,6 +168,7 @@ auditRoutes.get("/changes", async (c) => {
       current_status: ch.currentStatus,
     })),
     unavailable_sources: toUnavailableSourcesJson(unavailableSources),
+    pagination: paged.pagination,
   });
 });
 
