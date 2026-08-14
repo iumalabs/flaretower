@@ -8,6 +8,7 @@ import {
   type FindingsTableRow,
 } from "../components/FindingsTable.tsx";
 import { AlertBanner } from "../components/AlertBanner.tsx";
+import { TabStrip } from "../components/TabStrip.tsx";
 
 interface CheckFinding {
   status: ExposureStatus;
@@ -351,21 +352,6 @@ function zoneDetail(zone: ZoneFinding): JSX.Element {
   );
 }
 
-function SectionHeading({ children }: { children: string }): JSX.Element {
-  return (
-    <h2
-      style={{
-        fontFamily: "var(--font-sans)",
-        fontSize: "var(--text-section-size)",
-        fontWeight: "var(--text-section-weight)" as unknown as number,
-        margin: "24px 0 12px",
-      }}
-    >
-      {children}
-    </h2>
-  );
-}
-
 export function SecurityPostureInventory(): JSX.Element {
   const [data, setData] = useState<SecurityInventoryResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -525,92 +511,109 @@ export function SecurityPostureInventory(): JSX.Element {
         />
       )}
 
-      <FindingsTable
-        columns={CHECK_COLUMNS}
-        rows={rows}
-        loadingLabel="Loading security posture inventory…"
-        emptyState={{
-          heading: "No zones in this account",
-          description: "This account has no zones to evaluate.",
-        }}
-        pagination={zonePagination}
+      <TabStrip
+        tabs={[
+          {
+            key: "zones",
+            label: "Zones",
+            content: (
+              <FindingsTable
+                columns={CHECK_COLUMNS}
+                rows={rows}
+                loadingLabel="Loading security posture inventory…"
+                emptyState={{
+                  heading: "No zones in this account",
+                  description: "This account has no zones to evaluate.",
+                }}
+                pagination={zonePagination}
+              />
+            ),
+          },
+          {
+            key: "certificates",
+            label: "Certificates",
+            content: data && data.certificates === null
+              ? (
+                <p style={{ color: "var(--status-critical-fg)" }}>
+                  Certificates could not be evaluated.
+                </p>
+              )
+              : (
+                <FindingsTable
+                  columns={CERTIFICATE_COLUMNS}
+                  rows={data
+                    ? data.certificates!.map((c) => ({
+                      id: `cert:${c.zone_id}`,
+                      status: c.status,
+                      data: c,
+                    }))
+                    : null}
+                  loadingLabel="Loading certificates…"
+                  emptyState={{
+                    heading: "No certificates found",
+                    description: "This account has no zones with an active certificate.",
+                  }}
+                  pagination={certPagination}
+                />
+              ),
+          },
+          {
+            key: "waf-rules",
+            label: "WAF custom rules",
+            content: data && data.waf_custom_rules === null
+              ? (
+                <p style={{ color: "var(--status-critical-fg)" }}>
+                  WAF custom rules could not be evaluated.
+                </p>
+              )
+              : (
+                <FindingsTable
+                  columns={WAF_CUSTOM_RULE_COLUMNS}
+                  rows={data
+                    ? data.waf_custom_rules!.map((r, i) => ({
+                      id: `waf-rule:${r.zone_id}:${i}`,
+                      status: r.status,
+                      data: r,
+                    }))
+                    : null}
+                  loadingLabel="Loading WAF custom rules…"
+                  emptyState={{
+                    heading: "No custom WAF rules configured",
+                    description: "No zone in this account has a custom WAF rule deployed.",
+                  }}
+                  pagination={wafRulePagination}
+                />
+              ),
+          },
+          {
+            key: "turnstile",
+            label: "Turnstile widgets",
+            content: data && data.turnstile_widgets === null
+              ? (
+                <p style={{ color: "var(--status-critical-fg)" }}>
+                  Turnstile widgets could not be evaluated.
+                </p>
+              )
+              : data && data.turnstile_widgets !== null && data.turnstile_widgets.length === 0
+              ? <p style={{ color: "var(--fg-muted)" }}>No Turnstile widgets configured.</p>
+              : data
+              ? (
+                <ul style={{ margin: 0, paddingLeft: 20 }}>
+                  {data.turnstile_widgets!.map((w) => (
+                    <li
+                      key={w.sitekey}
+                      style={{ fontFamily: "var(--font-mono)", fontSize: "var(--text-code-size)" }}
+                    >
+                      {w.name}{" "}
+                      <span style={{ color: "var(--fg-faint)" }}>· {w.domains.join(", ")}</span>
+                    </li>
+                  ))}
+                </ul>
+              )
+              : null,
+          },
+        ]}
       />
-
-      <SectionHeading>Certificates</SectionHeading>
-      {data && data.certificates === null
-        ? (
-          <p style={{ color: "var(--status-critical-fg)" }}>
-            Certificates could not be evaluated.
-          </p>
-        )
-        : (
-          <FindingsTable
-            columns={CERTIFICATE_COLUMNS}
-            rows={data
-              ? data.certificates!.map((c) => ({
-                id: `cert:${c.zone_id}`,
-                status: c.status,
-                data: c,
-              }))
-              : null}
-            loadingLabel="Loading certificates…"
-            emptyState={{
-              heading: "No certificates found",
-              description: "This account has no zones with an active certificate.",
-            }}
-            pagination={certPagination}
-          />
-        )}
-
-      <SectionHeading>WAF custom rules</SectionHeading>
-      {data && data.waf_custom_rules === null
-        ? (
-          <p style={{ color: "var(--status-critical-fg)" }}>
-            WAF custom rules could not be evaluated.
-          </p>
-        )
-        : (
-          <FindingsTable
-            columns={WAF_CUSTOM_RULE_COLUMNS}
-            rows={data
-              ? data.waf_custom_rules!.map((r, i) => ({
-                id: `waf-rule:${r.zone_id}:${i}`,
-                status: r.status,
-                data: r,
-              }))
-              : null}
-            loadingLabel="Loading WAF custom rules…"
-            emptyState={{
-              heading: "No custom WAF rules configured",
-              description: "No zone in this account has a custom WAF rule deployed.",
-            }}
-            pagination={wafRulePagination}
-          />
-        )}
-
-      <SectionHeading>Turnstile widgets</SectionHeading>
-      {data && data.turnstile_widgets === null
-        ? (
-          <p style={{ color: "var(--status-critical-fg)" }}>
-            Turnstile widgets could not be evaluated.
-          </p>
-        )
-        : data && data.turnstile_widgets !== null && data.turnstile_widgets.length === 0
-        ? <p style={{ color: "var(--fg-muted)" }}>No Turnstile widgets configured.</p>
-        : data
-        ? (
-          <ul style={{ margin: 0, paddingLeft: 20 }}>
-            {data.turnstile_widgets!.map((w) => (
-              <li
-                key={w.sitekey}
-                style={{ fontFamily: "var(--font-mono)", fontSize: "var(--text-code-size)" }}
-              >
-                {w.name} <span style={{ color: "var(--fg-faint)" }}>· {w.domains.join(", ")}</span>
-              </li>
-            ))}
-          </ul>
-        )
-        : null}
     </div>
   );
 }
