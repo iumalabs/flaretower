@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.7.2](https://github.com/iumalabs/flaretower/compare/v1.7.1...v1.7.2) (2026-08-14)
+
+
+### Bug Fixes
+
+* **workers-dashboard:** show a distinct message when the audit log source is unavailable ([#394](https://github.com/iumalabs/flaretower/issues/394)) ([2aaca4f](https://github.com/iumalabs/flaretower/commit/2aaca4f09d7a241229833fce2e8424389e583306))
+
 ## [1.7.1](https://github.com/iumalabs/flaretower/compare/v1.7.0...v1.7.1) (2026-08-14)
 
 
