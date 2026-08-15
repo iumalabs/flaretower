@@ -24,6 +24,13 @@
   --surface-nav-active: #191310;
   --fg-nav-inactive: #8e827a;
 
+  /* Elevated surfaces (docs/design.zip's nav-item hover tooltip is the only
+     current consumer) — a border and shadow distinct from the flat
+     --border hairline used everywhere else, since this is the one place
+     content visually lifts off the page instead of sitting flush on it. */
+  --border-elevated: #3a332e;
+  --shadow-elevated: 0 12px 30px rgba(0, 0, 0, 0.62);
+
   /* Text */
   --fg-primary: #f2ebe3;
   --fg-secondary: #c9bdb2;
