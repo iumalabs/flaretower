@@ -1,4 +1,4 @@
-import type { JSX } from "react";
+import { type JSX, useState } from "react";
 import { Logo } from "./Logo.tsx";
 import type { NavItem } from "../nav-items.ts";
 
@@ -22,6 +22,11 @@ export function Sidebar(
   { items, activeKey, onSelect, badges = [], footer }: SidebarProps,
 ): JSX.Element {
   const badgeByKey = new Map(badges.map((b) => [b.key, b.count]));
+  // docs/design.zip's own nav() hover tooltip (state.tip + onMouseEnter/
+  // onMouseLeave) — one item's tip shown at a time, tracked by key. Also
+  // wired to focus/blur (the design source only covers mouse) so keyboard
+  // users tabbing through the nav get the same detail.
+  const [tipKey, setTipKey] = useState<string | null>(null);
 
   return (
     <div
@@ -56,7 +61,12 @@ export function Sidebar(
               key={item.key}
               type="button"
               onClick={() => onSelect(item.key)}
+              onMouseEnter={() => setTipKey(item.key)}
+              onMouseLeave={() => setTipKey((k) => (k === item.key ? null : k))}
+              onFocus={() => setTipKey(item.key)}
+              onBlur={() => setTipKey((k) => (k === item.key ? null : k))}
               aria-current={active ? "page" : undefined}
+              aria-describedby={tipKey === item.key ? `nav-tip-${item.key}` : undefined}
               style={{
                 display: "flex",
                 alignItems: "center",
@@ -69,6 +79,7 @@ export function Sidebar(
                 cursor: "pointer",
                 font: "inherit",
                 textAlign: "left",
+                position: "relative",
               }}
             >
               <span style={{ display: "flex", alignItems: "center", gap: 9 }}>
@@ -101,6 +112,72 @@ export function Sidebar(
                 >
                   {badgeCount}
                 </span>
+              )}
+              {tipKey === item.key && (
+                <div
+                  id={`nav-tip-${item.key}`}
+                  role="tooltip"
+                  data-testid={`nav-tooltip-${item.key}`}
+                  style={{
+                    position: "absolute",
+                    left: "100%",
+                    top: -7,
+                    marginLeft: 13,
+                    width: 252,
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 6,
+                    background: "var(--surface-2)",
+                    border: "1px solid var(--border-elevated)",
+                    borderLeft: "2px solid var(--brand-primary)",
+                    boxShadow: "var(--shadow-elevated)",
+                    padding: "11px 13px",
+                    zIndex: 60,
+                    pointerEvents: "none",
+                    textAlign: "left",
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      gap: 10,
+                    }}
+                  >
+                    <div
+                      style={{
+                        fontFamily: "var(--font-mono)",
+                        fontSize: 9.5,
+                        letterSpacing: "0.16em",
+                        color: "var(--brand-primary)",
+                        textTransform: "uppercase",
+                      }}
+                    >
+                      {item.label}
+                    </div>
+                    <div
+                      style={{
+                        fontFamily: "var(--font-mono)",
+                        fontSize: 9.5,
+                        letterSpacing: "0.1em",
+                        color: "var(--fg-disabled)",
+                      }}
+                    >
+                      {item.tooltip.tag}
+                    </div>
+                  </div>
+                  <div
+                    style={{
+                      fontFamily: "var(--font-sans)",
+                      fontSize: 11.5,
+                      lineHeight: 1.5,
+                      color: "var(--fg-secondary)",
+                    }}
+                  >
+                    {item.tooltip.description}
+                  </div>
+                </div>
               )}
             </button>
           );
