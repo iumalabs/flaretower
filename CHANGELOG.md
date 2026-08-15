@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.10.0](https://github.com/iumalabs/flaretower/compare/v1.9.0...v1.10.0) (2026-08-15)
+
+
+### Features
+
+* **sidebar:** add hover tooltip to nav items ([#406](https://github.com/iumalabs/flaretower/issues/406)) ([a55d746](https://github.com/iumalabs/flaretower/commit/a55d746dc164ad5b2d7793b58bcee1bc72482e61))
+
 ## [1.9.0](https://github.com/iumalabs/flaretower/compare/v1.8.0...v1.9.0) (2026-08-14)
 
 
