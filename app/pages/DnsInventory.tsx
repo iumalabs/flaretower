@@ -109,7 +109,7 @@ const COLUMNS: FindingsTableColumn<FlatFinding>[] = [
   {
     key: "type",
     label: "Type",
-    width: "8%",
+    width: "6%",
     sortValue: (r) => r.type,
     render: (r) => (
       <span
@@ -126,7 +126,7 @@ const COLUMNS: FindingsTableColumn<FlatFinding>[] = [
   {
     key: "name",
     label: "Name",
-    width: "26%",
+    width: "20%",
     sortValue: (r) => r.record_name,
     render: (r) => (
       <span
@@ -143,7 +143,7 @@ const COLUMNS: FindingsTableColumn<FlatFinding>[] = [
   {
     key: "content",
     label: "Content",
-    width: "26%",
+    width: "18%",
     render: (r) => (
       <span style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 0 }}>
         <span
@@ -178,13 +178,13 @@ const COLUMNS: FindingsTableColumn<FlatFinding>[] = [
   {
     key: "proxy",
     label: "Proxy",
-    width: "12%",
+    width: "10%",
     render: (r) => <ProxyStatusPill proxyCapable={r.proxy_capable} proxied={r.proxied} />,
   },
   {
     key: "ttl",
     label: "TTL",
-    width: "8%",
+    width: "6%",
     sortValue: (r) => r.ttl ?? -1,
     render: (r) => (
       <span
@@ -201,6 +201,18 @@ const COLUMNS: FindingsTableColumn<FlatFinding>[] = [
   {
     key: "reason",
     label: "Finding",
+    // issue #409: deliberately left without an explicit width, same as
+    // before — FindingsTable gives an unwidthed column flex:1 of whatever
+    // the other 5 (all explicit %) columns don't claim, so it grows/shrinks
+    // to fill remaining space without ever forcing new horizontal overflow
+    // (an explicit % here, on top of the other columns' %s, would sum past
+    // 100% of the row plus the table's own fixed status/spacer columns,
+    // forcing a scrollbar that isn't needed today). The actual fix is the
+    // 5 columns above claiming less (was 80% combined, now 60%) so this
+    // column's flex:1 remainder is roughly double what it was — no longer
+    // too narrow for a full-sentence reason string like "DNS-only —
+    // bypasses Cloudflare protection", which used to wrap to 5 stacked
+    // lines and balloon that row's height far past its neighbors'.
     render: (r) => (
       <span style={{ fontSize: "var(--text-body-size)", color: "var(--fg-muted)" }}>
         {r.reason}

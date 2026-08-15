@@ -22,10 +22,20 @@ export function Sidebar(
   { items, activeKey, onSelect, badges = [], footer }: SidebarProps,
 ): JSX.Element {
   const badgeByKey = new Map(badges.map((b) => [b.key, b.count]));
-  // docs/design.zip's own nav() hover tooltip (state.tip + onMouseEnter/
-  // onMouseLeave) — one item's tip shown at a time, tracked by key. Also
-  // wired to focus/blur (the design source only covers mouse) so keyboard
-  // users tabbing through the nav get the same detail.
+  // The live Claude Design project's own nav() hover tooltip (state.tip +
+  // onMouseEnter/onMouseLeave, not in docs/design.zip which lags it) — one
+  // item's tip shown at a time, tracked by key. Also wired to focus/blur
+  // (the design source only covers mouse) so keyboard users tabbing
+  // through the nav get the same detail.
+  //
+  // issue #408: the design source floats this ~250px to the right of the
+  // nav item, which on a 214px sidebar lands it deep inside the main
+  // content pane — reproducibly hiding a CRITICAL-severity row on Exposure/
+  // DNS while a user is just scanning the sidebar. Rendered below (or
+  // above, for the last couple of items) the item instead, sized to the
+  // sidebar's own width, so it never overlaps content — a deliberate
+  // deviation from the design source for a real usability bug, not a
+  // faithfulness gap.
   const [tipKey, setTipKey] = useState<string | null>(null);
 
   return (
@@ -53,9 +63,12 @@ export function Sidebar(
       </div>
 
       <nav style={{ padding: "14px 10px", display: "flex", flexDirection: "column", gap: 2 }}>
-        {items.map((item) => {
+        {items.map((item, index) => {
           const active = item.key === activeKey;
           const badgeCount = badgeByKey.get(item.key);
+          // Flip the last couple of items' tooltips upward so they don't
+          // render below the nav list and get clipped by the footer block.
+          const tipAbove = index >= items.length - 2;
           return (
             <button
               key={item.key}
@@ -120,16 +133,26 @@ export function Sidebar(
                   data-testid={`nav-tooltip-${item.key}`}
                   style={{
                     position: "absolute",
-                    left: "100%",
-                    top: -7,
-                    marginLeft: 13,
-                    width: 252,
+                    // Stretches to the sidebar's own width (cancels nav's
+                    // 10px horizontal padding on both sides) instead of
+                    // floating right into the content pane — see issue
+                    // #408 in the comment above this component.
+                    left: -10,
+                    right: -10,
+                    ...(tipAbove
+                      ? { bottom: "100%", marginBottom: 6 }
+                      : { top: "100%", marginTop: 6 }),
                     display: "flex",
                     flexDirection: "column",
                     gap: 6,
                     background: "var(--surface-2)",
                     border: "1px solid var(--border-elevated)",
-                    borderLeft: "2px solid var(--brand-primary)",
+                    borderTop: tipAbove
+                      ? "1px solid var(--border-elevated)"
+                      : "2px solid var(--brand-primary)",
+                    borderBottom: tipAbove
+                      ? "2px solid var(--brand-primary)"
+                      : "1px solid var(--border-elevated)",
                     boxShadow: "var(--shadow-elevated)",
                     padding: "11px 13px",
                     zIndex: 60,
