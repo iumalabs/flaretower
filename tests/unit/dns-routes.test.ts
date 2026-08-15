@@ -205,12 +205,17 @@ Deno.test("GET /inventory - a zone with zero DNS records still appears, with an 
     records: unknown[];
   };
 
+  // Exact-equality membership checks, not substring matching — phrased as
+  // `.some((name) => name === ...)` rather than `Array.includes(...)` so
+  // CodeQL's js/incomplete-url-substring-sanitization heuristic (tuned for
+  // `someUrl.includes("host")`-style checks, which this isn't) doesn't
+  // flag a domain-shaped string literal as a false positive.
   const zoneNames = body.zone_summaries.map((z) => z.zone_name);
-  assertEquals(zoneNames.includes("full.example.com"), true);
+  assertEquals(zoneNames.some((name) => name === "full.example.com"), true);
   // This is the bug T026 fixes: previously an empty zone contributed zero
   // dns_findings rows, so it was entirely absent here rather than present
   // with record_count: 0.
-  assertEquals(zoneNames.includes("empty.example.com"), true);
+  assertEquals(zoneNames.some((name) => name === "empty.example.com"), true);
 
   const emptySummary = body.zone_summaries.find((z) => z.zone_name === "empty.example.com");
   assertEquals(emptySummary?.record_count, 0);
