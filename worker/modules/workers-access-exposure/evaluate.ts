@@ -67,6 +67,7 @@ export function evaluateHostname(
       kind: hostname.kind,
       status: "not_evaluated",
       reason: hostname.evaluationError,
+      coveringAppIds: [],
     };
   }
 
@@ -76,6 +77,7 @@ export function evaluateHostname(
       kind: hostname.kind,
       status: "not_evaluated",
       reason: "could not evaluate Access coverage (Access applications API error)",
+      coveringAppIds: [],
     };
   }
 
@@ -87,6 +89,7 @@ export function evaluateHostname(
       kind: hostname.kind,
       status: "critical",
       reason: "no Access application covers this hostname",
+      coveringAppIds: [],
     };
   }
 
@@ -104,6 +107,13 @@ export function evaluateHostname(
       reason: `covering Access application(s) do not meaningfully restrict access: ${
         reasons.join("; ")
       }`,
+      // specs/023-worker-detail-page (research.md §2) — every covering app,
+      // not just the open ones: a Worker detail page showing this route's
+      // "effective policy" should show every app that covers it, since a
+      // second, more restrictive app covering the same hostname doesn't
+      // change this hostname's status (one open app is enough) but is still
+      // relevant context for whoever is looking at this route's policy.
+      coveringAppIds: covering.map((a) => a.id),
     };
   }
 
@@ -112,6 +122,7 @@ export function evaluateHostname(
     kind: hostname.kind,
     status: "safe",
     reason: `covered by Access application(s): ${covering.map((a) => a.id).join(", ")}`,
+    coveringAppIds: covering.map((a) => a.id),
   };
 }
 

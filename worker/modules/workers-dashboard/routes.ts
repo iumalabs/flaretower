@@ -4,6 +4,7 @@ import { fetchWorkersAnalytics } from "./analytics.ts";
 import { fetchAccountAuditLog, filterWorkersRelevant } from "./audit-log.ts";
 import { getWorkerLastDeployTimes } from "./inventory.ts";
 import { classifyEnvironment, rollUpExposureStatus } from "./classify.ts";
+import { buildWorkerDetail, WORKER_NOT_FOUND } from "./detail.ts";
 import { type PageQuery, paginateArray, PaginationParamError } from "../../pagination.ts";
 import type {
   AccountSummary,
@@ -11,6 +12,7 @@ import type {
   RecentChangeEntry,
   UnavailableSource,
   WorkerDashboardRow,
+  WorkerDetail,
   WorkersDashboard,
 } from "./types.ts";
 
@@ -279,4 +281,47 @@ workersDashboardRoutes.get("/dashboard", async (c) => {
     ...serializeDashboard({ ...dashboard, workers: paged.workers }),
     workers_pagination: paged.pagination,
   });
+});
+
+// specs/023-worker-detail-page contracts/api.md
+export function serializeWorkerDetail(detail: WorkerDetail) {
+  return {
+    worker_name: detail.workerName,
+    environment: detail.environment,
+    routes: detail.routes.map((r) => ({
+      hostname: r.hostname,
+      kind: r.kind,
+      status: r.status,
+      reason: r.reason,
+      policy: r.policy
+        ? {
+          app_id: r.policy.appId,
+          app_name: r.policy.appName,
+          app_domain: r.policy.appDomain,
+          policy_rules: r.policy.policyRules,
+        }
+        : null,
+    })),
+    recent_changes: detail.recentChanges.map((c) => ({
+      occurred_at: c.occurredAt,
+      actor: c.actor,
+      actor_source: c.actorSource,
+      action: c.action,
+      target: c.target,
+      result_summary: c.resultSummary,
+    })),
+    cloudflare_url: detail.cloudflareUrl,
+    unavailable: detail.unavailable,
+  };
+}
+
+workersDashboardRoutes.get("/:worker_name/detail", async (c) => {
+  const workerName = c.req.param("worker_name");
+  const detail = await buildWorkerDetail(c.env, workerName);
+
+  if (detail === WORKER_NOT_FOUND) {
+    return c.json({ error: "worker not found in latest evaluation run" }, 404);
+  }
+
+  return c.json(serializeWorkerDetail(detail));
 });
