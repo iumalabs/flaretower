@@ -60,6 +60,18 @@ interface WorkersPageParams {
   sortDir: 1 | -1;
 }
 
+// specs/023-worker-detail-page (FR-011) — page/sort state and the row-click
+// callback are lifted up to App.tsx instead of local useState, so
+// navigating to a Worker's detail page and back preserves them.
+interface WorkersDashboardPageProps {
+  page: number;
+  sortKey: string | null;
+  sortDir: 1 | -1;
+  onPageChange: (page: number) => void;
+  onSortChange: (key: string) => void;
+  onSelectWorker: (workerName: string) => void;
+}
+
 async function fetchDashboard(params: WorkersPageParams): Promise<DashboardResponse> {
   const query = new URLSearchParams({ page: String(params.page) });
   if (params.sortKey) {
@@ -267,12 +279,11 @@ function RecentChangesPanel(
   );
 }
 
-export function WorkersDashboardPage(): JSX.Element {
+export function WorkersDashboardPage(
+  { page, sortKey, sortDir, onPageChange, onSortChange, onSelectWorker }: WorkersDashboardPageProps,
+): JSX.Element {
   const [data, setData] = useState<DashboardResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [page, setPage] = useState(1);
-  const [sortKey, setSortKey] = useState<string | null>(null);
-  const [sortDir, setSortDir] = useState<1 | -1>(1);
 
   useEffect(() => {
     fetchDashboard({ page, sortKey, sortDir })
@@ -285,7 +296,7 @@ export function WorkersDashboardPage(): JSX.Element {
           res.workers.length === 0 && res.workers_pagination.total > 0 &&
           page > res.workers_pagination.total_pages
         ) {
-          setPage(res.workers_pagination.total_pages);
+          onPageChange(res.workers_pagination.total_pages);
           return;
         }
         setData(res);
@@ -307,25 +318,15 @@ export function WorkersDashboardPage(): JSX.Element {
     }))
     : null;
 
-  function handleSortChange(key: string) {
-    if (sortKey === key) {
-      setSortDir((d) => (d === 1 ? -1 : 1));
-    } else {
-      setSortKey(key);
-      setSortDir(1);
-    }
-    setPage(1);
-  }
-
   const pagination: FindingsTablePagination | undefined = data
     ? {
       page: data.workers_pagination.page,
       pageSize: data.workers_pagination.page_size,
       total: data.workers_pagination.total,
-      onPageChange: setPage,
+      onPageChange,
       sortKey,
       sortDir,
-      onSortChange: handleSortChange,
+      onSortChange,
     }
     : undefined;
 
@@ -393,6 +394,7 @@ export function WorkersDashboardPage(): JSX.Element {
                 rows={rows}
                 loadingLabel="Loading Workers inventory…"
                 pagination={pagination}
+                onRowClick={(w) => onSelectWorker(w.worker_name)}
               />
             )}
         </div>

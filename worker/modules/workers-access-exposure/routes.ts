@@ -72,8 +72,8 @@ export async function runEvaluation(
       return [
         env.DB.prepare(
           `INSERT INTO exposure_findings
-             (id, worker_name, hostname, hostname_kind, status, reason, evaluated_at, run_id, run_trigger)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+             (id, worker_name, hostname, hostname_kind, status, reason, evaluated_at, run_id, run_trigger, covering_app_ids)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         ).bind(
           crypto.randomUUID(),
           worker.workerName,
@@ -84,6 +84,7 @@ export async function runEvaluation(
           evaluatedAt,
           runId,
           trigger,
+          "[]",
         ),
       ];
     }
@@ -91,8 +92,8 @@ export async function runEvaluation(
     return worker.hostnames.map((h) =>
       env.DB.prepare(
         `INSERT INTO exposure_findings
-           (id, worker_name, hostname, hostname_kind, status, reason, evaluated_at, run_id, run_trigger)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           (id, worker_name, hostname, hostname_kind, status, reason, evaluated_at, run_id, run_trigger, covering_app_ids)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       ).bind(
         crypto.randomUUID(),
         worker.workerName,
@@ -103,6 +104,7 @@ export async function runEvaluation(
         evaluatedAt,
         runId,
         trigger,
+        JSON.stringify(h.coveringAppIds),
       )
     );
   });
@@ -138,6 +140,53 @@ interface FindingRow {
   hostname_kind: string;
   status: string;
   reason: string;
+}
+
+export interface WorkerHostnameFinding {
+  hostname: string;
+  kind: string;
+  status: string;
+  reason: string;
+  // specs/023-worker-detail-page (research.md §2) — [] for rows predating
+  // migration 0014 (column is nullable) as well as the genuine no-coverage
+  // case; both mean "nothing to join against zt_app_findings for."
+  coveringAppIds: string[];
+}
+
+// specs/023-worker-detail-page (research.md §1): same latest-run-scoped query
+// GET /inventory below already runs, narrowed to one Worker — exported so
+// workers-dashboard/detail.ts can reuse it instead of re-deriving "the
+// latest run's rows for this Worker" independently. `null` return means the
+// Worker has no row at all (not even the no-hostnames marker) in the latest
+// run — the detail endpoint's not-found case (FR-008); an empty array means
+// the marker was present (the Worker legitimately has zero routes, FR-007).
+export async function getWorkerHostnames(
+  db: D1Database,
+  workerName: string,
+): Promise<WorkerHostnameFinding[] | null> {
+  const latest = await db.prepare(
+    `SELECT run_id FROM exposure_findings ORDER BY evaluated_at DESC LIMIT 1`,
+  ).first<{ run_id: string }>();
+
+  if (!latest) return null;
+
+  const { results: rows } = await db.prepare(
+    `SELECT hostname, hostname_kind, status, reason, covering_app_ids
+     FROM exposure_findings WHERE run_id = ? AND worker_name = ?
+     ORDER BY hostname`,
+  ).bind(latest.run_id, workerName).all<FindingRow & { covering_app_ids: string | null }>();
+
+  if (rows.length === 0) return null;
+
+  return rows
+    .filter((r) => r.hostname !== NO_HOSTNAMES_MARKER_HOSTNAME)
+    .map((r) => ({
+      hostname: r.hostname,
+      kind: r.hostname_kind,
+      status: r.status,
+      reason: r.reason,
+      coveringAppIds: r.covering_app_ids ? JSON.parse(r.covering_app_ids) as string[] : [],
+    }));
 }
 
 exposureRoutes.get("/inventory", async (c) => {

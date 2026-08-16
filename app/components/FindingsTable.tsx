@@ -45,6 +45,12 @@ interface FindingsTableProps<Row> {
   emptyState?: { heading: string; description: string; ctaLabel?: string; onCta?: () => void };
   loadingLabel?: string;
   pagination?: FindingsTablePagination;
+  // specs/023-worker-detail-page — navigates instead of the existing
+  // expand-in-place `row.detail` behavior when set (a row can't do both;
+  // no current caller needs to). Optional and additive — every existing
+  // caller that omits this keeps its current expand-or-nothing behavior
+  // unchanged.
+  onRowClick?: (row: Row) => void;
 }
 
 const STATUS_ORDER: ExposureStatus[] = ["critical", "warning", "safe", "not_evaluated"];
@@ -63,7 +69,7 @@ const STATUS_LABEL: Record<ExposureStatus, string> = {
 // findings share one table implementation instead of duplicating the
 // chrome per page (specs/009-design-system-alignment/research.md §4).
 export function FindingsTable<Row>(
-  { columns, rows, emptyState, loadingLabel, pagination }: FindingsTableProps<Row>,
+  { columns, rows, emptyState, loadingLabel, pagination, onRowClick }: FindingsTableProps<Row>,
 ): JSX.Element {
   const [filter, setFilter] = useState<ExposureStatus | null>(null);
   const [localSortKey, setLocalSortKey] = useState<string | null>(null);
@@ -279,17 +285,22 @@ export function FindingsTable<Row>(
                 }}
               >
                 <div
-                  role={row.detail ? "button" : undefined}
-                  tabIndex={row.detail ? 0 : undefined}
-                  aria-expanded={row.detail ? open : undefined}
-                  onClick={() => row.detail && setExpanded(open ? null : row.id)}
-                  onKeyDown={row.detail
+                  role={onRowClick || row.detail ? "button" : undefined}
+                  tabIndex={onRowClick || row.detail ? 0 : undefined}
+                  aria-expanded={!onRowClick && row.detail ? open : undefined}
+                  onClick={() => {
+                    if (onRowClick) onRowClick(row.data);
+                    else if (row.detail) setExpanded(open ? null : row.id);
+                  }}
+                  onKeyDown={onRowClick
+                    ? activateOnKey(() => onRowClick(row.data))
+                    : row.detail
                     ? activateOnKey(() => setExpanded(open ? null : row.id))
                     : undefined}
                   style={{
                     display: "flex",
                     alignItems: "center",
-                    cursor: row.detail ? "pointer" : undefined,
+                    cursor: onRowClick || row.detail ? "pointer" : undefined,
                   }}
                 >
                   <div

@@ -310,3 +310,65 @@ test("US3 — recent changes panel distinguishes an unavailable audit log source
   );
   await expect(page.getByText("No recent Workers-related changes.")).not.toBeVisible();
 });
+
+// specs/023-worker-detail-page FR-011
+test("specs/023 FR-011 — navigating to a Worker's detail page and back preserves the table's page/sort state", async ({ page }) => {
+  const allWorkers = Array.from({ length: 5 }, (_, i) => ({
+    worker_name: `worker-${i}`,
+    environment: "production",
+    route_count: 1,
+    last_deploy_at: null,
+    requests_24h: null,
+    errors_24h: null,
+    cpu_p50_ms: null,
+    exposure_status: "safe",
+  }));
+
+  await page.route("**/api/workers/dashboard*", (route) => {
+    const url = new URL(route.request().url());
+    const requestedPage = Number(url.searchParams.get("page") ?? "1");
+    const pageSize = 2;
+    const start = (requestedPage - 1) * pageSize;
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ...MOCK_DASHBOARD,
+        summary: { ...MOCK_DASHBOARD.summary, deployed_count: allWorkers.length },
+        workers: allWorkers.slice(start, start + pageSize),
+        workers_pagination: {
+          page: requestedPage,
+          page_size: pageSize,
+          total: allWorkers.length,
+          total_pages: Math.ceil(allWorkers.length / pageSize),
+        },
+      }),
+    });
+  });
+  await page.route("**/api/workers/worker-2/detail", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        worker_name: "worker-2",
+        environment: "production",
+        routes: [],
+        recent_changes: [],
+        cloudflare_url:
+          "https://dash.cloudflare.com/acct-1/workers/services/view/worker-2/production",
+        unavailable: [],
+      }),
+    }));
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "Workers" }).click();
+  await page.getByTestId("pagination-next").click();
+  await expect(page.getByTestId("pagination-status")).toHaveText("5 total · page 2 of 3");
+
+  await page.getByTestId("findings-row-worker-2").click();
+  await expect(page.getByRole("heading", { name: "worker-2" })).toBeVisible();
+
+  await page.getByRole("button", { name: "← Back to Workers" }).click();
+  await expect(page.getByTestId("pagination-status")).toHaveText("5 total · page 2 of 3");
+  await expect(page.getByTestId("findings-row-worker-2")).toBeVisible();
+});

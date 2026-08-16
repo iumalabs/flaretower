@@ -10,6 +10,7 @@ import { SecurityPostureInventory } from "./pages/SecurityPostureInventory.tsx";
 import { AuditInventory } from "./pages/AuditInventory.tsx";
 import { OverviewPage } from "./pages/OverviewPage.tsx";
 import { TokenToolsPage } from "./pages/TokenToolsPage.tsx";
+import { WorkerDetailPage } from "./pages/WorkerDetailPage.tsx";
 import { Sidebar } from "./components/Sidebar.tsx";
 import { PageErrorBoundary } from "./components/PageErrorBoundary.tsx";
 import { NAV_ITEMS } from "./nav-items.ts";
@@ -28,7 +29,27 @@ const PAGES = [
     label: "Overview",
     render: () => <OverviewPage onNavigateToAudit={() => {}} />,
   },
-  { key: "workers", label: "Workers", render: () => <WorkersDashboardPage /> },
+  // render() here is never actually invoked (specs/023-worker-detail-page) —
+  // the JSX below special-cases "workers" the same way it already
+  // special-cases "overview", so its page/sort state and onSelectWorker
+  // callback can be lifted up here instead of local to the page (FR-011:
+  // state must survive navigating to a Worker's detail page and back). This
+  // placeholder only exists to satisfy WorkersDashboardPage's required props
+  // for the type checker.
+  {
+    key: "workers",
+    label: "Workers",
+    render: () => (
+      <WorkersDashboardPage
+        page={1}
+        sortKey={null}
+        sortDir={1}
+        onPageChange={() => {}}
+        onSortChange={() => {}}
+        onSelectWorker={() => {}}
+      />
+    ),
+  },
   { key: "exposure", label: "Exposure", render: () => <ExposureInventory /> },
   { key: "dns", label: "DNS", render: () => <DnsInventory /> },
   { key: "zero-trust", label: "Zero Trust", render: () => <ZeroTrustInventory /> },
@@ -39,7 +60,10 @@ const PAGES = [
   { key: "token-tools", label: "Token Tools", render: () => <TokenToolsPage /> },
 ] as const;
 
-type PageKey = typeof PAGES[number]["key"];
+// "worker-detail" is deliberately not a PAGES entry (it has no sidebar nav
+// item and no render() to fall back to) — always reached via the explicit
+// special-case below, never via `active.render()`.
+type PageKey = typeof PAGES[number]["key"] | "worker-detail";
 
 async function fetchModuleBadges(): Promise<AuditSummaryModuleEntry[]> {
   const res = await fetch("/api/audit/summary");
@@ -74,6 +98,35 @@ export function App(): JSX.Element {
   const [page, setPage] = useState<PageKey>("overview");
   const [badges, setBadges] = useState<{ key: string; count: number }[]>([]);
   const active = PAGES.find((p) => p.key === page) ?? PAGES[0];
+
+  // specs/023-worker-detail-page (FR-011, data-model.md's Frontend
+  // navigation state) — lifted out of WorkersDashboardPage so navigating to
+  // a Worker's detail page and back preserves the table's page/sort state
+  // instead of it resetting on remount.
+  const [workersPage, setWorkersPage] = useState(1);
+  const [workersSortKey, setWorkersSortKey] = useState<string | null>(null);
+  const [workersSortDir, setWorkersSortDir] = useState<1 | -1>(1);
+  const [selectedWorker, setSelectedWorker] = useState<string | null>(null);
+
+  function handleWorkersSortChange(key: string) {
+    if (workersSortKey === key) {
+      setWorkersSortDir((d) => (d === 1 ? -1 : 1));
+    } else {
+      setWorkersSortKey(key);
+      setWorkersSortDir(1);
+    }
+    setWorkersPage(1);
+  }
+
+  function handleSelectWorker(workerName: string) {
+    setSelectedWorker(workerName);
+    setPage("worker-detail");
+  }
+
+  function handleBackFromWorkerDetail() {
+    setSelectedWorker(null);
+    setPage("workers");
+  }
 
   useEffect(() => {
     // Both badge sources merge via functional updates (each replacing only
@@ -124,6 +177,27 @@ export function App(): JSX.Element {
             // PAGES entry's render() signature for one caller.
             page === "overview"
               ? <OverviewPage onNavigateToAudit={() => setPage("audit")} />
+              // specs/023-worker-detail-page — "workers" needs its
+              // page/sort state lifted (FR-011) and an onSelectWorker
+              // callback; "worker-detail" isn't a PAGES entry at all.
+              : page === "workers"
+              ? (
+                <WorkersDashboardPage
+                  page={workersPage}
+                  sortKey={workersSortKey}
+                  sortDir={workersSortDir}
+                  onPageChange={setWorkersPage}
+                  onSortChange={handleWorkersSortChange}
+                  onSelectWorker={handleSelectWorker}
+                />
+              )
+              : page === "worker-detail"
+              ? (
+                <WorkerDetailPage
+                  workerName={selectedWorker ?? ""}
+                  onBack={handleBackFromWorkerDetail}
+                />
+              )
               : active.render()
           }
         </PageErrorBoundary>

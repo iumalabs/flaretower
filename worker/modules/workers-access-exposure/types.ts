@@ -33,6 +33,11 @@ export interface HostnameEvaluation {
   kind: HostnameKind;
   status: ExposureStatus;
   reason: string;
+  // specs/023-worker-detail-page (research.md §2) — the Access application
+  // ids findCoveringApps() already computed, structured instead of only
+  // embedded in `reason`'s human-readable text. [] when nothing covers this
+  // hostname (critical) or evaluation couldn't run (not_evaluated).
+  coveringAppIds: string[];
 }
 
 export interface WorkerEvaluation {

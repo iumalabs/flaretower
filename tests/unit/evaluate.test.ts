@@ -52,6 +52,9 @@ Deno.test("evaluateHostname - critical when no app covers it", () => {
     [scopedApp("app-1", "other.example.com")],
   );
   assertEquals(result.status, "critical");
+  // specs/023-worker-detail-page — nothing covers this hostname, so there's
+  // nothing to list.
+  assertEquals(result.coveringAppIds, []);
 });
 
 Deno.test("evaluateHostname - safe when a covering app exists", () => {
@@ -60,11 +63,13 @@ Deno.test("evaluateHostname - safe when a covering app exists", () => {
     [scopedApp("app-1", "billing.example.com")],
   );
   assertEquals(result.status, "safe");
+  assertEquals(result.coveringAppIds, ["app-1"]);
 });
 
 Deno.test("evaluateHostname - not_evaluated when apps could not be fetched at all", () => {
   const result = evaluateHostname({ hostname: "billing.example.com", kind: "custom_domain" }, null);
   assertEquals(result.status, "not_evaluated");
+  assertEquals(result.coveringAppIds, []);
 });
 
 Deno.test("evaluateHostname - not_evaluated when the hostname itself has an evaluationError", () => {
@@ -80,6 +85,7 @@ Deno.test("evaluateHostname - not_evaluated when the hostname itself has an eval
   // we couldn't actually confirm coverage, so we must not claim safe.
   assertEquals(result.status, "not_evaluated");
   assertEquals(result.reason, "insufficient token scope");
+  assertEquals(result.coveringAppIds, []);
 });
 
 Deno.test("evaluateHostname - warning when the covering app allows Everyone", () => {
@@ -88,6 +94,10 @@ Deno.test("evaluateHostname - warning when the covering app allows Everyone", ()
     [everyoneApp("app-1", "status.example.com")],
   );
   assertEquals(result.status, "warning");
+  // specs/023-worker-detail-page — a permissive covering app is still a
+  // covering app; the Worker detail page needs its id to show the (weak)
+  // policy in plain language, not just that the status is "warning".
+  assertEquals(result.coveringAppIds, ["app-1"]);
 });
 
 Deno.test("evaluateHostname - warning when the covering app has zero policies", () => {
@@ -96,6 +106,7 @@ Deno.test("evaluateHostname - warning when the covering app has zero policies", 
     [policylessApp("app-1", "status.example.com")],
   );
   assertEquals(result.status, "warning");
+  assertEquals(result.coveringAppIds, ["app-1"]);
 });
 
 Deno.test("evaluateHostname - safe when the covering app's policy is scoped (not Everyone)", () => {
