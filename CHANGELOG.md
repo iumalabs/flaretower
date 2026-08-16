@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.11.1](https://github.com/iumalabs/flaretower/compare/v1.11.0...v1.11.1) (2026-08-16)
+
+
+### Bug Fixes
+
+* **worker-detail:** don't contradict the route's own reason on a null policy ([#417](https://github.com/iumalabs/flaretower/issues/417)) ([86e6648](https://github.com/iumalabs/flaretower/commit/86e66487a16542f24e1e2ab4d361745373421959))
+
 ## [1.11.0](https://github.com/iumalabs/flaretower/compare/v1.10.0...v1.11.0) (2026-08-16)
 
 
