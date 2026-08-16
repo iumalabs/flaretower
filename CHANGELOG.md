@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.11.0](https://github.com/iumalabs/flaretower/compare/v1.10.0...v1.11.0) (2026-08-16)
+
+
+### Features
+
+* Worker detail drill-down page ([#415](https://github.com/iumalabs/flaretower/issues/415)) ([9c6d9e2](https://github.com/iumalabs/flaretower/commit/9c6d9e2d48f00053d0589aa70f961aeec5d16a40))
+
+
+### Bug Fixes
+
+* sidebar tooltip overlap and DNS Finding column wrap ([#411](https://github.com/iumalabs/flaretower/issues/411)) ([ebd0ed7](https://github.com/iumalabs/flaretower/commit/ebd0ed773b0829287d0719afb12db0ce358fa62f))
+
 ## [1.10.0](https://github.com/iumalabs/flaretower/compare/v1.9.0...v1.10.0) (2026-08-15)
 
 
