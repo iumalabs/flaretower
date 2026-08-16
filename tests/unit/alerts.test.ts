@@ -9,7 +9,7 @@ function results(
   return [
     {
       workerName: "billing-api",
-      hostnames: [{ hostname, kind: "workers_dev", status, reason: "test" }],
+      hostnames: [{ hostname, kind: "workers_dev", status, reason: "test", coveringAppIds: [] }],
     },
   ];
 }
