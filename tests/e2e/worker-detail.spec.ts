@@ -196,6 +196,50 @@ test("US2 — a covered route shows its Access policy in plain language; an unco
   await expect(page.getByText("No Access application policy covers this route.")).toBeVisible();
 });
 
+// issue #416: a null policy on a route whose own `reason` already names a
+// covering Access application (i.e. any non-critical status) must not say
+// "no policy covers this route" — that directly contradicts the reason
+// text shown on the same row. Reproduced live: the exposure evaluation run
+// that produced the route predated covering_app_ids being populated
+// (research.md §2's documented degradation path), not a genuine gap.
+test("issue #416 — a safe route with an unresolved policy shows a non-contradictory message, not the uncovered-route text", async ({ page }) => {
+  await page.route(
+    "**/api/workers/dashboard*",
+    (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(MOCK_DASHBOARD),
+      }),
+  );
+  await page.route("**/api/workers/api-gateway/detail", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ...MOCK_DETAIL,
+        routes: [
+          {
+            hostname: "memos.maksimyugai.com",
+            kind: "custom_domain",
+            status: "safe",
+            reason: "covered by Access application(s): app-1",
+            policy: null,
+          },
+        ],
+      }),
+    }));
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "Workers" }).click();
+  await page.getByTestId("findings-row-api-gateway").click();
+
+  await expect(page.getByTestId("route-policy-unavailable")).toHaveText(
+    "Policy details unavailable for this route right now.",
+  );
+  await expect(page.getByText("No Access application policy covers this route.")).not.toBeVisible();
+});
+
 test("US3 — recent changes are scoped to this Worker, with an explicit empty state when there are none", async ({ page }) => {
   await page.route(
     "**/api/workers/dashboard*",

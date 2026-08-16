@@ -48,10 +48,28 @@ const VERB_COLOR: Record<"ALLOW" | "REQUIRE" | "DENY", string> = {
   DENY: "var(--status-critical-fg)",
 };
 
-function RoutePolicy({ policy }: { policy: RouteEntry["policy"] }): JSX.Element {
+function RoutePolicy(
+  { policy, status }: { policy: RouteEntry["policy"]; status: ExposureStatus },
+): JSX.Element {
   if (!policy) {
+    // issue #416: a `critical` route is the only case where `policy: null`
+    // actually means "nothing covers this route" — the reason evaluate.ts
+    // gives that status in the first place. Every other status (safe/
+    // warning/not_evaluated) got here via a `reason` string that already
+    // names a covering Access application (data-model.md) — a `null`
+    // policy for one of those means the join just couldn't resolve it
+    // right now (most commonly: the exposure evaluation run that produced
+    // this route predates the covering_app_ids column being populated, or
+    // the two modules' evaluation runs are momentarily out of step —
+    // research.md §2), not that coverage doesn't exist. Saying "no policy
+    // covers this route" in that case directly contradicts the reason text
+    // shown one line above it.
+    const message = status === "critical"
+      ? "No Access application policy covers this route."
+      : "Policy details unavailable for this route right now.";
     return (
       <div
+        data-testid="route-policy-unavailable"
         style={{
           marginTop: 8,
           marginLeft: 24,
@@ -59,7 +77,7 @@ function RoutePolicy({ policy }: { policy: RouteEntry["policy"] }): JSX.Element 
           color: "var(--fg-faint)",
         }}
       >
-        No Access application policy covers this route.
+        {message}
       </div>
     );
   }
@@ -268,7 +286,7 @@ export function WorkerDetailPage({ workerName, onBack }: WorkerDetailPageProps):
                   {r.reason}
                 </span>
               </div>
-              <RoutePolicy policy={r.policy} />
+              <RoutePolicy policy={r.policy} status={r.status} />
             </div>
           ))}
         </div>
