@@ -7,6 +7,8 @@ import {
   type FindingsTableRow,
 } from "../components/FindingsTable.tsx";
 import { AlertBanner } from "../components/AlertBanner.tsx";
+import { RescanButton } from "../components/RescanButton.tsx";
+import { useRescan } from "../lib/use-rescan.ts";
 
 interface HostnameFinding {
   hostname: string;
@@ -92,13 +94,19 @@ export function ExposureInventory(): JSX.Element {
   const [data, setData] = useState<InventoryResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
+  function refetch() {
     fetchInventory()
       .then(setData)
       .catch((err: unknown) =>
         setError(err instanceof Error ? err.message : "failed to load inventory")
       );
+  }
+
+  useEffect(() => {
+    refetch();
   }, []);
+
+  const rescan = useRescan("/api/exposure/evaluate", refetch);
 
   if (error) {
     return <p style={{ color: "var(--status-critical-fg)" }}>{error}</p>;
@@ -176,17 +184,20 @@ export function ExposureInventory(): JSX.Element {
 
   return (
     <div>
-      <h1
-        style={{
-          fontFamily: "var(--font-sans)",
-          fontSize: "var(--text-display-size)",
-          fontWeight: "var(--text-display-weight)" as unknown as number,
-          letterSpacing: "var(--text-display-ls)",
-          margin: "0 0 8px",
-        }}
-      >
-        Exposure inventory
-      </h1>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+        <h1
+          style={{
+            fontFamily: "var(--font-sans)",
+            fontSize: "var(--text-display-size)",
+            fontWeight: "var(--text-display-weight)" as unknown as number,
+            letterSpacing: "var(--text-display-ls)",
+            margin: "0 0 8px",
+          }}
+        >
+          Exposure inventory
+        </h1>
+        <RescanButton pending={rescan.pending} error={rescan.error} onClick={rescan.trigger} />
+      </div>
       {data && (
         <p style={{ color: "var(--fg-faint)", fontSize: "var(--text-meta-size)", marginTop: 0 }}>
           Last evaluated {data.evaluated_at} · run {data.run_id}

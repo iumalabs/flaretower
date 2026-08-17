@@ -9,6 +9,8 @@ import {
 } from "../components/FindingsTable.tsx";
 import { AlertBanner } from "../components/AlertBanner.tsx";
 import { TabStrip } from "../components/TabStrip.tsx";
+import { RescanButton } from "../components/RescanButton.tsx";
+import { useRescan } from "../lib/use-rescan.ts";
 
 interface BucketFinding {
   bucket_name: string;
@@ -247,7 +249,7 @@ export function StorageInventory(): JSX.Element {
   const [kvState, setKvState] = useState<CollectionPageState>(INITIAL_COLLECTION_STATE);
   const [d1State, setD1State] = useState<CollectionPageState>(INITIAL_COLLECTION_STATE);
 
-  useEffect(() => {
+  function refetch() {
     fetchStorageInventory(bucketState, kvState, d1State)
       .then((res) => {
         // Any one of the three collections' requested page can independently
@@ -282,7 +284,13 @@ export function StorageInventory(): JSX.Element {
       .catch((err: unknown) =>
         setError(err instanceof Error ? err.message : "failed to load storage inventory")
       );
+  }
+
+  useEffect(() => {
+    refetch();
   }, [bucketState, kvState, d1State]);
+
+  const rescan = useRescan("/api/storage/evaluate", refetch);
 
   if (error) {
     return <p style={{ color: "var(--status-critical-fg)" }}>{error}</p>;
@@ -339,17 +347,20 @@ export function StorageInventory(): JSX.Element {
 
   return (
     <div>
-      <h1
-        style={{
-          fontFamily: "var(--font-sans)",
-          fontSize: "var(--text-display-size)",
-          fontWeight: "var(--text-display-weight)" as unknown as number,
-          letterSpacing: "var(--text-display-ls)",
-          margin: "0 0 8px",
-        }}
-      >
-        Storage
-      </h1>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+        <h1
+          style={{
+            fontFamily: "var(--font-sans)",
+            fontSize: "var(--text-display-size)",
+            fontWeight: "var(--text-display-weight)" as unknown as number,
+            letterSpacing: "var(--text-display-ls)",
+            margin: "0 0 8px",
+          }}
+        >
+          Storage
+        </h1>
+        <RescanButton pending={rescan.pending} error={rescan.error} onClick={rescan.trigger} />
+      </div>
       {data && (
         <p style={{ color: "var(--fg-faint)", fontSize: "var(--text-meta-size)", marginTop: 0 }}>
           {data.total_resources} resource{data.total_resources === 1 ? "" : "s"} ·{" "}

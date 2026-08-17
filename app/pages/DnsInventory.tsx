@@ -9,6 +9,8 @@ import {
 } from "../components/FindingsTable.tsx";
 import { AlertBanner } from "../components/AlertBanner.tsx";
 import { EmptyState } from "../components/EmptyState.tsx";
+import { RescanButton } from "../components/RescanButton.tsx";
+import { useRescan } from "../lib/use-rescan.ts";
 
 interface DnsRecordFinding {
   record_name: string;
@@ -229,7 +231,7 @@ export function DnsInventory(): JSX.Element {
   const [sortKey, setSortKey] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState<1 | -1>(1);
 
-  useEffect(() => {
+  function refetch() {
     fetchDnsInventory({ zone: selectedZone, page, sortKey, sortDir })
       .then((res) => {
         // The requested page no longer exists (e.g. the zone shrank between
@@ -252,7 +254,13 @@ export function DnsInventory(): JSX.Element {
       .catch((err: unknown) =>
         setError(err instanceof Error ? err.message : "failed to load DNS inventory")
       );
+  }
+
+  useEffect(() => {
+    refetch();
   }, [selectedZone, page, sortKey, sortDir]);
+
+  const rescan = useRescan("/api/dns/evaluate", refetch);
 
   if (error) {
     return <p style={{ color: "var(--status-critical-fg)" }}>{error}</p>;
@@ -305,17 +313,20 @@ export function DnsInventory(): JSX.Element {
 
   return (
     <div>
-      <h1
-        style={{
-          fontFamily: "var(--font-sans)",
-          fontSize: "var(--text-display-size)",
-          fontWeight: "var(--text-display-weight)" as unknown as number,
-          letterSpacing: "var(--text-display-ls)",
-          margin: "0 0 8px",
-        }}
-      >
-        DNS records
-      </h1>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+        <h1
+          style={{
+            fontFamily: "var(--font-sans)",
+            fontSize: "var(--text-display-size)",
+            fontWeight: "var(--text-display-weight)" as unknown as number,
+            letterSpacing: "var(--text-display-ls)",
+            margin: "0 0 8px",
+          }}
+        >
+          DNS records
+        </h1>
+        <RescanButton pending={rescan.pending} error={rescan.error} onClick={rescan.trigger} />
+      </div>
       {data && (
         <p style={{ color: "var(--fg-faint)", fontSize: "var(--text-meta-size)", marginTop: 0 }}>
           {data.zone_summaries.length} zones · {data.total_records} records · {data.total_dangling}

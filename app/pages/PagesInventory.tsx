@@ -8,6 +8,8 @@ import {
   type FindingsTableRow,
 } from "../components/FindingsTable.tsx";
 import { AlertBanner } from "../components/AlertBanner.tsx";
+import { RescanButton } from "../components/RescanButton.tsx";
+import { useRescan } from "../lib/use-rescan.ts";
 
 interface ProjectRow {
   project_name: string;
@@ -180,7 +182,7 @@ export function PagesInventory(): JSX.Element {
   const [sortKey, setSortKey] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState<1 | -1>(1);
 
-  useEffect(() => {
+  function refetch() {
     fetchPagesInventory({ page, sortKey, sortDir })
       .then((res) => {
         // Same FR-008 out-of-range recovery as every other paginated module.
@@ -196,7 +198,13 @@ export function PagesInventory(): JSX.Element {
       .catch((err: unknown) =>
         setError(err instanceof Error ? err.message : "failed to load Pages inventory")
       );
+  }
+
+  useEffect(() => {
+    refetch();
   }, [page, sortKey, sortDir]);
+
+  const rescan = useRescan("/api/pages/evaluate", refetch);
 
   if (error) {
     return <p style={{ color: "var(--status-critical-fg)" }}>{error}</p>;
@@ -247,17 +255,20 @@ export function PagesInventory(): JSX.Element {
 
   return (
     <div>
-      <h1
-        style={{
-          fontFamily: "var(--font-sans)",
-          fontSize: "var(--text-display-size)",
-          fontWeight: "var(--text-display-weight)" as unknown as number,
-          letterSpacing: "var(--text-display-ls)",
-          margin: "0 0 8px",
-        }}
-      >
-        Pages projects
-      </h1>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+        <h1
+          style={{
+            fontFamily: "var(--font-sans)",
+            fontSize: "var(--text-display-size)",
+            fontWeight: "var(--text-display-weight)" as unknown as number,
+            letterSpacing: "var(--text-display-ls)",
+            margin: "0 0 8px",
+          }}
+        >
+          Pages projects
+        </h1>
+        <RescanButton pending={rescan.pending} error={rescan.error} onClick={rescan.trigger} />
+      </div>
       {data && (
         <p style={{ color: "var(--fg-faint)", fontSize: "var(--text-meta-size)", marginTop: 0 }}>
           {data.projects_pagination.total} project{data.projects_pagination.total === 1 ? "" : "s"}

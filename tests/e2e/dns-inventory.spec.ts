@@ -396,3 +396,56 @@ test("specs/020 US2 — switching zones resets to page 1", async ({ page }) => {
   // A small, single-page zone shows no pagination footer at all (FR-004).
   await expect(page.getByTestId("pagination-footer")).not.toBeVisible();
 });
+
+test("US1 — re-scan refreshes the page's findings without a reload (FR-001..FR-003)", async ({ page }) => {
+  await expect(page.getByText("old-blog.example.com").first()).toBeVisible();
+
+  await page.route("**/api/dns/evaluate", async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    await route.fulfill({
+      status: 202,
+      contentType: "application/json",
+      body: JSON.stringify({ run_id: "run-2" }),
+    });
+  });
+  const RESCANNED_ZONES: MockZone[] = [
+    {
+      zone_name: "example.com",
+      records: [
+        {
+          record_name: "new-record.example.com",
+          type: "A",
+          content: "203.0.113.30",
+          proxy_capable: true,
+          proxied: true,
+          ttl: 1,
+          is_platform_target: false,
+          status: "safe",
+          reason: "proxied through Cloudflare",
+        },
+      ],
+    },
+  ];
+  await routeDnsInventory(page, RESCANNED_ZONES);
+
+  const button = page.getByRole("button", { name: "Re-scan" });
+  await button.click();
+  await expect(page.getByRole("button", { name: "Scanning…" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Re-scan" })).toBeEnabled();
+  await expect(page.getByText("new-record.example.com")).toBeVisible();
+  await expect(page.getByText("old-blog.example.com")).not.toBeVisible();
+});
+
+test("re-scan failure leaves existing data untouched and shows an inline error (FR-005)", async ({ page }) => {
+  await page.route(
+    "**/api/dns/evaluate",
+    (route) =>
+      route.fulfill({ status: 500, contentType: "application/json", body: JSON.stringify({}) }),
+  );
+
+  await page.getByRole("button", { name: "Re-scan" }).click();
+
+  await expect(page.getByText("Re-scan failed:", { exact: false })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Re-scan" })).toBeEnabled();
+  await expect(page.getByText("old-blog.example.com").first()).toBeVisible();
+});
