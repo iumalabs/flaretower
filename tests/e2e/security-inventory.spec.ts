@@ -462,3 +462,88 @@ test("specs/021 US2 — switching tabs and back preserves the zones table's page
 
   await expect(page.getByTestId("pagination-status")).toHaveText("3 total · page 2 of 2");
 });
+
+test("US1 — re-scan refreshes the page's findings without a reload (FR-001..FR-003)", async ({ page }) => {
+  await expect(page.getByText("run run-1", { exact: false })).toBeVisible();
+
+  await page.route("**/api/security/evaluate", async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    await route.fulfill({
+      status: 202,
+      contentType: "application/json",
+      body: JSON.stringify({ run_id: "run-2" }),
+    });
+  });
+  await page.route("**/api/security/inventory*", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ...MOCK_SECURITY_INVENTORY,
+        run_id: "run-2",
+        evaluated_at: "2026-08-11T09:00:00Z",
+      }),
+    }));
+
+  const button = page.getByRole("button", { name: "Re-scan" });
+  await button.click();
+  await expect(page.getByRole("button", { name: "Scanning…" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Re-scan" })).toBeEnabled();
+  await expect(page.getByText("run run-2", { exact: false })).toBeVisible();
+});
+
+test("re-scan failure leaves existing data untouched and shows an inline error (FR-005)", async ({ page }) => {
+  await page.route(
+    "**/api/security/evaluate",
+    (route) =>
+      route.fulfill({ status: 500, contentType: "application/json", body: JSON.stringify({}) }),
+  );
+
+  await page.getByRole("button", { name: "Re-scan" }).click();
+
+  await expect(page.getByText("Re-scan failed:", { exact: false })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Re-scan" })).toBeEnabled();
+  await expect(page.getByTestId("findings-row-zone-1")).toBeVisible();
+  await expect(page.getByText("run run-1", { exact: false })).toBeVisible();
+});
+
+test("US2 — first-ever scan from the never-evaluated empty state (FR-006)", async ({ page }) => {
+  await page.route("**/api/security/inventory*", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        run_id: null,
+        evaluated_at: null,
+        critical_finding: null,
+        zones_pagination: { page: 1, page_size: 50, total: 0, total_pages: 1 },
+        certificates_pagination: { page: 1, page_size: 50, total: 0, total_pages: 1 },
+        waf_custom_rules_pagination: { page: 1, page_size: 50, total: 0, total_pages: 1 },
+        zones: [],
+        turnstile_widgets: [],
+      }),
+    }));
+  await page.goto("/");
+  await page.getByRole("button", { name: "Security Posture" }).click();
+
+  await expect(page.getByText("No evaluation runs yet", { exact: false })).toBeVisible();
+  await expect(page.getByText("POST /api/security/evaluate")).not.toBeVisible();
+
+  await page.route("**/api/security/evaluate", async (route) => {
+    await route.fulfill({
+      status: 202,
+      contentType: "application/json",
+      body: JSON.stringify({ run_id: "run-1" }),
+    });
+  });
+  await page.route("**/api/security/inventory*", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(MOCK_SECURITY_INVENTORY),
+    }));
+
+  await page.getByRole("button", { name: "Re-scan" }).click();
+  await expect(page.getByTestId("findings-row-zone-1")).toBeVisible();
+  await expect(page.getByText("No evaluation runs yet", { exact: false })).not.toBeVisible();
+});

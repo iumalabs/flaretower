@@ -209,3 +209,47 @@ test("US3/AC3 — an Access application with zero policies attached renders warn
   await expect(zeroPolicyRow.getByText("WARNING")).toBeVisible();
   await expect(zeroPolicyRow.getByText("PROTECTED")).not.toBeVisible();
 });
+
+test("US1 — re-scan refreshes the page's findings without a reload (FR-001..FR-003)", async ({ page }) => {
+  await expect(page.getByText("run run-1")).toBeVisible();
+
+  await page.route("**/api/exposure/evaluate", async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    await route.fulfill({
+      status: 202,
+      contentType: "application/json",
+      body: JSON.stringify({ run_id: "run-2" }),
+    });
+  });
+  await page.route("**/api/exposure/inventory", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ...MOCK_INVENTORY,
+        run_id: "run-2",
+        evaluated_at: "2026-08-08T09:00:00Z",
+      }),
+    }));
+
+  const button = page.getByRole("button", { name: "Re-scan" });
+  await button.click();
+  await expect(page.getByRole("button", { name: "Scanning…" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Re-scan" })).toBeEnabled();
+  await expect(page.getByText("run run-2")).toBeVisible();
+});
+
+test("re-scan failure leaves existing data untouched and shows an inline error (FR-005)", async ({ page }) => {
+  await page.route(
+    "**/api/exposure/evaluate",
+    (route) =>
+      route.fulfill({ status: 500, contentType: "application/json", body: JSON.stringify({}) }),
+  );
+
+  await page.getByRole("button", { name: "Re-scan" }).click();
+
+  await expect(page.getByText("Re-scan failed:", { exact: false })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Re-scan" })).toBeEnabled();
+  await expect(page.getByText("billing.example.com")).toBeVisible();
+  await expect(page.getByText("run run-1")).toBeVisible();
+});

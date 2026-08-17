@@ -10,6 +10,8 @@ import {
 import { AlertBanner } from "../components/AlertBanner.tsx";
 import { EmptyState } from "../components/EmptyState.tsx";
 import { TabStrip } from "../components/TabStrip.tsx";
+import { RescanButton } from "../components/RescanButton.tsx";
+import { useRescan } from "../lib/use-rescan.ts";
 
 interface PolicyRuleLine {
   verb: "ALLOW" | "REQUIRE" | "DENY";
@@ -377,7 +379,7 @@ export function ZeroTrustInventory(): JSX.Element {
   const [appState, setAppState] = useState<CollectionPageState>(INITIAL_COLLECTION_STATE);
   const [tokenState, setTokenState] = useState<CollectionPageState>(INITIAL_COLLECTION_STATE);
 
-  useEffect(() => {
+  function refetch() {
     fetchZeroTrustInventory(appState, tokenState)
       .then((res) => {
         // Same FR-008 out-of-range recovery as every other paginated module.
@@ -403,7 +405,13 @@ export function ZeroTrustInventory(): JSX.Element {
       .catch((err: unknown) =>
         setError(err instanceof Error ? err.message : "failed to load Zero Trust inventory")
       );
+  }
+
+  useEffect(() => {
+    refetch();
   }, [appState, tokenState]);
+
+  const rescan = useRescan("/api/zero-trust/evaluate", refetch);
 
   if (error) {
     return <p style={{ color: "var(--status-critical-fg)" }}>{error}</p>;
@@ -417,19 +425,22 @@ export function ZeroTrustInventory(): JSX.Element {
   if (data && data.run_id === null) {
     return (
       <div>
-        <h1
-          style={{
-            fontFamily: "var(--font-sans)",
-            fontSize: "var(--text-display-size)",
-            fontWeight: "var(--text-display-weight)" as unknown as number,
-            letterSpacing: "var(--text-display-ls)",
-            margin: "0 0 8px",
-          }}
-        >
-          Zero Trust inventory
-        </h1>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+          <h1
+            style={{
+              fontFamily: "var(--font-sans)",
+              fontSize: "var(--text-display-size)",
+              fontWeight: "var(--text-display-weight)" as unknown as number,
+              letterSpacing: "var(--text-display-ls)",
+              margin: "0 0 8px",
+            }}
+          >
+            Zero Trust inventory
+          </h1>
+          <RescanButton pending={rescan.pending} error={rescan.error} onClick={rescan.trigger} />
+        </div>
         <p style={{ color: "var(--fg-muted)" }}>
-          No evaluation runs yet. Trigger one via <code>POST /api/zero-trust/evaluate</code>.
+          No evaluation runs yet.
         </p>
       </div>
     );
@@ -487,17 +498,20 @@ export function ZeroTrustInventory(): JSX.Element {
 
   return (
     <div>
-      <h1
-        style={{
-          fontFamily: "var(--font-sans)",
-          fontSize: "var(--text-display-size)",
-          fontWeight: "var(--text-display-weight)" as unknown as number,
-          letterSpacing: "var(--text-display-ls)",
-          margin: "0 0 8px",
-        }}
-      >
-        Zero Trust inventory
-      </h1>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+        <h1
+          style={{
+            fontFamily: "var(--font-sans)",
+            fontSize: "var(--text-display-size)",
+            fontWeight: "var(--text-display-weight)" as unknown as number,
+            letterSpacing: "var(--text-display-ls)",
+            margin: "0 0 8px",
+          }}
+        >
+          Zero Trust inventory
+        </h1>
+        <RescanButton pending={rescan.pending} error={rescan.error} onClick={rescan.trigger} />
+      </div>
       {data && (
         <p style={{ color: "var(--fg-faint)", fontSize: "var(--text-meta-size)", marginTop: 0 }}>
           Last evaluated {data.evaluated_at} · run {data.run_id}
