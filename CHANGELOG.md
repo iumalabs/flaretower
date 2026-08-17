@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.12.0](https://github.com/iumalabs/flaretower/compare/v1.11.1...v1.12.0) (2026-08-17)
+
+
+### Features
+
+* manual re-scan trigger on all six module dashboards ([#422](https://github.com/iumalabs/flaretower/issues/422)) ([e0138b7](https://github.com/iumalabs/flaretower/commit/e0138b7565e6ff6f632907fe39131212c03ffaf2))
+
 ## [1.11.1](https://github.com/iumalabs/flaretower/compare/v1.11.0...v1.11.1) (2026-08-16)
 
 
