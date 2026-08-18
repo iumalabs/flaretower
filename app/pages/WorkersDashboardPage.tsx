@@ -47,6 +47,7 @@ interface DashboardResponse {
     error_rate_pct: number | null;
     errors_24h_total: number | null;
     cpu_p99_ms: number | null;
+    total_route_count: number;
   };
   workers: WorkerRow[];
   workers_pagination: PaginationEnvelope;
@@ -198,6 +199,7 @@ function RecentChangesPanel(
 ): JSX.Element {
   return (
     <div
+      id="recent-changes-panel"
       style={{
         width: 300,
         flex: "none",
@@ -279,11 +281,16 @@ function RecentChangesPanel(
   );
 }
 
+const ENV_FILTERS = ["all", "production", "preview"] as const;
+type EnvFilter = typeof ENV_FILTERS[number];
+
 export function WorkersDashboardPage(
   { page, sortKey, sortDir, onPageChange, onSortChange, onSelectWorker }: WorkersDashboardPageProps,
 ): JSX.Element {
   const [data, setData] = useState<DashboardResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
+  const [envFilter, setEnvFilter] = useState<EnvFilter>("all");
 
   useEffect(() => {
     fetchDashboard({ page, sortKey, sortDir })
@@ -310,13 +317,27 @@ export function WorkersDashboardPage(
     return <p style={{ color: "var(--status-critical-fg)" }}>{error}</p>;
   }
 
-  const rows: FindingsTableRow<WorkerRow>[] | null = data
-    ? data.workers.map((w) => ({
+  // research.md §3 — narrows the current, already-loaded server-side page's
+  // rows only; does not reach into un-loaded pages (same tradeoff
+  // specs/025's Exposure matrix search already established for this app).
+  const filteredWorkers = data
+    ? data.workers.filter((w) =>
+      (envFilter === "all" || w.environment === envFilter) &&
+      (query === "" || w.worker_name.toLowerCase().includes(query.toLowerCase()))
+    )
+    : null;
+
+  const rows: FindingsTableRow<WorkerRow>[] | null = filteredWorkers
+    ? filteredWorkers.map((w) => ({
       id: w.worker_name,
       status: w.exposure_status,
       data: w,
     }))
     : null;
+
+  const environmentCount = data
+    ? Object.values(data.summary.deployed_by_environment).filter((n) => n > 0).length
+    : 0;
 
   const pagination: FindingsTablePagination | undefined = data
     ? {
@@ -332,24 +353,99 @@ export function WorkersDashboardPage(
 
   return (
     <div>
-      <h1
-        style={{
-          fontFamily: "var(--font-sans)",
-          fontSize: "var(--text-display-size)",
-          fontWeight: "var(--text-display-weight)" as unknown as number,
-          letterSpacing: "var(--text-display-ls)",
-          margin: "0 0 8px",
-        }}
-      >
-        Workers
-      </h1>
-      {data && (
-        <p style={{ color: "var(--fg-faint)", fontSize: "var(--text-meta-size)", marginTop: 0 }}>
-          {data.summary.deployed_count} deployed · generated {data.generated_at}
-        </p>
-      )}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+        <div>
+          <h1
+            style={{
+              fontFamily: "var(--font-sans)",
+              fontSize: "var(--text-display-size)",
+              fontWeight: "var(--text-display-weight)" as unknown as number,
+              letterSpacing: "var(--text-display-ls)",
+              margin: "0 0 8px",
+            }}
+          >
+            Workers
+          </h1>
+          {data && (
+            <p
+              style={{ color: "var(--fg-faint)", fontSize: "var(--text-meta-size)", marginTop: 0 }}
+            >
+              {data.summary.deployed_count} deployed · {data.summary.total_route_count} routes ·
+              {" "}
+              {environmentCount} environment{environmentCount === 1 ? "" : "s"}
+            </p>
+          )}
+          <p
+            style={{
+              fontSize: "var(--text-body-size)",
+              color: "var(--fg-muted)",
+              maxWidth: 520,
+              margin: "4px 0 0",
+            }}
+          >
+            The Worker inventory the exposure scan reads from — code, routes, environments, bindings
+            and traffic for everything deployed in this account.
+          </p>
+        </div>
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          <input
+            type="text"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="filter…"
+            aria-label="Filter Workers"
+            style={{
+              fontFamily: "var(--font-mono)",
+              fontSize: "var(--text-code-size)",
+              background: "var(--surface-1)",
+              border: "1px solid var(--border)",
+              color: "var(--fg-secondary)",
+              padding: "6px 10px",
+              minWidth: 140,
+            }}
+          />
+          <select
+            value={envFilter}
+            onChange={(e) => setEnvFilter(e.target.value as EnvFilter)}
+            aria-label="Filter by environment"
+            style={{
+              fontFamily: "var(--font-mono)",
+              fontSize: "var(--text-code-size)",
+              background: "var(--surface-1)",
+              border: "1px solid var(--border)",
+              color: "var(--fg-secondary)",
+              padding: "6px 10px",
+            }}
+          >
+            <option value="all">ENV: ALL</option>
+            <option value="production">ENV: PRODUCTION</option>
+            <option value="preview">ENV: PREVIEW</option>
+          </select>
+          <button
+            type="button"
+            onClick={() =>
+              document.getElementById("recent-changes-panel")?.scrollIntoView({
+                behavior: "smooth",
+                block: "center",
+              })}
+            style={{
+              fontFamily: "var(--font-mono)",
+              fontSize: "var(--text-code-size)",
+              letterSpacing: "0.06em",
+              background: "var(--brand-primary)",
+              color: "var(--bg-base)",
+              border: "none",
+              padding: "7px 12px",
+              fontWeight: 600,
+              cursor: "pointer",
+            }}
+          >
+            RECENT ACTIVITY
+          </button>
+        </div>
+      </div>
 
-      <div style={{ display: "flex", gap: 12, marginBottom: 20, flexWrap: "wrap" }}>
+      <div style={{ display: "flex", gap: 12, margin: "20px 0", flexWrap: "wrap" }}>
         <MetricCard
           label="Deployed"
           value={data ? data.summary.deployed_count : null}
@@ -376,12 +472,20 @@ export function WorkersDashboardPage(
         <MetricCard
           label="CPU P99"
           value={data ? formatMs(data.summary.cpu_p99_ms) : null}
+          context="slowest 1% of requests"
         />
       </div>
 
       <div style={{ display: "flex", gap: 16, alignItems: "flex-start" }}>
         <div style={{ flex: 1, minWidth: 0 }}>
-          {rows && rows.length === 0
+          {rows && rows.length === 0 && (query !== "" || envFilter !== "all")
+            ? (
+              <EmptyState
+                heading="No matches"
+                description="No Workers match the current filter."
+              />
+            )
+            : rows && rows.length === 0
             ? (
               <EmptyState
                 heading="No Workers in this account"
@@ -390,6 +494,7 @@ export function WorkersDashboardPage(
             )
             : (
               <FindingsTable
+                statusPosition="right"
                 columns={COLUMNS}
                 rows={rows}
                 loadingLabel="Loading Workers inventory…"

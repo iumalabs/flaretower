@@ -51,6 +51,13 @@ interface FindingsTableProps<Row> {
   // caller that omits this keeps its current expand-or-nothing behavior
   // unchanged.
   onRowClick?: (row: Row) => void;
+  // specs/026-workers-inventory-layout — the design's status-column-anchor
+  // rule varies per page ("left" everywhere except Workers/Storage-KV-D1's
+  // "right"); default "left" keeps every existing caller's output
+  // unchanged (research.md §1). The row's own critical/warning left-edge
+  // accent bar always stays on the true left regardless of this setting —
+  // it's a general row-emphasis cue, not part of the status column itself.
+  statusPosition?: "left" | "right";
 }
 
 const STATUS_ORDER: ExposureStatus[] = ["critical", "warning", "safe", "not_evaluated"];
@@ -69,7 +76,15 @@ const STATUS_LABEL: Record<ExposureStatus, string> = {
 // findings share one table implementation instead of duplicating the
 // chrome per page (specs/009-design-system-alignment/research.md §4).
 export function FindingsTable<Row>(
-  { columns, rows, emptyState, loadingLabel, pagination, onRowClick }: FindingsTableProps<Row>,
+  {
+    columns,
+    rows,
+    emptyState,
+    loadingLabel,
+    pagination,
+    onRowClick,
+    statusPosition = "left",
+  }: FindingsTableProps<Row>,
 ): JSX.Element {
   const [filter, setFilter] = useState<ExposureStatus | null>(null);
   const [localSortKey, setLocalSortKey] = useState<string | null>(null);
@@ -216,19 +231,21 @@ export function FindingsTable<Row>(
           }}
         >
           <div style={{ width: 3, flex: "none" }} />
-          <div style={{ width: 120, flex: "none", padding: "10px 8px" }}>
-            <span
-              style={{
-                fontFamily: "var(--font-mono)",
-                fontSize: "var(--text-label-size)",
-                letterSpacing: "var(--text-label-ls)",
-                color: "var(--fg-faint)",
-                textTransform: "uppercase",
-              }}
-            >
-              Status
-            </span>
-          </div>
+          {statusPosition === "left" && (
+            <div style={{ width: 120, flex: "none", padding: "10px 8px" }}>
+              <span
+                style={{
+                  fontFamily: "var(--font-mono)",
+                  fontSize: "var(--text-label-size)",
+                  letterSpacing: "var(--text-label-ls)",
+                  color: "var(--fg-faint)",
+                  textTransform: "uppercase",
+                }}
+              >
+                Status
+              </span>
+            </div>
+          )}
           {columns.map((c) => (
             <div
               key={c.key}
@@ -268,6 +285,21 @@ export function FindingsTable<Row>(
               )}
             </div>
           ))}
+          {statusPosition === "right" && (
+            <div style={{ width: 120, flex: "none", padding: "10px 8px" }}>
+              <span
+                style={{
+                  fontFamily: "var(--font-mono)",
+                  fontSize: "var(--text-label-size)",
+                  letterSpacing: "var(--text-label-ls)",
+                  color: "var(--fg-faint)",
+                  textTransform: "uppercase",
+                }}
+              >
+                Status
+              </span>
+            </div>
+          )}
           <div style={{ width: 24, flex: "none" }} />
         </div>
 
@@ -311,9 +343,11 @@ export function FindingsTable<Row>(
                       background: critical ? "var(--status-critical)" : "transparent",
                     }}
                   />
-                  <div style={{ width: 120, flex: "none", padding: "8px" }}>
-                    <ExposureStatusBadge status={row.status} />
-                  </div>
+                  {statusPosition === "left" && (
+                    <div style={{ width: 120, flex: "none", padding: "8px" }}>
+                      <ExposureStatusBadge status={row.status} />
+                    </div>
+                  )}
                   {columns.map((c) => (
                     <div
                       key={c.key}
@@ -327,6 +361,11 @@ export function FindingsTable<Row>(
                       {c.render(row.data)}
                     </div>
                   ))}
+                  {statusPosition === "right" && (
+                    <div style={{ width: 120, flex: "none", padding: "8px" }}>
+                      <ExposureStatusBadge status={row.status} />
+                    </div>
+                  )}
                   <div style={{ width: 24, flex: "none", textAlign: "center" }}>
                     {row.detail && (
                       <span

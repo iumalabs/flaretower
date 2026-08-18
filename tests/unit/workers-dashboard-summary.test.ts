@@ -42,6 +42,17 @@ Deno.test("buildAccountSummary - no analytics result: all traffic fields null, d
   assertEquals(summary.errorRatePct, null);
   assertEquals(summary.errors24hTotal, null);
   assertEquals(summary.cpuP99Ms, null);
+  assertEquals(summary.totalRouteCount, 2);
+});
+
+Deno.test("buildAccountSummary - totalRouteCount sums routeCount across every Worker, not just deployedCount", () => {
+  const workers = [
+    worker({ workerName: "a", routeCount: 3 }),
+    worker({ workerName: "b", routeCount: 0 }),
+    worker({ workerName: "c", routeCount: 5 }),
+  ];
+  const summary = buildAccountSummary(workers, null);
+  assertEquals(summary.totalRouteCount, 8);
 });
 
 Deno.test("buildAccountSummary - counts deployedByEnvironment per worker, not per hostname", () => {
@@ -113,6 +124,7 @@ Deno.test("serializeDashboard - maps every field to its snake_case wire shape", 
       errorRatePct: 1,
       errors24hTotal: 1,
       cpuP99Ms: 7,
+      totalRouteCount: 4,
     },
     workers: [worker({ requests24h: 10, errors24h: 1, cpuP50Ms: 2, lastDeployAt: "2026-08-01" })],
     recentChanges: [{
@@ -131,6 +143,7 @@ Deno.test("serializeDashboard - maps every field to its snake_case wire shape", 
   assertEquals(serialized.generated_at, "2026-08-13T00:00:00.000Z");
   assertEquals(serialized.summary.deployed_by_environment, { production: 1, preview: 0 });
   assertEquals(serialized.summary.requests_24h_change_pct, 5);
+  assertEquals(serialized.summary.total_route_count, 4);
   assertEquals(serialized.workers[0], {
     worker_name: "worker-1",
     environment: "production",
