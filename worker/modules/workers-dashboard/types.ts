@@ -20,6 +20,10 @@ export interface AccountSummary {
   errorRatePct: number | null;
   errors24hTotal: number | null;
   cpuP99Ms: number | null;
+  // specs/026-workers-inventory-layout — account-wide sum of every Worker's
+  // routeCount, for the header subtitle. Computed over the complete,
+  // unpaginated `workers` array (research.md §2), not just the current page.
+  totalRouteCount: number;
 }
 
 export interface RecentChangeEntry {

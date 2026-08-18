@@ -159,6 +159,7 @@ export function buildAccountSummary(
 ): AccountSummary {
   const deployedByEnvironment = { production: 0, preview: 0 };
   for (const w of workers) deployedByEnvironment[w.environment]++;
+  const totalRouteCount = workers.reduce((sum, w) => sum + w.routeCount, 0);
 
   if (!analyticsResult) {
     return {
@@ -169,6 +170,7 @@ export function buildAccountSummary(
       errorRatePct: null,
       errors24hTotal: null,
       cpuP99Ms: null,
+      totalRouteCount,
     };
   }
 
@@ -186,6 +188,7 @@ export function buildAccountSummary(
     errorRatePct: requests24hTotal > 0 ? (errors24hTotal / requests24hTotal) * 100 : null,
     errors24hTotal,
     cpuP99Ms: analyticsResult.current.cpuTimeP99Ms,
+    totalRouteCount,
   };
 }
 
@@ -211,6 +214,7 @@ export function serializeDashboard(dashboard: WorkersDashboard) {
       error_rate_pct: dashboard.summary.errorRatePct,
       errors_24h_total: dashboard.summary.errors24hTotal,
       cpu_p99_ms: dashboard.summary.cpuP99Ms,
+      total_route_count: dashboard.summary.totalRouteCount,
     },
     workers: dashboard.workers.map((w) => ({
       worker_name: w.workerName,

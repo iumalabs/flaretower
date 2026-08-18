@@ -10,6 +10,7 @@ const MOCK_DASHBOARD = {
     error_rate_pct: 0.011,
     errors_24h_total: 412,
     cpu_p99_ms: 18,
+    total_route_count: 5,
   },
   workers: [
     {
@@ -371,4 +372,173 @@ test("specs/023 FR-011 — navigating to a Worker's detail page and back preserv
   await page.getByRole("button", { name: "← Back to Workers" }).click();
   await expect(page.getByTestId("pagination-status")).toHaveText("5 total · page 2 of 3");
   await expect(page.getByTestId("findings-row-worker-2")).toBeVisible();
+});
+
+// ---- User Story 1 — status column anchored right ----
+
+test("US1 — the exposure/status column is last (rightmost), after every operational column", async ({ page }) => {
+  await page.route("**/api/workers/dashboard*", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(MOCK_DASHBOARD),
+    }));
+  await page.goto("/");
+  await page.getByRole("button", { name: "Workers" }).click();
+
+  const gatewayRow = page.getByTestId("findings-row-api-gateway");
+  const rowText = await gatewayRow.innerText();
+  // CRITICAL (the status pill) must appear after both the Worker name
+  // (first operational column) and the requests figure (a later one).
+  expect(rowText.indexOf("CRITICAL")).toBeGreaterThan(rowText.indexOf("api-gateway"));
+  expect(rowText.indexOf("CRITICAL")).toBeGreaterThan(rowText.indexOf("3,200,000"));
+});
+
+test("regression — statusPosition's default (left) is unaffected on another FindingsTable page", async ({ page }) => {
+  await page.route("**/api/dns/inventory*", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        run_id: "run-1",
+        evaluated_at: "2026-08-13T12:00:00Z",
+        total_records: 1,
+        total_dangling: 0,
+        zone_summaries: [{ zone_name: "example.com", record_count: 1 }],
+        selected_zone: "example.com",
+        critical_finding: null,
+        records: [{
+          record_name: "api.example.com",
+          type: "A",
+          content: "203.0.113.10",
+          proxy_capable: true,
+          proxied: true,
+          ttl: 1,
+          is_platform_target: false,
+          status: "safe",
+          reason: "proxied through Cloudflare",
+        }],
+        records_pagination: { page: 1, page_size: 50, total: 1, total_pages: 1 },
+      }),
+    }));
+  await page.route("**/api/exposure/inventory", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ run_id: null, evaluated_at: null, workers: [] }),
+    }));
+  await page.route("**/api/workers/dashboard*", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        generated_at: "2026-08-13T12:00:00Z",
+        summary: {
+          deployed_count: 0,
+          deployed_by_environment: { production: 0, preview: 0 },
+          requests_24h_total: null,
+          requests_24h_change_pct: null,
+          error_rate_pct: null,
+          errors_24h_total: null,
+          cpu_p99_ms: null,
+          total_route_count: 0,
+        },
+        workers: [],
+        workers_pagination: { page: 1, page_size: 50, total: 0, total_pages: 1 },
+        recent_changes: [],
+        unavailable: [],
+      }),
+    }));
+  await page.goto("/");
+  await page.getByRole("button", { name: "DNS" }).click();
+
+  const row = page.getByTestId("findings-row-example.com:A:api.example.com:203.0.113.10");
+  const rowText = await row.innerText();
+  // Status (PROTECTED) still renders first, before the record name — this
+  // page never opted into statusPosition="right".
+  expect(rowText.indexOf("PROTECTED")).toBeLessThan(rowText.indexOf("api.example.com"));
+});
+
+// ---- User Story 2 — header toolbar ----
+
+test("US2 — the header shows a subtitle (deployed/routes/environments) and a description", async ({ page }) => {
+  await page.route("**/api/workers/dashboard*", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(MOCK_DASHBOARD),
+    }));
+  await page.goto("/");
+  await page.getByRole("button", { name: "Workers" }).click();
+
+  await expect(page.getByText("2 deployed · 5 routes · 2 environments")).toBeVisible();
+  await expect(page.getByText("The Worker inventory the exposure scan reads from", {
+    exact: false,
+  })).toBeVisible();
+});
+
+test("US2 — the search box narrows the table to matching Workers, no reload", async ({ page }) => {
+  await page.route("**/api/workers/dashboard*", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(MOCK_DASHBOARD),
+    }));
+  await page.goto("/");
+  await page.getByRole("button", { name: "Workers" }).click();
+
+  await page.getByPlaceholder("filter…").fill("search");
+  await expect(page.getByTestId("findings-row-search-index")).toBeVisible();
+  await expect(page.getByTestId("findings-row-api-gateway")).toHaveCount(0);
+
+  await page.getByPlaceholder("filter…").fill("");
+  await expect(page.getByTestId("findings-row-api-gateway")).toBeVisible();
+});
+
+test("US2 — the environment filter narrows the table, and combines with the search box", async ({ page }) => {
+  await page.route("**/api/workers/dashboard*", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(MOCK_DASHBOARD),
+    }));
+  await page.goto("/");
+  await page.getByRole("button", { name: "Workers" }).click();
+
+  await page.getByLabel("Filter by environment").selectOption("preview");
+  await expect(page.getByTestId("findings-row-search-index")).toBeVisible();
+  await expect(page.getByTestId("findings-row-api-gateway")).toHaveCount(0);
+
+  // Combined with a search that matches nothing in "preview" — no matches.
+  await page.getByPlaceholder("filter…").fill("gateway");
+  await expect(page.getByText("No matches")).toBeVisible();
+});
+
+test("US2 — the recent-activity control brings the Recent changes panel into view", async ({ page }) => {
+  await page.route("**/api/workers/dashboard*", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(MOCK_DASHBOARD),
+    }));
+  await page.goto("/");
+  await page.getByRole("button", { name: "Workers" }).click();
+
+  await page.getByRole("button", { name: "RECENT ACTIVITY" }).click();
+  await expect(page.locator("#recent-changes-panel")).toBeInViewport();
+});
+
+// ---- User Story 3 — complete metric tile row ----
+
+test("US3 — the CPU P99 tile shows a context line, like the other three tiles", async ({ page }) => {
+  await page.route("**/api/workers/dashboard*", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(MOCK_DASHBOARD),
+    }));
+  await page.goto("/");
+  await page.getByRole("button", { name: "Workers" }).click();
+
+  await expect(page.getByText("slowest 1% of requests")).toBeVisible();
 });
