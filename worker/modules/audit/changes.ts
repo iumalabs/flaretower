@@ -16,16 +16,18 @@ export interface ChangeEntry {
   currentStatus: string;
 }
 
-interface FindingRow {
+// Exported for reuse by trend.ts (specs/027-overview-dashboard-redesign,
+// research.md §5) — same finding-row shape and entity-identity concept.
+export interface FindingRow {
   status: string;
   [column: string]: unknown;
 }
 
-function selectColumns(source: AuditSource): string[] {
+export function selectColumns(source: AuditSource): string[] {
   return Array.from(new Set([...source.findingIdentityColumns, ...source.alertLabelColumns]));
 }
 
-function entityKey(row: FindingRow, source: AuditSource): string {
+export function entityKey(row: FindingRow, source: AuditSource): string {
   return source.findingIdentityColumns.map((c) => String(row[c])).join("::");
 }
 
@@ -35,8 +37,10 @@ function entityLabel(row: FindingRow, source: AuditSource): string {
 
 // Latest finding per entity — a window-function query so we get every
 // selected column from the actual latest row per entity, not just the
-// MAX(evaluated_at) value.
-function buildLatestPerEntityQuery(source: AuditSource, beforeCutoff: boolean): string {
+// MAX(evaluated_at) value. Exported for reuse by trend.ts's seed query
+// (specs/027-overview-dashboard-redesign, research.md §5) — same "state
+// as of a cutoff" need, just for status counts instead of a diff.
+export function buildLatestPerEntityQuery(source: AuditSource, beforeCutoff: boolean): string {
   const cols = selectColumns(source);
   const colList = cols.map((c) => `t.${c}`).join(", ");
   const partitionBy = source.findingIdentityColumns.join(", ");

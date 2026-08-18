@@ -12,7 +12,14 @@ function createMockD1(
 ): D1Database {
   return {
     prepare(sql: string) {
-      const table = sql.match(/FROM\s+(\w+)/i)?.[1] ?? sql.match(/UPDATE\s+(\w+)/i)?.[1] ?? "";
+      // specs/027-overview-dashboard-redesign — queryOneSource's query now
+      // has a correlated subquery (reasonSubquery) in its SELECT list,
+      // whose own "FROM {findingsTable}" appears textually *before* the
+      // outer query's "FROM {alertsTable}". The *last* FROM in the string
+      // is always the outer one (subqueries in a SELECT list can only
+      // precede it, never follow), so take the last match, not the first.
+      const fromMatches = [...sql.matchAll(/FROM\s+(\w+)/gi)];
+      const table = fromMatches.at(-1)?.[1] ?? sql.match(/UPDATE\s+(\w+)/i)?.[1] ?? "";
       let bound: unknown[] = [];
       const statement = {
         bind(...args: unknown[]) {
@@ -87,6 +94,52 @@ Deno.test("queryUnifiedAlerts - merges alerts from multiple sources, sorted by d
   assertEquals(alerts[1].id, "a1");
   assertEquals(alerts[1].module, "exposure");
   assertEquals(unavailableSources, []);
+});
+
+// specs/027-overview-dashboard-redesign — the `reason` column itself is
+// computed by a correlated subquery embedded in the outer SQL string
+// (reasonSubquery, sources.ts); this mock can't simulate SQLite's own
+// subquery evaluation (real correctness is verified live via wrangler d1
+// execute, same convention this file's header comment already documents
+// for the label SQL expression), so these tests only cover the JS-level
+// plumbing: whatever value the row carries in its `reason` field passes
+// through, and a missing one falls back to the explicit placeholder.
+Deno.test("queryUnifiedAlerts - passes a real reason value through unchanged", async () => {
+  const db = createMockD1({
+    exposure_alerts: [
+      {
+        id: "a1",
+        entity_label: "worker.example.com",
+        previous_status: "safe",
+        new_status: "critical",
+        detected_at: "2026-08-10T05:00:00Z",
+        acknowledged_at: null,
+        reason: "no Access application covers this hostname",
+      },
+    ],
+  });
+
+  const { alerts } = await queryUnifiedAlerts(db);
+  assertEquals(alerts[0].reason, "no Access application covers this hostname");
+});
+
+Deno.test("queryUnifiedAlerts - a null reason (join found no matching finding row) falls back to an explicit placeholder", async () => {
+  const db = createMockD1({
+    exposure_alerts: [
+      {
+        id: "a1",
+        entity_label: "worker.example.com",
+        previous_status: "safe",
+        new_status: "critical",
+        detected_at: "2026-08-10T05:00:00Z",
+        acknowledged_at: null,
+        reason: null,
+      },
+    ],
+  });
+
+  const { alerts } = await queryUnifiedAlerts(db);
+  assertEquals(alerts[0].reason, "reason unavailable");
 });
 
 Deno.test("queryUnifiedAlerts - a per-source read failure doesn't blank out the others", async () => {

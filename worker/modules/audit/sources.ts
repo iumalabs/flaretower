@@ -193,8 +193,31 @@ export function errorMessage(reason: unknown): string {
 // Builds a SQL expression joining the given columns into one readable
 // label, e.g. ["zone_name", "record_name"] -> "zone_name || ' · ' || record_name".
 // Columns always come from a source's own *Columns list in this
-// module's registry above — never from request input.
-export function labelSqlExpr(columns: string[]): string {
-  if (columns.length === 1) return columns[0];
-  return columns.join(" || ' · ' || ");
+// module's registry above — never from request input. `tablePrefix` is
+// needed once a query joins two tables that share a column name
+// (specs/027-overview-dashboard-redesign's alerts-to-findings reason
+// JOIN — inbox.ts) to avoid an ambiguous-column SQL error.
+export function labelSqlExpr(columns: string[], tablePrefix?: string): string {
+  const qualified = tablePrefix ? columns.map((c) => `${tablePrefix}.${c}`) : columns;
+  if (qualified.length === 1) return qualified[0];
+  return qualified.join(" || ' · ' || ");
+}
+
+// specs/027-overview-dashboard-redesign — a correlated subquery (not a
+// JOIN) linking an alert row to its originating finding row's `reason`:
+// same run_id, plus equality on every one of the source's
+// alertLabelColumns (guaranteed present on both tables, unlike
+// findingIdentityColumns — e.g. DNS's `content` column exists only on
+// dns_findings, not dns_alerts). A subquery + LIMIT 1, rather than a
+// LEFT JOIN, deliberately avoids fanning an alert row out into duplicates
+// if alertLabelColumns alone isn't a unique key within that run (DNS: two
+// records can share zone_name/record_name/record_type with different
+// content) — at most one reason per alert either way, never a
+// multiplied row count.
+export function reasonSubquery(source: AuditSource, alertAlias: string): string {
+  const equalities = source.alertLabelColumns
+    .map((c) => `f.${c} = ${alertAlias}.${c}`)
+    .join(" AND ");
+  return `(SELECT f.reason FROM ${source.findingsTable} f
+            WHERE f.run_id = ${alertAlias}.run_id AND ${equalities} LIMIT 1)`;
 }

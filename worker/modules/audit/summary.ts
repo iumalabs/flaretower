@@ -21,6 +21,9 @@ export interface PostureSummaryEntry {
   kind: string;
   hasData: boolean;
   counts: PostureCounts;
+  // specs/027-overview-dashboard-redesign — null when hasData is false.
+  // Used to derive the account-wide "last scan" time (research.md §1).
+  evaluatedAt: string | null;
 }
 
 function zeroCounts(): PostureCounts {
@@ -35,11 +38,19 @@ async function computeSummaryForSource(
   // never run an evaluation — hasData: false, not "confirmed clean"
   // (spec FR-007).
   const latest = await db
-    .prepare(`SELECT run_id FROM ${source.findingsTable} ORDER BY evaluated_at DESC LIMIT 1`)
-    .first<{ run_id: string }>();
+    .prepare(
+      `SELECT run_id, evaluated_at FROM ${source.findingsTable} ORDER BY evaluated_at DESC LIMIT 1`,
+    )
+    .first<{ run_id: string; evaluated_at: string }>();
 
   if (!latest) {
-    return { module: source.module, kind: source.kind, hasData: false, counts: zeroCounts() };
+    return {
+      module: source.module,
+      kind: source.kind,
+      hasData: false,
+      counts: zeroCounts(),
+      evaluatedAt: null,
+    };
   }
 
   const { results } = await db
@@ -56,7 +67,13 @@ async function computeSummaryForSource(
     }
   }
 
-  return { module: source.module, kind: source.kind, hasData: true, counts };
+  return {
+    module: source.module,
+    kind: source.kind,
+    hasData: true,
+    counts,
+    evaluatedAt: latest.evaluated_at,
+  };
 }
 
 export interface PostureSummaryResult {
@@ -67,6 +84,9 @@ export interface PostureSummaryResult {
   // apart from a source that's simply never been evaluated (FR-010).
   modules: PostureSummaryEntry[];
   unavailableSources: UnavailableSource[];
+  // specs/027-overview-dashboard-redesign — the header's "N zones · N
+  // workers" context, derived from already-persisted data (research.md §1).
+  accountScope: { zoneCount: number; workerCount: number };
 }
 
 export async function computePostureSummary(db: D1Database): Promise<PostureSummaryResult> {
@@ -88,6 +108,7 @@ export async function computePostureSummary(db: D1Database): Promise<PostureSumm
       kind: source.kind,
       hasData: false,
       counts: zeroCounts(),
+      evaluatedAt: null,
     });
     unavailableSources.push({
       module: source.module,
@@ -96,5 +117,43 @@ export async function computePostureSummary(db: D1Database): Promise<PostureSumm
     });
   });
 
-  return { modules, unavailableSources };
+  const accountScope = await computeAccountScope(db);
+
+  return { modules, unavailableSources, accountScope };
+}
+
+// specs/027-overview-dashboard-redesign (research.md §1) — "zone" and
+// "Worker" aren't generic properties every AUDIT_SOURCES entry has, so
+// these two counts are targeted reads against the two specific tables
+// that do carry that concept, not a loop over the registry. Table/column
+// names here are fixed literals, never request input, matching this
+// file's existing allowlist discipline (sources.ts).
+async function computeDistinctCount(
+  db: D1Database,
+  table: "dns_findings" | "exposure_findings",
+  column: "zone_name" | "worker_name",
+): Promise<number> {
+  const latest = await db
+    .prepare(`SELECT run_id FROM ${table} ORDER BY evaluated_at DESC LIMIT 1`)
+    .first<{ run_id: string }>();
+  if (!latest) return 0;
+
+  const row = await db
+    .prepare(`SELECT COUNT(DISTINCT ${column}) AS count FROM ${table} WHERE run_id = ?`)
+    .bind(latest.run_id)
+    .first<{ count: number }>();
+  return row?.count ?? 0;
+}
+
+async function computeAccountScope(
+  db: D1Database,
+): Promise<{ zoneCount: number; workerCount: number }> {
+  const [zoneResult, workerResult] = await Promise.allSettled([
+    computeDistinctCount(db, "dns_findings", "zone_name"),
+    computeDistinctCount(db, "exposure_findings", "worker_name"),
+  ]);
+  return {
+    zoneCount: zoneResult.status === "fulfilled" ? zoneResult.value : 0,
+    workerCount: workerResult.status === "fulfilled" ? workerResult.value : 0,
+  };
 }

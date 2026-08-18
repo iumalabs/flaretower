@@ -158,7 +158,12 @@ function createAlertsMockD1(
 ): D1Database {
   return {
     prepare(sql: string) {
-      const table = sql.match(/FROM\s+(\w+)/i)?.[1] ?? "";
+      // specs/027-overview-dashboard-redesign — the alerts query now has a
+      // reason correlated subquery ahead of its own outer FROM textually;
+      // the last FROM match is always the outer (alerts) table (same fix
+      // as audit-inbox.test.ts's mock).
+      const fromMatches = [...sql.matchAll(/FROM\s+(\w+)/gi)];
+      const table = fromMatches.at(-1)?.[1] ?? "";
       const statement = {
         bind() {
           return statement;

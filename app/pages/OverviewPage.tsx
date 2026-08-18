@@ -3,6 +3,8 @@ import type { JSX } from "react";
 import { type ExposureStatus, ExposureStatusBadge } from "../components/ExposureStatusBadge.tsx";
 import { LoadingSkeleton } from "../components/LoadingSkeleton.tsx";
 import { EmptyState } from "../components/EmptyState.tsx";
+import { useMultiRescan } from "../lib/use-multi-rescan.ts";
+import { formatRelativeTime } from "../lib/format-relative-time.ts";
 
 // Same wire shapes GET /api/audit/{summary,alerts,changes} already return
 // (worker/modules/audit/routes.ts) — the Overview page is a pure consumer
@@ -26,11 +28,13 @@ interface PostureSummaryEntry {
   kind: string;
   has_data: boolean;
   counts: PostureCounts;
+  evaluated_at: string | null;
 }
 
 interface SummaryResponse {
   modules: PostureSummaryEntry[];
   unavailable_sources: UnavailableSource[];
+  account_scope: { zone_count: number; worker_count: number };
 }
 
 interface UnifiedAlert {
@@ -42,6 +46,7 @@ interface UnifiedAlert {
   new_status: ExposureStatus;
   detected_at: string;
   acknowledged_at: string | null;
+  reason: string;
 }
 
 interface PaginationEnvelope {
@@ -73,6 +78,17 @@ interface ChangesResponse {
   pagination: PaginationEnvelope;
 }
 
+interface TrendDayPoint {
+  date: string;
+  has_data: boolean;
+  counts: PostureCounts;
+}
+
+interface TrendResponse {
+  days: TrendDayPoint[];
+  unavailable_sources: UnavailableSource[];
+}
+
 async function fetchSummary(): Promise<SummaryResponse> {
   const res = await fetch("/api/audit/summary");
   if (!res.ok) throw new Error(`GET /api/audit/summary failed: ${res.status}`);
@@ -99,6 +115,12 @@ async function fetchChanges(): Promise<ChangesResponse> {
     `/api/audit/changes?page=1&page_size=${OVERVIEW_SLICE_SIZE}&sort_key=severity`,
   );
   if (!res.ok) throw new Error(`GET /api/audit/changes failed: ${res.status}`);
+  return await res.json();
+}
+
+async function fetchTrend(): Promise<TrendResponse> {
+  const res = await fetch("/api/audit/trend");
+  if (!res.ok) throw new Error(`GET /api/audit/trend failed: ${res.status}`);
   return await res.json();
 }
 
@@ -156,6 +178,25 @@ function MetricCard({ status, label, value }: MetricCardProps): JSX.Element {
   );
 }
 
+// specs/027-overview-dashboard-redesign (research.md §4) — visual-only
+// affordance, not wired to a real mutation (FR-008). Deliberately a small
+// module-level default rather than one label per finding kind: the inbox
+// spans all seventeen source kinds, far more varied than any single
+// module page's own action set, so a per-kind label here would be
+// unjustified complexity for something that doesn't perform an action.
+const CONTEXTUAL_ACTION_LABEL: Record<string, string> = {
+  exposure: "Review exposure",
+  dns: "Review DNS record",
+  "zero-trust": "Review Access policy",
+  pages: "Review Pages config",
+  storage: "Review storage exposure",
+  security: "Review security setting",
+};
+
+function contextualActionLabel(alert: UnifiedAlert): string {
+  return CONTEXTUAL_ACTION_LABEL[alert.module] ?? "Review";
+}
+
 function FindingRow(
   { alert, onAcknowledged }: { alert: UnifiedAlert; onAcknowledged: (id: string) => void },
 ): JSX.Element {
@@ -197,21 +238,47 @@ function FindingRow(
               color: "var(--fg-faint)",
             }}
           >
-            {alert.detected_at}
+            {formatRelativeTime(alert.detected_at)}
           </span>
+        </div>
+        <div
+          style={{
+            fontSize: "var(--text-body-size)",
+            color: "var(--fg-secondary)",
+            lineHeight: 1.5,
+            // Real reason text can run long — wrap, never truncate
+            // (spec.md Edge Cases).
+            overflowWrap: "break-word",
+          }}
+        >
+          {alert.reason}
         </div>
         <div
           style={{
             fontFamily: "var(--font-mono)",
             fontSize: "var(--text-code-size)",
-            color: "var(--fg-secondary)",
+            color: "var(--fg-faint)",
           }}
         >
           {alert.entity_label}
-          <span style={{ color: "var(--fg-faint)" }}>· {alert.module}/{alert.kind}</span>
+          <span>· {alert.module}/{alert.kind}</span>
         </div>
       </div>
-      <div style={{ flex: "none" }}>
+      <div style={{ flex: "none", display: "flex", flexDirection: "column", gap: 6 }}>
+        <div
+          style={{
+            fontFamily: "var(--font-mono)",
+            fontSize: "var(--text-meta-size)",
+            letterSpacing: "0.03em",
+            border: "1px solid var(--border)",
+            color: "var(--fg-muted)",
+            padding: "5px 10px",
+            textAlign: "center",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {contextualActionLabel(alert)}
+        </div>
         <button
           type="button"
           onClick={handleAcknowledge}
@@ -233,6 +300,124 @@ function FindingRow(
             {ackError}
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+// specs/027-overview-dashboard-redesign — 14-day (or whatever `days` the
+// backend computed) stacked critical/warning/safe trend, real data only
+// (research.md §5). A day marked `has_data: false` (before the account's
+// evaluation history began, FR-010) renders as an explicit dim marker,
+// never a fabricated zero-height bar indistinguishable from "genuinely
+// all clear that day."
+function ExposureTrendChart(
+  { trend, error }: { trend: TrendResponse | null; error: string | null },
+): JSX.Element {
+  if (error) {
+    return <p style={{ color: "var(--status-critical-fg)", padding: 18 }}>{error}</p>;
+  }
+  if (!trend) {
+    return <LoadingSkeleton rows={1} label="Loading trend…" />;
+  }
+
+  const dayTotal = (d: TrendDayPoint) =>
+    d.counts.safe + d.counts.warning + d.counts.critical + d.counts.not_evaluated;
+  const maxTotal = Math.max(1, ...trend.days.map(dayTotal));
+
+  return (
+    <div
+      style={{
+        background: "var(--surface-1)",
+        border: "1px solid var(--border)",
+        padding: 18,
+        display: "flex",
+        flexDirection: "column",
+        gap: 14,
+      }}
+    >
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <span style={{ fontSize: "var(--text-body-size)", fontWeight: 600 }}>
+          Exposure over time
+        </span>
+        <span
+          style={{
+            fontFamily: "var(--font-mono)",
+            fontSize: "var(--text-meta-size)",
+            color: "var(--fg-faint)",
+          }}
+        >
+          {trend.days.length}d
+        </span>
+      </div>
+      <div style={{ display: "flex", alignItems: "flex-end", gap: 4, height: 88 }}>
+        {trend.days.map((d) => {
+          if (!d.has_data) {
+            return (
+              <div
+                key={d.date}
+                data-testid={`trend-day-${d.date}`}
+                title={`${d.date}: no data`}
+                style={{
+                  flex: 1,
+                  height: "100%",
+                  display: "flex",
+                  flexDirection: "column",
+                  justifyContent: "flex-end",
+                }}
+              >
+                <div style={{ height: 3, background: "var(--fg-faint)", opacity: 0.4 }} />
+              </div>
+            );
+          }
+          const total = dayTotal(d);
+          return (
+            <div
+              key={d.date}
+              data-testid={`trend-day-${d.date}`}
+              title={`${d.date}: ${total} finding${total === 1 ? "" : "s"}`}
+              style={{
+                flex: 1,
+                display: "flex",
+                flexDirection: "column",
+                justifyContent: "flex-end",
+                gap: 2,
+                height: "100%",
+              }}
+            >
+              <div
+                style={{
+                  height: `${(d.counts.critical / maxTotal) * 100}%`,
+                  background: "var(--status-critical-fg)",
+                }}
+              />
+              <div
+                style={{
+                  height: `${(d.counts.warning / maxTotal) * 100}%`,
+                  background: "var(--status-warning)",
+                }}
+              />
+              <div
+                style={{
+                  height: `${(d.counts.safe / maxTotal) * 100}%`,
+                  background: "var(--status-safe)",
+                }}
+              />
+            </div>
+          );
+        })}
+      </div>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          fontFamily: "var(--font-mono)",
+          fontSize: "var(--text-label-size)",
+          color: "var(--fg-faint)",
+        }}
+      >
+        <div>{trend.days[0]?.date}</div>
+        <div>{trend.days.at(-1)?.date}</div>
       </div>
     </div>
   );
@@ -271,41 +456,154 @@ export function OverviewPage(
   const [alertsError, setAlertsError] = useState<string | null>(null);
   const [changes, setChanges] = useState<ChangesResponse | null>(null);
   const [changesError, setChangesError] = useState<string | null>(null);
+  const [trend, setTrend] = useState<TrendResponse | null>(null);
+  const [trendError, setTrendError] = useState<string | null>(null);
 
-  useEffect(() => {
-    fetchSummary().then(setSummary).catch((err: unknown) =>
+  function refetchAll() {
+    fetchSummary().then((s) => {
+      setSummary(s);
+      setSummaryError(null);
+    }).catch((err: unknown) =>
       setSummaryError(err instanceof Error ? err.message : "failed to load posture summary")
     );
-    fetchAlerts().then(setAlerts).catch((err: unknown) =>
+    fetchAlerts().then((a) => {
+      setAlerts(a);
+      setAlertsError(null);
+    }).catch((err: unknown) =>
       setAlertsError(err instanceof Error ? err.message : "failed to load alerts")
     );
-    fetchChanges().then(setChanges).catch((err: unknown) =>
+    fetchChanges().then((c) => {
+      setChanges(c);
+      setChangesError(null);
+    }).catch((err: unknown) =>
       setChangesError(err instanceof Error ? err.message : "failed to load changes")
     );
+    fetchTrend().then((t) => {
+      setTrend(t);
+      setTrendError(null);
+    }).catch((err: unknown) =>
+      setTrendError(err instanceof Error ? err.message : "failed to load trend")
+    );
+  }
+
+  useEffect(() => {
+    refetchAll();
   }, []);
+
+  const multiRescan = useMultiRescan(refetchAll);
 
   function handleAcknowledged(id: string) {
     setAlerts((prev) => prev && { ...prev, alerts: prev.alerts.filter((a) => a.id !== id) });
   }
 
-  const heading = (
-    <h1
-      style={{
-        fontFamily: "var(--font-sans)",
-        fontSize: "var(--text-display-size)",
-        fontWeight: "var(--text-display-weight)" as unknown as number,
-        letterSpacing: "var(--text-display-ls)",
-        margin: "0 0 16px",
-      }}
-    >
-      Overview
-    </h1>
+  // Most recent evaluation across every source that has one (FR-002) — the
+  // account-wide "last scan" indicator, not a fabricated or per-module
+  // figure.
+  const lastScannedAt = summary
+    ? summary.modules
+      .filter((m) => m.has_data && m.evaluated_at)
+      .map((m) => m.evaluated_at as string)
+      .sort()
+      .at(-1) ?? null
+    : null;
+
+  const header = (
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+      <div>
+        <h1
+          style={{
+            fontFamily: "var(--font-sans)",
+            fontSize: "var(--text-display-size)",
+            fontWeight: "var(--text-display-weight)" as unknown as number,
+            letterSpacing: "var(--text-display-ls)",
+            margin: "0 0 8px",
+          }}
+        >
+          Overview
+        </h1>
+        {summary?.account_scope && (
+          <p style={{ color: "var(--fg-faint)", fontSize: "var(--text-meta-size)", marginTop: 0 }}>
+            {summary.account_scope.zone_count} zones · {summary.account_scope.worker_count} workers
+          </p>
+        )}
+        <p
+          style={{
+            fontSize: "var(--text-body-size)",
+            color: "var(--fg-muted)",
+            maxWidth: 520,
+            margin: "4px 0 0",
+          }}
+        >
+          The morning read on the whole account: what is exposed right now, what changed overnight,
+          and which findings are waiting on a decision from you.
+        </p>
+      </div>
+      <div style={{ display: "flex", gap: 14, alignItems: "flex-start" }}>
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 3 }}>
+          <div
+            style={{
+              fontFamily: "var(--font-mono)",
+              fontSize: "var(--text-meta-size)",
+              color: "var(--fg-secondary)",
+            }}
+          >
+            {lastScannedAt ? `last scanned ${formatRelativeTime(lastScannedAt)}` : "never scanned"}
+          </div>
+          {
+            /* Real cadence (wrangler.jsonc's hourly Cron Trigger), never a
+              fabricated number (research.md §1). */
+          }
+          <div
+            style={{
+              fontFamily: "var(--font-mono)",
+              fontSize: "var(--text-label-size)",
+              color: "var(--fg-faint)",
+            }}
+          >
+            runs hourly
+          </div>
+        </div>
+        <div>
+          <button
+            type="button"
+            onClick={multiRescan.trigger}
+            disabled={multiRescan.pending}
+            style={{
+              fontFamily: "var(--font-mono)",
+              fontSize: "var(--text-code-size)",
+              letterSpacing: "0.06em",
+              background: "var(--brand-primary)",
+              color: "var(--bg-base)",
+              border: "none",
+              padding: "7px 12px",
+              fontWeight: 600,
+              cursor: multiRescan.pending ? "default" : "pointer",
+            }}
+          >
+            {multiRescan.pending ? "SCANNING…" : "RE-SCAN"}
+          </button>
+          {multiRescan.errors.length > 0 && (
+            <div
+              style={{
+                marginTop: 4,
+                color: "var(--status-critical-fg)",
+                fontSize: "var(--text-meta-size)",
+                maxWidth: 220,
+                textAlign: "right",
+              }}
+            >
+              {multiRescan.errors.map((e) => e.label).join(", ")} failed to re-scan
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
   );
 
   if (summaryError) {
     return (
       <div>
-        {heading}
+        {header}
         <p style={{ color: "var(--status-critical-fg)" }}>{summaryError}</p>
       </div>
     );
@@ -314,7 +612,7 @@ export function OverviewPage(
   if (!summary) {
     return (
       <div>
-        {heading}
+        {header}
         <LoadingSkeleton label="Loading account-wide posture…" />
       </div>
     );
@@ -351,7 +649,7 @@ export function OverviewPage(
 
   return (
     <div>
-      {heading}
+      {header}
 
       <UnavailableModulesNotice sources={summary.unavailable_sources} />
 
@@ -443,83 +741,87 @@ export function OverviewPage(
           )}
         </div>
 
-        <div style={{ background: "var(--surface-1)", border: "1px solid var(--border)" }}>
-          <div
-            style={{
-              padding: "14px 18px",
-              borderBottom: "1px solid var(--border)",
-              fontSize: "var(--text-body-size)",
-              fontWeight: 600,
-            }}
-          >
-            Scan log
-          </div>
-          {changesError
-            ? <p style={{ color: "var(--status-critical-fg)", padding: 18 }}>{changesError}</p>
-            : !changes
-            ? <LoadingSkeleton label="Loading recent activity…" />
-            : changes.changes.length === 0
-            ? (
-              <p style={{ color: "var(--fg-muted)", padding: 18 }}>
-                No status changes since {changes.since}.
-              </p>
-            )
-            : changes.changes.map((c) => (
-              <div
-                key={`${c.module}/${c.kind}/${c.entity_label}`}
-                style={{
-                  display: "flex",
-                  gap: 10,
-                  alignItems: "baseline",
-                  padding: "9px 18px",
-                  borderBottom: "1px solid var(--rule-hairline)",
-                }}
-              >
-                <div
-                  style={{
-                    width: 6,
-                    height: 6,
-                    flex: "none",
-                    background: METRIC_COLOR_VAR[c.current_status],
-                  }}
-                />
-                <div
-                  style={{
-                    fontFamily: "var(--font-mono)",
-                    fontSize: "var(--text-meta-size)",
-                    color: "var(--fg-muted)",
-                    lineHeight: 1.5,
-                  }}
-                >
-                  {c.entity_label}
-                  <span style={{ color: "var(--fg-faint)" }}>
-                    · {c.module}/{c.kind} · {c.previous_status ?? "(new)"} → {c.current_status}
-                  </span>
-                </div>
-              </div>
-            ))}
-          {moreChanges > 0 && (
-            <button
-              type="button"
-              data-testid="overview-changes-more"
-              onClick={onNavigateToAudit}
+        <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+          <ExposureTrendChart trend={trend} error={trendError} />
+
+          <div style={{ background: "var(--surface-1)", border: "1px solid var(--border)" }}>
+            <div
               style={{
-                display: "block",
-                width: "100%",
-                textAlign: "left",
-                background: "none",
-                border: "none",
-                borderTop: "1px solid var(--rule-hairline)",
-                padding: "10px 18px",
-                fontFamily: "var(--font-mono)",
-                fontSize: "var(--text-meta-size)",
-                color: "var(--fg-faint)",
-                cursor: "pointer",
+                padding: "14px 18px",
+                borderBottom: "1px solid var(--border)",
+                fontSize: "var(--text-body-size)",
+                fontWeight: 600,
               }}
             >
-              {moreChanges} more — see full list
-            </button>
-          )}
+              Scan log
+            </div>
+            {changesError
+              ? <p style={{ color: "var(--status-critical-fg)", padding: 18 }}>{changesError}</p>
+              : !changes
+              ? <LoadingSkeleton label="Loading recent activity…" />
+              : changes.changes.length === 0
+              ? (
+                <p style={{ color: "var(--fg-muted)", padding: 18 }}>
+                  No status changes since {changes.since}.
+                </p>
+              )
+              : changes.changes.map((c) => (
+                <div
+                  key={`${c.module}/${c.kind}/${c.entity_label}`}
+                  style={{
+                    display: "flex",
+                    gap: 10,
+                    alignItems: "baseline",
+                    padding: "9px 18px",
+                    borderBottom: "1px solid var(--rule-hairline)",
+                  }}
+                >
+                  <div
+                    style={{
+                      width: 6,
+                      height: 6,
+                      flex: "none",
+                      background: METRIC_COLOR_VAR[c.current_status],
+                    }}
+                  />
+                  <div
+                    style={{
+                      fontFamily: "var(--font-mono)",
+                      fontSize: "var(--text-meta-size)",
+                      color: "var(--fg-muted)",
+                      lineHeight: 1.5,
+                    }}
+                  >
+                    {c.entity_label}
+                    <span style={{ color: "var(--fg-faint)" }}>
+                      · {c.module}/{c.kind} · {c.previous_status ?? "(new)"} → {c.current_status}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            {moreChanges > 0 && (
+              <button
+                type="button"
+                data-testid="overview-changes-more"
+                onClick={onNavigateToAudit}
+                style={{
+                  display: "block",
+                  width: "100%",
+                  textAlign: "left",
+                  background: "none",
+                  border: "none",
+                  borderTop: "1px solid var(--rule-hairline)",
+                  padding: "10px 18px",
+                  fontFamily: "var(--font-mono)",
+                  fontSize: "var(--text-meta-size)",
+                  color: "var(--fg-faint)",
+                  cursor: "pointer",
+                }}
+              >
+                {moreChanges} more — see full list
+              </button>
+            )}
+          </div>
         </div>
       </div>
     </div>
