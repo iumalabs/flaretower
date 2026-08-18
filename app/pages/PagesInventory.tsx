@@ -10,6 +10,7 @@ import {
 import { AlertBanner } from "../components/AlertBanner.tsx";
 import { RescanButton } from "../components/RescanButton.tsx";
 import { useRescan } from "../lib/use-rescan.ts";
+import { formatRelativeTime } from "../lib/format-relative-time.ts";
 
 interface ProjectRow {
   project_name: string;
@@ -65,26 +66,6 @@ async function fetchPagesInventory(params: PageParams): Promise<PagesInventoryRe
     throw new Error(`GET /api/pages/inventory failed: ${res.status}`);
   }
   return await res.json();
-}
-
-// Deliberately coarse (spec.md Assumptions — build duration/stage timing is
-// out of scope); this only answers "how long ago", not "how long did it
-// take".
-function formatRelativeTime(iso: string | null): string {
-  if (!iso) return "not available";
-  const then = new Date(iso).getTime();
-  if (Number.isNaN(then)) return "not available";
-  // Clamped at 0 — a timestamp slightly ahead of the client clock (clock
-  // skew, or a fast render right after a build completes) must read as
-  // "just now," never as a negative duration.
-  const diffSec = Math.max(0, Math.round((Date.now() - then) / 1000));
-  if (diffSec < 60) return `${diffSec}s ago`;
-  const diffMin = Math.round(diffSec / 60);
-  if (diffMin < 60) return `${diffMin}m ago`;
-  const diffHr = Math.round(diffMin / 60);
-  if (diffHr < 24) return `${diffHr}h ago`;
-  const diffDay = Math.round(diffHr / 24);
-  return `${diffDay}d ago`;
 }
 
 // A project with no production deployment yet (deployment_id null) is a

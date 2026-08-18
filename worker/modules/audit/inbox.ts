@@ -8,8 +8,11 @@ import {
   errorMessage,
   findAuditSource,
   labelSqlExpr,
+  reasonSubquery,
   type UnavailableSource,
 } from "./sources.ts";
+
+const REASON_UNAVAILABLE = "reason unavailable";
 
 export interface UnifiedAlert {
   id: string;
@@ -20,6 +23,11 @@ export interface UnifiedAlert {
   newStatus: string;
   detectedAt: string;
   acknowledgedAt: string | null;
+  // specs/027-overview-dashboard-redesign — the finding's own real reason
+  // text, joined through from its findings table (research.md §3).
+  // REASON_UNAVAILABLE when the join finds no matching row (that run's
+  // finding row was since superseded/pruned) rather than blanking the row.
+  reason: string;
 }
 
 interface RawAlertRow {
@@ -29,15 +37,17 @@ interface RawAlertRow {
   new_status: string;
   detected_at: string;
   acknowledged_at: string | null;
+  reason: string | null;
 }
 
 async function queryOneSource(db: D1Database, source: AuditSource): Promise<UnifiedAlert[]> {
   const { results } = await db.prepare(
-    `SELECT id, (${labelSqlExpr(source.alertLabelColumns)}) AS entity_label,
-            previous_status, new_status, detected_at, acknowledged_at
-     FROM ${source.alertsTable}
-     WHERE acknowledged_at IS NULL
-     ORDER BY detected_at DESC`,
+    `SELECT a.id, (${labelSqlExpr(source.alertLabelColumns, "a")}) AS entity_label,
+            a.previous_status, a.new_status, a.detected_at, a.acknowledged_at,
+            ${reasonSubquery(source, "a")} AS reason
+     FROM ${source.alertsTable} a
+     WHERE a.acknowledged_at IS NULL
+     ORDER BY a.detected_at DESC`,
   ).all<RawAlertRow>();
 
   return results.map((r) => ({
@@ -49,6 +59,7 @@ async function queryOneSource(db: D1Database, source: AuditSource): Promise<Unif
     newStatus: r.new_status,
     detectedAt: r.detected_at,
     acknowledgedAt: r.acknowledged_at,
+    reason: r.reason ?? REASON_UNAVAILABLE,
   }));
 }
 

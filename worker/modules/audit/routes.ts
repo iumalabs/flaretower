@@ -3,6 +3,7 @@ import { requireRole } from "../../auth/access-jwt.ts";
 import { acknowledgeAlert, queryUnifiedAlerts, type UnifiedAlert } from "./inbox.ts";
 import { type ChangeEntry, computeChanges } from "./changes.ts";
 import { computePostureSummary } from "./summary.ts";
+import { computeTrend } from "./trend.ts";
 import type { UnavailableSource } from "./sources.ts";
 import { fetchAccountAuditLog } from "../workers-dashboard/audit-log.ts";
 import {
@@ -69,6 +70,7 @@ function alertJson(a: UnifiedAlert) {
     new_status: a.newStatus,
     detected_at: a.detectedAt,
     acknowledged_at: a.acknowledgedAt,
+    reason: a.reason,
   };
 }
 
@@ -173,14 +175,27 @@ auditRoutes.get("/changes", async (c) => {
 });
 
 auditRoutes.get("/summary", async (c) => {
-  const { modules, unavailableSources } = await computePostureSummary(c.env.DB);
+  const { modules, unavailableSources, accountScope } = await computePostureSummary(c.env.DB);
   return c.json({
     modules: modules.map((entry) => ({
       module: entry.module,
       kind: entry.kind,
       has_data: entry.hasData,
       counts: entry.counts,
+      evaluated_at: entry.evaluatedAt,
     })),
+    unavailable_sources: toUnavailableSourcesJson(unavailableSources),
+    account_scope: { zone_count: accountScope.zoneCount, worker_count: accountScope.workerCount },
+  });
+});
+
+// specs/027-overview-dashboard-redesign — the "Exposure over time" trend
+// chart's data, computed on the fly (research.md §5) rather than served
+// from a snapshot table.
+auditRoutes.get("/trend", async (c) => {
+  const { days, unavailableSources } = await computeTrend(c.env.DB);
+  return c.json({
+    days: days.map((d) => ({ date: d.date, has_data: d.hasData, counts: d.counts })),
     unavailable_sources: toUnavailableSourcesJson(unavailableSources),
   });
 });

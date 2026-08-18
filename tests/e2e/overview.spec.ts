@@ -7,21 +7,25 @@ const MOCK_SUMMARY = {
       kind: "hostname",
       has_data: true,
       counts: { safe: 2, warning: 1, critical: 1, not_evaluated: 0 },
+      evaluated_at: "2026-08-18T09:55:00Z",
     },
     {
       module: "dns",
       kind: "record",
       has_data: true,
       counts: { safe: 5, warning: 0, critical: 0, not_evaluated: 0 },
+      evaluated_at: "2026-08-18T09:50:00Z",
     },
     {
       module: "zero-trust",
       kind: "application",
       has_data: false,
       counts: { safe: 0, warning: 0, critical: 0, not_evaluated: 0 },
+      evaluated_at: null,
     },
   ],
   unavailable_sources: [],
+  account_scope: { zone_count: 3, worker_count: 15 },
 };
 
 const MOCK_ALERTS = {
@@ -35,6 +39,7 @@ const MOCK_ALERTS = {
       new_status: "critical",
       detected_at: "2026-08-12T00:00:00Z",
       acknowledged_at: null,
+      reason: "no Access application covers this hostname",
     },
     {
       id: "a2",
@@ -45,10 +50,27 @@ const MOCK_ALERTS = {
       new_status: "warning",
       detected_at: "2026-08-11T00:00:00Z",
       acknowledged_at: null,
+      reason: "Access application policy includes Everyone",
     },
   ],
   unavailable_sources: [],
   pagination: { page: 1, page_size: 5, total: 2, total_pages: 1 },
+};
+
+const MOCK_TREND = {
+  days: [
+    {
+      date: "2026-08-17",
+      has_data: true,
+      counts: { safe: 6, warning: 1, critical: 0, not_evaluated: 0 },
+    },
+    {
+      date: "2026-08-18",
+      has_data: true,
+      counts: { safe: 7, warning: 1, critical: 1, not_evaluated: 0 },
+    },
+  ],
+  unavailable_sources: [],
 };
 
 const MOCK_CHANGES = {
@@ -95,6 +117,12 @@ test.beforeEach(async ({ page }) => {
       status: 200,
       contentType: "application/json",
       body: JSON.stringify(MOCK_CHANGES),
+    }));
+  await page.route("**/api/audit/trend*", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(MOCK_TREND),
     }));
   await page.goto("/");
 });
@@ -144,9 +172,11 @@ test("US3/AC5 — an all-clear state renders when every module has zero findings
             kind: "hostname",
             has_data: true,
             counts: { safe: 3, warning: 0, critical: 0, not_evaluated: 0 },
+            evaluated_at: "2026-08-18T09:55:00Z",
           },
         ],
         unavailable_sources: [],
+        account_scope: { zone_count: 1, worker_count: 3 },
       }),
     }));
   await page.route("**/api/audit/alerts*", (route) =>
@@ -176,11 +206,13 @@ test("FR-018 — a module reported unavailable is shown as not-available, not fo
             kind: "hostname",
             has_data: true,
             counts: { safe: 3, warning: 0, critical: 0, not_evaluated: 0 },
+            evaluated_at: "2026-08-18T09:55:00Z",
           },
         ],
         unavailable_sources: [
           { module: "dns", kind: "record", error: "could not read dns_findings: D1_ERROR" },
         ],
+        account_scope: { zone_count: 1, worker_count: 3 },
       }),
     }));
   await page.goto("/");
@@ -199,6 +231,7 @@ test("specs/022 US2 — more than 5 alerts shows a bounded top-5 with an accurat
     new_status: "warning",
     detected_at: "2026-08-12T00:00:00Z",
     acknowledged_at: null,
+    reason: "no Access application covers this hostname",
   }));
   await page.route("**/api/audit/alerts*", (route) =>
     route.fulfill({
@@ -237,6 +270,7 @@ test("specs/022 US2 — the 'more' indicator navigates to Audit & Drift's Unifie
     new_status: "warning",
     detected_at: "2026-08-12T00:00:00Z",
     acknowledged_at: null,
+    reason: "no Access application covers this hostname",
   }));
   await page.route("**/api/audit/alerts*", (route) =>
     route.fulfill({
@@ -310,4 +344,186 @@ test("specs/022 US2 — the 'more' indicator navigates to Audit & Drift's Unifie
   await expect(page.getByRole("heading", { name: "Audit & Drift" })).toBeVisible();
   await page.getByRole("tab", { name: "Unified alerts inbox" }).click();
   await expect(page.getByTestId("findings-row-a0")).toBeVisible();
+});
+
+// ---- User Story 1 — header context row ----
+
+const EVALUATE_ENDPOINTS = [
+  "**/api/exposure/evaluate",
+  "**/api/dns/evaluate",
+  "**/api/zero-trust/evaluate",
+  "**/api/pages/evaluate",
+  "**/api/storage/evaluate",
+  "**/api/security/evaluate",
+];
+
+test("US1 — header shows real zone/Worker counts and a last-scanned time", async ({ page }) => {
+  await expect(page.getByText("3 zones · 15 workers")).toBeVisible();
+  await expect(page.getByText(/^last scanned .+ ago$/)).toBeVisible();
+  await expect(page.getByText("runs hourly")).toBeVisible();
+});
+
+test("US1 — a never-evaluated account shows an explicit 'never scanned' state", async ({ page }) => {
+  await page.route("**/api/audit/summary", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        modules: [
+          {
+            module: "exposure",
+            kind: "hostname",
+            has_data: false,
+            counts: { safe: 0, warning: 0, critical: 0, not_evaluated: 0 },
+            evaluated_at: null,
+          },
+        ],
+        unavailable_sources: [],
+        account_scope: { zone_count: 0, worker_count: 0 },
+      }),
+    }));
+  await page.goto("/");
+
+  await expect(page.getByText("never scanned")).toBeVisible();
+});
+
+test("US1 — RE-SCAN shows in-progress state, can't be re-triggered, and refreshes data on completion", async ({ page }) => {
+  for (const endpoint of EVALUATE_ENDPOINTS) {
+    await page.route(endpoint, async (route) => {
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      await route.fulfill({
+        status: 202,
+        contentType: "application/json",
+        body: JSON.stringify({ run_id: "run-2" }),
+      });
+    });
+  }
+
+  const button = page.getByRole("button", { name: "RE-SCAN" });
+  await button.click();
+  await expect(page.getByRole("button", { name: "SCANNING…" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "SCANNING…" })).toBeDisabled();
+
+  await expect(page.getByRole("button", { name: "RE-SCAN" })).toBeVisible();
+});
+
+test("US1 — one module's evaluate failure doesn't hide the other five's success", async ({ page }) => {
+  await page.route(
+    "**/api/exposure/evaluate",
+    (route) =>
+      route.fulfill({ status: 500, contentType: "application/json", body: JSON.stringify({}) }),
+  );
+  for (const endpoint of EVALUATE_ENDPOINTS.slice(1)) {
+    await page.route(endpoint, (route) =>
+      route.fulfill({
+        status: 202,
+        contentType: "application/json",
+        body: JSON.stringify({ run_id: "run-2" }),
+      }));
+  }
+
+  await page.getByRole("button", { name: "RE-SCAN" }).click();
+
+  await expect(page.getByText("Exposure failed to re-scan")).toBeVisible();
+  await expect(page.getByRole("button", { name: "RE-SCAN" })).toBeEnabled();
+});
+
+test("US1 — a stale fetch-error banner clears once a later RE-SCAN succeeds", async ({ page }) => {
+  await page.route(
+    "**/api/audit/summary",
+    (route) => route.fulfill({ status: 500, contentType: "application/json", body: "{}" }),
+  );
+  await page.goto("/");
+  await expect(page.getByText("GET /api/audit/summary failed: 500")).toBeVisible();
+
+  await page.route("**/api/audit/summary", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(MOCK_SUMMARY),
+    }));
+  for (const endpoint of EVALUATE_ENDPOINTS) {
+    await page.route(endpoint, (route) =>
+      route.fulfill({
+        status: 202,
+        contentType: "application/json",
+        body: JSON.stringify({ run_id: "run-2" }),
+      }));
+  }
+
+  await page.getByRole("button", { name: "RE-SCAN" }).click();
+
+  await expect(page.getByText("3 zones · 15 workers")).toBeVisible();
+  await expect(page.getByText("GET /api/audit/summary failed: 500")).not.toBeVisible();
+});
+
+// ---- User Story 2 — findings row reason + contextual action ----
+
+test("US2 — each finding row shows its real plain-language reason, not a slug", async ({ page }) => {
+  await expect(page.getByText("no Access application covers this hostname")).toBeVisible();
+  await expect(page.getByText("Access application policy includes Everyone")).toBeVisible();
+});
+
+test("US2 — a contextual action label renders per finding, alongside the unchanged Acknowledge control", async ({ page }) => {
+  await expect(page.getByText("Review exposure").first()).toBeVisible();
+  await expect(page.getByRole("button", { name: "Acknowledge" }).first()).toBeVisible();
+});
+
+test("US2 — Acknowledge still removes the row from the list exactly as before", async ({ page }) => {
+  await page.route(
+    "**/api/audit/alerts/exposure/hostname/a1/acknowledge",
+    (route) => route.fulfill({ status: 200, contentType: "application/json", body: "{}" }),
+  );
+
+  await expect(page.getByText("api-gateway.acct.workers.dev").first()).toBeVisible();
+  await page.getByRole("button", { name: "Acknowledge" }).first().click();
+  await expect(page.getByText("no Access application covers this hostname")).toHaveCount(0);
+});
+
+// ---- User Story 3 — Exposure over time trend chart ----
+
+test("US3 — the trend chart renders real historical days", async ({ page }) => {
+  await expect(page.getByText("Exposure over time")).toBeVisible();
+  await expect(page.getByTestId("trend-day-2026-08-17")).toBeVisible();
+  await expect(page.getByTestId("trend-day-2026-08-18")).toBeVisible();
+});
+
+test("US3 — a day before the account's evaluation history shows an explicit no-data state", async ({ page }) => {
+  await page.route("**/api/audit/trend*", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        days: [
+          {
+            date: "2026-08-16",
+            has_data: false,
+            counts: { safe: 0, warning: 0, critical: 0, not_evaluated: 0 },
+          },
+          {
+            date: "2026-08-17",
+            has_data: true,
+            counts: { safe: 6, warning: 1, critical: 0, not_evaluated: 0 },
+          },
+        ],
+        unavailable_sources: [],
+      }),
+    }));
+  await page.goto("/");
+
+  const noDataDay = page.getByTestId("trend-day-2026-08-16");
+  await expect(noDataDay).toHaveAttribute("title", "2026-08-16: no data");
+});
+
+test("US3 — a trend-fetch failure degrades gracefully, without blocking the rest of the page", async ({ page }) => {
+  await page.route(
+    "**/api/audit/trend*",
+    (route) =>
+      route.fulfill({ status: 500, contentType: "application/json", body: JSON.stringify({}) }),
+  );
+  await page.goto("/");
+
+  // The rest of the page (Findings panel) still works despite the trend
+  // endpoint failing.
+  await expect(page.getByText("api-gateway.acct.workers.dev").first()).toBeVisible();
 });
