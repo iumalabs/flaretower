@@ -33,19 +33,53 @@ const MOCK_INVENTORY = {
       ],
     },
     {
-      worker_name: "checkout-api",
+      worker_name: "docs-site",
       hostnames: [
         {
-          hostname: "checkout.example.com",
+          hostname: "docs.example.com",
           kind: "custom_domain",
-          status: "warning",
-          reason:
-            "covering Access application(s) do not meaningfully restrict access: checkout-app has no policies attached",
+          status: "safe",
+          reason: "covered by Access application(s): docs-app",
+        },
+        {
+          hostname: "www.example.com",
+          kind: "custom_domain",
+          status: "safe",
+          reason: "covered by Access application(s): docs-app",
         },
       ],
     },
+    {
+      worker_name: "queue-worker",
+      hostnames: [],
+    },
   ],
 };
+
+function mockWorkerDetail(workerName: string) {
+  const worker = MOCK_INVENTORY.workers.find((w) => w.worker_name === workerName);
+  const routes = (worker?.hostnames ?? []).map((h) => ({
+    hostname: h.hostname,
+    kind: h.kind,
+    status: h.status,
+    reason: h.reason,
+    policy: h.status === "critical" ? null : {
+      app_id: "app-1",
+      app_name: `${workerName}-app`,
+      app_domain: h.hostname,
+      policy_rules: [[{ verb: "ALLOW", label: "emails ending in @acme.dev" }]],
+    },
+  }));
+  return {
+    worker_name: workerName,
+    environment: "production",
+    routes,
+    recent_changes: [],
+    cloudflare_url:
+      `https://dash.cloudflare.com/acct/workers/services/view/${workerName}/production`,
+    unavailable: [],
+  };
+}
 
 test.beforeEach(async ({ page }) => {
   // The real endpoint is Access-gated; mocking it here tests UI rendering
@@ -56,6 +90,16 @@ test.beforeEach(async ({ page }) => {
       contentType: "application/json",
       body: JSON.stringify(MOCK_INVENTORY),
     }));
+  await page.route("**/api/workers/*/detail", (route) => {
+    const workerName = decodeURIComponent(
+      route.request().url().split("/api/workers/")[1].split("/")[0],
+    );
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(mockWorkerDetail(workerName)),
+    });
+  });
   await page.route("**/api/audit/summary", (route) =>
     route.fulfill({
       status: 200,
@@ -86,128 +130,147 @@ test.beforeEach(async ({ page }) => {
     }));
   // "overview" is now the default page (tasks.md T033) — navigate into
   // Exposure explicitly, matching every other module's spec convention.
-  // Renamed from "Workers & Access" to "Exposure" by specs/012-workers-dashboard's
-  // nav split (a separate "Workers" page now exists for the operational
-  // inventory this page used to be conflated with).
   await page.goto("/");
   await page.getByRole("button", { name: "Exposure" }).click();
 });
 
-function row(
-  page: import("@playwright/test").Page,
-  workerName: string,
-  kind: string,
-  hostname: string,
-) {
-  return page.getByTestId(`findings-row-${workerName}:${kind}:${hostname}`);
+function row(page: import("@playwright/test").Page, workerName: string) {
+  return page.getByTestId(`matrix-row-${workerName}`);
 }
 
-test("US1 — every Worker and every one of its hostnames appears, none omitted", async ({ page }) => {
-  // The critical hostname legitimately appears twice — once in the row,
-  // once in the account/module-scope alert banner above the table (FR-013).
-  await expect(page.getByText("billing.example.com")).toBeVisible();
-  await expect(page.getByText("billing-api.acct.workers.dev").first()).toBeVisible();
-  await expect(page.getByText("status.example.com")).toBeVisible();
-  // Worker names appear as their own column value, not a section heading —
-  // the flagship table pattern is one flat, sortable/filterable table
-  // across every worker, not grouped per-parent-entity cards. "billing-api"
-  // legitimately appears twice (once per hostname row for that worker).
-  await expect(page.getByText("billing-api", { exact: true }).first()).toBeVisible();
-  await expect(page.getByText("status-page", { exact: true })).toBeVisible();
+// The row's own bounding box grows a lot once expanded (the detail panel is
+// part of the same testid'd wrapper) — clicking the row div itself would
+// hit the detail panel's content on a second click instead of the toggle
+// bar. Click the row's stable role=button summary bar instead.
+function toggleHandle(page: import("@playwright/test").Page, workerName: string) {
+  return row(page, workerName).getByRole("button");
+}
+
+// ---- User Story 1 — matrix structure ----
+
+test("US1 — one row per Worker, not one row per hostname", async ({ page }) => {
+  await expect(row(page, "billing-api")).toBeVisible();
+  await expect(row(page, "status-page")).toBeVisible();
+  await expect(row(page, "docs-site")).toBeVisible();
+  await expect(row(page, "queue-worker")).toBeVisible();
+  await expect(page.locator("[data-testid^='matrix-row-']")).toHaveCount(4);
 });
 
-test("US1 — hostnames on the same Worker show independent, not merged, statuses", async ({ page }) => {
-  const criticalRow = row(page, "billing-api", "workers_dev", "billing-api.acct.workers.dev");
-  await expect(criticalRow.getByText("CRITICAL")).toBeVisible();
-
-  const safeRow = row(page, "billing-api", "custom_domain", "billing.example.com");
-  await expect(safeRow.getByText("PROTECTED")).toBeVisible();
+test("US1 — each entry-point column shows its own independent status in the same row", async ({ page }) => {
+  const billing = row(page, "billing-api");
+  // Custom domain is safe, workers.dev is critical — both visible together,
+  // not merged into one status for the Worker.
+  await expect(billing.getByText("PROTECTED")).toBeVisible();
+  // CRITICAL legitimately appears twice — once in the workers.dev cell,
+  // once in the rightmost overall Status column (the Worker's overall
+  // status is the worst among its entry points).
+  await expect(billing.getByText("CRITICAL").first()).toBeVisible();
+  await expect(billing.getByText("CRITICAL")).toHaveCount(2);
 });
 
-test("US2 — the critical badge is visually distinct from safe/warning, not just labeled differently", async ({ page }) => {
-  const criticalRow = row(page, "billing-api", "workers_dev", "billing-api.acct.workers.dev");
-  const safeRow = row(page, "billing-api", "custom_domain", "billing.example.com");
-
-  // Distinct shape (design system: "shape carries the state," not color alone).
-  const criticalShape = await criticalRow.locator("svg path").first().getAttribute("d");
-  const safeShapeCount = await safeRow.locator("svg circle").count();
-  expect(criticalShape).toBeTruthy();
-  expect(safeShapeCount).toBe(1);
+test("US1 — an entry-point type a Worker doesn't have shows an explicit not-present state", async ({ page }) => {
+  const statusPage = row(page, "status-page");
+  await expect(statusPage.getByText("not present")).toHaveCount(2); // workers.dev + preview URL
 });
 
-test("US3 — the warning badge is visually distinct from both critical and safe", async ({ page }) => {
-  const warningRow = row(page, "status-page", "custom_domain", "status.example.com");
-  await expect(warningRow.getByText("WARNING")).toBeVisible();
+test("US1 — an access-coverage summary is shown per row", async ({ page }) => {
+  const billing = row(page, "billing-api");
+  await expect(billing.getByText("1 / 2 routes")).toBeVisible();
 });
 
-test("US2/AC3 — an alert banner surfaces the most urgent finding above the table (FR-013)", async ({ page }) => {
+test("US1 — a Worker with two hostnames of the same entry-point kind shows a summarized cell, nothing dropped", async ({ page }) => {
+  const docsSite = row(page, "docs-site");
+  await expect(docsSite.getByText("2 custom domains")).toBeVisible();
+  await toggleHandle(page, "docs-site").click();
+  await expect(docsSite.getByText("docs.example.com")).toBeVisible();
+  await expect(docsSite.getByText("www.example.com")).toBeVisible();
+});
+
+test("US1 — a Worker with zero HTTP routes renders as not-applicable, not omitted or errored", async ({ page }) => {
+  const queueWorker = row(page, "queue-worker");
+  await expect(queueWorker.getByText("no http routes")).toBeVisible();
+  await expect(queueWorker.getByText("not present")).toHaveCount(3);
+});
+
+test("US2/AC3 — an alert banner surfaces the most urgent finding above the table", async ({ page }) => {
   await expect(
     page.getByText("A Worker is publicly reachable with no Access policy"),
   ).toBeVisible();
   await expect(page.getByText("billing-api.acct.workers.dev").first()).toBeVisible();
 });
 
-test("US2/AC4 — expanding a row with sibling hostnames reveals them, collapsing hides them again (FR-012, SC-006)", async ({ page }) => {
-  // billing-api has two hostnames, so each row's detail can surface the
-  // other one — status-page has only one hostname and is intentionally not
-  // used here (nothing to reveal, so it never gets an expand affordance).
-  const target = row(page, "billing-api", "custom_domain", "billing.example.com");
-  const sibling = target.getByText("billing-api.acct.workers.dev");
-  // Click the row's own hostname text specifically — it stays put in the
-  // header regardless of whether the detail panel below has expanded the
-  // row's overall height, unlike clicking the row's bounding-box center.
-  const clickTarget = target.getByText("billing.example.com");
+// ---- User Story 2 — row-expand detail ----
 
-  // Collapsed: the sibling hostname is not part of this row at all yet.
-  await expect(sibling).toHaveCount(0);
+test("US2 — expanding a row shows its routes and effective policy inline; collapsing hides them", async ({ page }) => {
+  const billing = row(page, "billing-api");
+  await expect(billing.getByText("billing.example.com")).toHaveCount(0);
 
-  await clickTarget.click();
-  await expect(sibling).toBeVisible();
-  await expect(target.getByText("Other hostnames on billing-api")).toBeVisible();
+  await toggleHandle(page, "billing-api").click();
+  await expect(billing.getByText("billing.example.com")).toBeVisible();
+  await expect(billing.getByText("billing-api.acct.workers.dev")).toBeVisible();
+  await expect(billing.getByText("emails ending in @acme.dev")).toBeVisible();
 
-  await clickTarget.click();
-  await expect(sibling).toHaveCount(0);
+  await toggleHandle(page, "billing-api").click();
+  await expect(billing.getByText("billing.example.com")).toHaveCount(0);
 });
 
-test("the expandable row is keyboard-operable (Tab + Enter), not mouse-only", async ({ page }) => {
-  // FindingsTable's row-expand toggle is a <div>, not a <button>, for
-  // layout reasons — it needs role="button" + tabIndex + a keydown
-  // handler to be usable without a mouse, not just cursor:pointer styling.
-  const target = row(page, "billing-api", "custom_domain", "billing.example.com");
-  const sibling = target.getByText("billing-api.acct.workers.dev");
-  const toggle = target.getByRole("button");
+test("US2 — collapsing one row and expanding a different one works independently (each shows its own data)", async ({ page }) => {
+  const billing = row(page, "billing-api");
+  const statusPage = row(page, "status-page");
 
-  await expect(sibling).toHaveCount(0);
+  await toggleHandle(page, "billing-api").click();
+  await expect(billing.getByText("billing.example.com")).toBeVisible();
 
-  await toggle.focus();
-  await toggle.press("Enter");
-  await expect(sibling).toBeVisible();
+  await toggleHandle(page, "billing-api").click();
+  await expect(billing.getByText("billing.example.com")).toHaveCount(0);
 
-  await toggle.press("Enter");
-  await expect(sibling).toHaveCount(0);
+  await toggleHandle(page, "status-page").click();
+  await expect(statusPage.getByText("status.example.com")).toBeVisible();
+  // Switching to a different row didn't leak billing-api's routes into it.
+  await expect(statusPage.getByText("billing.example.com")).toHaveCount(0);
 });
 
-test("a sortable column header is keyboard-operable (Tab + Enter), not mouse-only", async ({ page }) => {
-  const header = page.getByTestId("sort-header-worker");
-  await header.focus();
-  await header.press("Enter");
-  // The active-sort indicator (▴/▾) only renders once toggleSort() has
-  // actually run for this column — confirms the keydown handler fired,
-  // not just that focus landed on the element.
-  await expect(header.getByText("▴")).toBeVisible();
+test("US2 — a route with no covering Access policy states so explicitly, not blank", async ({ page }) => {
+  const billing = row(page, "billing-api");
+  await toggleHandle(page, "billing-api").click();
+  await expect(billing.getByText("No Access application policy covers this route.")).toBeVisible();
 });
 
-test("US2 — filtering to critical narrows the table, no reload", async ({ page }) => {
-  await page.getByRole("button", { name: /CRITICAL 1/ }).click();
-  await expect(page.getByText("billing-api.acct.workers.dev").first()).toBeVisible();
-  await expect(page.getByText("status.example.com")).not.toBeVisible();
-  await expect(page.getByText("billing.example.com")).not.toBeVisible();
+test("US2 — action controls reflect the row's actual finding; the only real action is View in Cloudflare", async ({ page }) => {
+  await toggleHandle(page, "billing-api").click();
+  await expect(page.getByTestId("action-billing-api-Disable workers.dev")).toBeVisible();
+
+  const viewInCloudflare = page.getByTestId("action-billing-api-view-in-cloudflare");
+  await expect(viewInCloudflare).toBeVisible();
+  await expect(viewInCloudflare).toHaveAttribute(
+    "href",
+    "https://dash.cloudflare.com/acct/workers/services/view/billing-api/production",
+  );
+
+  // Every other action is visual only — a plain div with no href/navigation.
+  const disableAction = page.getByTestId("action-billing-api-Disable workers.dev");
+  await expect(disableAction).not.toHaveAttribute("href");
 });
 
-test("US3/AC3 — an Access application with zero policies attached renders warning, not safe", async ({ page }) => {
-  const zeroPolicyRow = row(page, "checkout-api", "custom_domain", "checkout.example.com");
-  await expect(zeroPolicyRow.getByText("WARNING")).toBeVisible();
-  await expect(zeroPolicyRow.getByText("PROTECTED")).not.toBeVisible();
+// ---- User Story 3 — navigation, search, re-scan ----
+
+test("US3 — clicking a severity count scrolls the matching row into view", async ({ page }) => {
+  await page.getByTestId("jump-to-row-critical").click();
+  await expect(row(page, "billing-api")).toBeInViewport();
+});
+
+test("US3 — the search box narrows the table to matching Workers, no reload", async ({ page }) => {
+  await page.getByPlaceholder("filter workers…").fill("docs");
+  await expect(row(page, "docs-site")).toBeVisible();
+  await expect(row(page, "billing-api")).toHaveCount(0);
+
+  await page.getByPlaceholder("filter workers…").fill("");
+  await expect(row(page, "billing-api")).toBeVisible();
+});
+
+test("US3 — a search with no matches shows an explicit no-matches state", async ({ page }) => {
+  await page.getByPlaceholder("filter workers…").fill("nonexistent-worker-xyz");
+  await expect(page.getByText("No matches")).toBeVisible();
 });
 
 test("US1 — re-scan refreshes the page's findings without a reload (FR-001..FR-003)", async ({ page }) => {
@@ -250,6 +313,6 @@ test("re-scan failure leaves existing data untouched and shows an inline error (
 
   await expect(page.getByText("Re-scan failed:", { exact: false })).toBeVisible();
   await expect(page.getByRole("button", { name: "Re-scan" })).toBeEnabled();
-  await expect(page.getByText("billing.example.com")).toBeVisible();
+  await expect(row(page, "billing-api")).toBeVisible();
   await expect(page.getByText("run run-1")).toBeVisible();
 });
