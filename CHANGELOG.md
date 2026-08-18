@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.13.0](https://github.com/iumalabs/flaretower/compare/v1.12.0...v1.13.0) (2026-08-18)
+
+
+### Features
+
+* rebuild Exposure page as a Worker x entry-point matrix ([#424](https://github.com/iumalabs/flaretower/issues/424)) ([b5eb760](https://github.com/iumalabs/flaretower/commit/b5eb76015dea500e1fb2df9f31eae2e015b7897f))
+* rebuild Overview dashboard with header, findings reasons, and exposure trend ([#427](https://github.com/iumalabs/flaretower/issues/427)) ([a18ec33](https://github.com/iumalabs/flaretower/commit/a18ec33500d31da56f6c1f6ecca4d817aa39a102))
+
+
+### Bug Fixes
+
+* anchor Workers inventory status column right, add header toolbar ([#425](https://github.com/iumalabs/flaretower/issues/425)) ([43c4e5f](https://github.com/iumalabs/flaretower/commit/43c4e5fd790215b99cf88d81ba89bc345dde4fdd))
+
 ## [1.12.0](https://github.com/iumalabs/flaretower/compare/v1.11.1...v1.12.0) (2026-08-17)
 
 
