@@ -15,7 +15,14 @@ concurrency:
 jobs:
   check:
     name: fmt, lint, typecheck, test, build
-    runs-on: ubuntu-latest
+    # Fork-safe runs-on: this is a public repo with an unrestricted
+    # `pull_request` trigger, so a fork PR's own code must never land on a
+    # self-hosted runner (the runner user has passwordless sudo) — falls
+    # back to ubuntu-latest specifically for fork-originated PRs, self-hosted
+    # otherwise. See maksimyugai/github-runners's deploy/RUNBOOK.md, "Fork-
+    # safe runs-on for public repos with an unrestricted pull_request
+    # trigger".
+    runs-on: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && 'ubuntu-latest' || fromJSON('["self-hosted", "general"]') }}
     steps:
       - uses: actions/checkout@v7
 

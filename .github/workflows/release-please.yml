@@ -10,7 +10,10 @@ permissions:
 
 jobs:
   release-please:
-    runs-on: ubuntu-latest
+    # No pull_request trigger on this workflow (push to main only), so the
+    # fork-safe conditional ci.yml uses isn't needed here — see
+    # maksimyugai/github-runners's deploy/RUNBOOK.md.
+    runs-on: [self-hosted, general]
     steps:
       # release-please-action itself talks to the GitHub API directly and
       # doesn't need a working tree, but the fast-forward step below does

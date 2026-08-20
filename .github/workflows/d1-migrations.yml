@@ -29,7 +29,12 @@ concurrency:
 jobs:
   migrate:
     name: apply pending migrations
-    runs-on: ubuntu-latest
+    # Production-mutating (wrangler d1 migrations apply --remote against
+    # flaretower-production/-preview) — deploy tier, not general. No
+    # pull_request trigger on this workflow (push to main, path-filtered,
+    # plus workflow_dispatch), so the fork-safe conditional ci.yml uses isn't
+    # needed here — see maksimyugai/github-runners's deploy/RUNBOOK.md.
+    runs-on: [self-hosted, deploy]
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
     steps:
