@@ -20,7 +20,10 @@ concurrency:
 jobs:
   e2e:
     name: e2e (Playwright)
-    runs-on: ubuntu-latest
+    # No pull_request trigger on this workflow (schedule + workflow_dispatch
+    # only), so the fork-safe conditional ci.yml uses isn't needed here — see
+    # maksimyugai/github-runners's deploy/RUNBOOK.md.
+    runs-on: [self-hosted, general]
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
