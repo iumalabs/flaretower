@@ -250,12 +250,41 @@ test("US3 — a DNS-only origin-facing record renders as warning; a non-proxy-ca
   await expect(mxRow.getByText("PROTECTED")).toBeVisible();
 });
 
+// issue #433 — the Finding column shows the design's fixed short labels,
+// not the full reason sentence.
+test("issue #433 — the Finding column shows the design's short labels, not full sentences", async ({ page }) => {
+  const danglingRow = row(
+    page,
+    "example.com",
+    "CNAME",
+    "old-blog.example.com",
+    "old-blog.herokuapp.com",
+  );
+  await expect(danglingRow.getByText("DANGLING")).toBeVisible();
+
+  const originExposedRow = row(page, "example.com", "A", "api.example.com", "203.0.113.10");
+  await expect(originExposedRow.getByText("ORIGIN EXPOSED")).toBeVisible();
+
+  const publicRow = row(page, "example.com", "MX", "example.com", "10 mail.example.com");
+  await expect(publicRow.getByText("PUBLIC")).toBeVisible();
+
+  const okRow = row(page, "example.com", "CNAME", "docs.example.com", "example-docs.pages.dev");
+  await expect(okRow.getByText("OK")).toBeVisible();
+
+  // No full sentence leaks into the visible column text anywhere on the page.
+  await expect(page.getByText("bypasses Cloudflare protection")).toHaveCount(0);
+});
+
 test("US2/AC3 — a record whose dangling status couldn't be determined renders as not_evaluated (N/A), never silently safe", async ({ page }) => {
   const naRow = row(page, "example.com", "A", "unknown.example.com", "203.0.113.20");
-  await expect(naRow.getByText("N/A")).toBeVisible();
-  await expect(
-    naRow.getByText("could not evaluate dangling-target status (Security Insights API error)"),
-  ).toBeVisible();
+  // "N/A" now legitimately appears twice in this row — the status badge and
+  // (issue #433) the Finding column's own short label for the same status.
+  await expect(naRow.getByText("N/A")).toHaveCount(2);
+  // The full reason is still available on hover via the title attribute.
+  await expect(naRow.getByText("N/A").last()).toHaveAttribute(
+    "title",
+    "could not evaluate dangling-target status (Security Insights API error)",
+  );
 });
 
 test("specs/013 US1 — zone tabs show name+count; selecting a different tab swaps the table, no reload", async ({ page }) => {
@@ -317,7 +346,12 @@ test("specs/013 US2 — Proxy status and TTL render per record, distinct from th
 test("specs/013 US3 — an ineffective DMARC policy is flagged as a warning on the _dmarc record", async ({ page }) => {
   const dmarcRow = row(page, "example.com", "TXT", "_dmarc.example.com", "v=DMARC1; p=none");
   await expect(dmarcRow.getByText("WARNING")).toBeVisible();
-  await expect(dmarcRow.getByText("DMARC policy provides no enforcement (p=none)")).toBeVisible();
+  // issue #433 — the design's own short label for this reason.
+  await expect(dmarcRow.getByText("POLICY p=none")).toBeVisible();
+  await expect(dmarcRow.getByText("POLICY p=none")).toHaveAttribute(
+    "title",
+    "DMARC policy provides no enforcement (p=none)",
+  );
 });
 
 test("specs/013 US3 — a record pointing at a Cloudflare platform domain shows an informational label, not a warning", async ({ page }) => {
