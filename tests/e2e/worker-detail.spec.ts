@@ -275,6 +275,19 @@ test("US3 — recent changes are scoped to this Worker, with an explicit empty s
 
   await expect(page.getByTestId("recent-change-0")).toContainText("Enabled workers.dev subdomain");
   await expect(page.getByTestId("recent-change-0")).toContainText("wrangler · deploy");
+
+  // Regression (issue #432): panel headings are body text at weight 600,
+  // not the small mono/uppercase label style meant for table column
+  // headers.
+  for (const text of ["Routes", "Recent changes"]) {
+    const heading = page.getByText(text, { exact: true });
+    const style = await heading.evaluate((el) => ({
+      fontFamily: getComputedStyle(el).fontFamily,
+      textTransform: getComputedStyle(el).textTransform,
+    }));
+    expect(style.fontFamily).toContain("IBM Plex Sans");
+    expect(style.textTransform).not.toBe("uppercase");
+  }
 });
 
 test("US3 — a Worker with no recent changes shows an explicit empty state, distinct from unavailable", async ({ page }) => {

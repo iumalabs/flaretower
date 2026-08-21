@@ -207,6 +207,18 @@ test("specs/014 US2 — selecting an application shows its policy rules in plain
   await expect(page.getByText("an unrecognized rule (custom_future_rule)")).toBeVisible();
 });
 
+// Regression (issue #432): panel headings are body text at weight 600, not
+// the small mono/uppercase label style meant for table column headers.
+test("specs/014 US2 — the Policy detail heading uses plain Sans text, not mono/uppercase", async ({ page }) => {
+  const heading = page.getByText("Policy detail — status-public");
+  const style = await heading.evaluate((el) => ({
+    fontFamily: getComputedStyle(el).fontFamily,
+    textTransform: getComputedStyle(el).textTransform,
+  }));
+  expect(style.fontFamily).toContain("IBM Plex Sans");
+  expect(style.textTransform).not.toBe("uppercase");
+});
+
 test("specs/014 US3 — the Groups panel shows real reference counts, including a group referenced by zero applications", async ({ page }) => {
   await page.getByRole("tab", { name: "Access Groups" }).click();
   const platform = page.getByTestId("access-group-grp-platform");

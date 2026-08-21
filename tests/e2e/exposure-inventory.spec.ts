@@ -214,6 +214,23 @@ test("US2 — expanding a row shows its routes and effective policy inline; coll
   await expect(billing.getByText("billing.example.com")).toHaveCount(0);
 });
 
+// Regression (issue #432): panel headings are body text at weight 600, not
+// the small mono/uppercase label style meant for table column headers.
+test("US2 — the expanded row's headings use plain Sans text, not mono/uppercase", async ({ page }) => {
+  const billing = row(page, "billing-api");
+  await toggleHandle(page, "billing-api").click();
+
+  for (const text of ["Routes & effective policy", "Actions"]) {
+    const heading = billing.getByText(text, { exact: true });
+    const style = await heading.evaluate((el) => ({
+      fontFamily: getComputedStyle(el).fontFamily,
+      textTransform: getComputedStyle(el).textTransform,
+    }));
+    expect(style.fontFamily).toContain("IBM Plex Sans");
+    expect(style.textTransform).not.toBe("uppercase");
+  }
+});
+
 test("US2 — collapsing one row and expanding a different one works independently (each shows its own data)", async ({ page }) => {
   const billing = row(page, "billing-api");
   const statusPage = row(page, "status-page");

@@ -9,6 +9,7 @@ import {
 } from "../components/FindingsTable.tsx";
 import { MetricCard } from "../components/MetricCard.tsx";
 import { EmptyState } from "../components/EmptyState.tsx";
+import { SECTION_HEADING_STYLE } from "../lib/section-heading-style.ts";
 
 interface WorkerRow {
   worker_name: string;
@@ -211,13 +212,9 @@ function RecentChangesPanel(
     >
       <div
         style={{
+          ...SECTION_HEADING_STYLE,
           padding: "10px 12px",
           borderBottom: "1px solid var(--border)",
-          fontFamily: "var(--font-mono)",
-          fontSize: "var(--text-label-size)",
-          letterSpacing: "var(--text-label-ls)",
-          color: "var(--fg-faint)",
-          textTransform: "uppercase",
         }}
       >
         Recent changes
