@@ -135,12 +135,39 @@ test("US1 — last build shows success, failure, and no-deployment-yet as three 
     .toBeVisible();
 });
 
-test("US1 — health pill matches the existing subdomain-exposure status unchanged", async ({ page }) => {
+// issue #435 — the Preview column uses the design's short vocabulary
+// (OPEN/ACCESS) for the same underlying subdomain-exposure status, not
+// the generic CRITICAL/WARNING/PROTECTED badge text.
+test("US1 — the Preview pill uses the design's OPEN/ACCESS vocabulary for the existing subdomain-exposure status", async ({ page }) => {
   const safeRow = page.getByTestId("findings-row-marketing-site");
-  await expect(safeRow.getByText("PROTECTED")).toBeVisible();
+  await expect(safeRow.getByText("ACCESS", { exact: true })).toBeVisible();
 
   const criticalRow = page.getByTestId("findings-row-empty-project");
-  await expect(criticalRow.getByText("CRITICAL")).toBeVisible();
+  await expect(criticalRow.getByText("OPEN")).toBeVisible();
+});
+
+test("issue #435 — a warning-tier subdomain-exposure status also renders OPEN, not a distinct third label", async ({ page }) => {
+  await page.route("**/api/pages/inventory*", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ...MOCK_PAGES_INVENTORY,
+        projects: [
+          {
+            ...MOCK_PAGES_INVENTORY.projects[0],
+            health_status: "warning",
+            health_reason:
+              "covering Access application(s) do not meaningfully restrict access: app-1 has a policy that allows Everyone",
+          },
+        ],
+        projects_pagination: { page: 1, page_size: 50, total: 1, total_pages: 1 },
+      }),
+    }));
+  await page.goto("/");
+  await page.getByRole("button", { name: "Pages" }).click();
+
+  await expect(page.getByTestId("findings-row-marketing-site").getByText("OPEN")).toBeVisible();
 });
 
 // Regression coverage: a build timestamp a few seconds ahead of the
