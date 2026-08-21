@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.13.3](https://github.com/iumalabs/flaretower/compare/v1.13.2...v1.13.3) (2026-08-21)
+
+
+### Bug Fixes
+
+* Overview findings rows show one action button, not two ([#448](https://github.com/iumalabs/flaretower/issues/448)) ([6644c92](https://github.com/iumalabs/flaretower/commit/6644c9212f839027ca427e076e79cf9827a7f089))
+* Pages preview column uses the design's OPEN/ACCESS vocabulary ([#449](https://github.com/iumalabs/flaretower/issues/449)) ([dac7460](https://github.com/iumalabs/flaretower/commit/dac7460013bccac18f7f4e33ca4a430806c7ec61))
+* Worker detail gets a real breadcrumb and visual-only action buttons ([#446](https://github.com/iumalabs/flaretower/issues/446)) ([faca73e](https://github.com/iumalabs/flaretower/commit/faca73ebe1fbd1a058582e0b80b32c3d4d319ab0))
+
 ## [1.13.2](https://github.com/iumalabs/flaretower/compare/v1.13.1...v1.13.2) (2026-08-21)
 
 
