@@ -152,7 +152,9 @@ test("US3/AC3 — a critical finding appears in the prioritized list with an ack
   // Findings list, once in the Scan log (both mocks reference the same
   // entity).
   await expect(page.getByText("api-gateway.acct.workers.dev").first()).toBeVisible();
-  await expect(page.getByRole("button", { name: "Acknowledge" }).first()).toBeVisible();
+  // issue #429 — the row's one button is labeled contextually ("Review
+  // exposure" for this module) but performs the real acknowledge action.
+  await expect(page.getByRole("button", { name: "Review exposure" }).first()).toBeVisible();
 });
 
 test("US3/AC4 — a recent-activity log renders", async ({ page }) => {
@@ -464,19 +466,20 @@ test("US2 — each finding row shows its real plain-language reason, not a slug"
   await expect(page.getByText("Access application policy includes Everyone")).toBeVisible();
 });
 
-test("US2 — a contextual action label renders per finding, alongside the unchanged Acknowledge control", async ({ page }) => {
-  await expect(page.getByText("Review exposure").first()).toBeVisible();
-  await expect(page.getByRole("button", { name: "Acknowledge" }).first()).toBeVisible();
-});
-
-test("US2 — Acknowledge still removes the row from the list exactly as before", async ({ page }) => {
+// issue #429 — the design reference shows one button per row, not a
+// decorative contextual label alongside a separate real Acknowledge
+// control; merged into a single button whose text is the contextual
+// label and whose click performs the real acknowledge action.
+test("US2 — the row's single button is labeled contextually and performs the real acknowledge action", async ({ page }) => {
   await page.route(
     "**/api/audit/alerts/exposure/hostname/a1/acknowledge",
     (route) => route.fulfill({ status: 200, contentType: "application/json", body: "{}" }),
   );
 
   await expect(page.getByText("api-gateway.acct.workers.dev").first()).toBeVisible();
-  await page.getByRole("button", { name: "Acknowledge" }).first().click();
+  const button = page.getByRole("button", { name: "Review exposure" }).first();
+  await expect(button).toBeVisible();
+  await button.click();
   await expect(page.getByText("no Access application covers this hostname")).toHaveCount(0);
 });
 

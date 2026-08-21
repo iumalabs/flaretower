@@ -178,12 +178,16 @@ function MetricCard({ status, label, value }: MetricCardProps): JSX.Element {
   );
 }
 
-// specs/027-overview-dashboard-redesign (research.md §4) — visual-only
-// affordance, not wired to a real mutation (FR-008). Deliberately a small
-// module-level default rather than one label per finding kind: the inbox
-// spans all seventeen source kinds, far more varied than any single
-// module page's own action set, so a per-kind label here would be
-// unjustified complexity for something that doesn't perform an action.
+// issue #429 — this label is the single button's text; the click itself
+// still only ever performs the one real mutation this page has
+// (acknowledge). specs/027's original FR-008 kept this label on a
+// separate, purely decorative control next to a plain "Acknowledge"
+// button — the design reference shows one button per row, not two, so
+// the two were merged here rather than left duplicated. Deliberately a
+// small module-level default rather than one label per finding kind: the
+// inbox spans all seventeen source kinds, far more varied than any single
+// module page's own action set, so a per-kind label would be unjustified
+// complexity for text that names an action but doesn't perform it.
 const CONTEXTUAL_ACTION_LABEL: Record<string, string> = {
   exposure: "Review exposure",
   dns: "Review DNS record",
@@ -265,35 +269,25 @@ function FindingRow(
         </div>
       </div>
       <div style={{ flex: "none", display: "flex", flexDirection: "column", gap: 6 }}>
-        <div
-          style={{
-            fontFamily: "var(--font-mono)",
-            fontSize: "var(--text-meta-size)",
-            letterSpacing: "0.03em",
-            border: "1px solid var(--border)",
-            color: "var(--fg-muted)",
-            padding: "5px 10px",
-            textAlign: "center",
-            whiteSpace: "nowrap",
-          }}
-        >
-          {contextualActionLabel(alert)}
-        </div>
         <button
           type="button"
           onClick={handleAcknowledge}
           disabled={pending}
           style={{
+            fontFamily: "var(--font-mono)",
+            fontSize: "var(--text-meta-size)",
+            letterSpacing: "0.03em",
             background: "none",
             border: "1px solid var(--border)",
-            padding: "5px 10px",
-            cursor: pending ? "default" : "pointer",
             color: "var(--fg-secondary)",
+            padding: "5px 10px",
+            textAlign: "center",
+            whiteSpace: "nowrap",
+            cursor: pending ? "default" : "pointer",
             font: "inherit",
-            fontSize: "var(--text-body-size)",
           }}
         >
-          {pending ? "Acknowledging…" : "Acknowledge"}
+          {pending ? "Acknowledging…" : contextualActionLabel(alert)}
         </button>
         {ackError && (
           <div style={{ color: "var(--status-critical-fg)", fontSize: "var(--text-meta-size)" }}>
