@@ -105,25 +105,41 @@ const NOT_AVAILABLE = "not available";
 
 // issue #434 — the design's HEALTH vocabulary for applications, derived
 // from worker/modules/zero-trust/evaluate.ts's real status+reason
-// (evaluateApplication): safe is always "policies meaningfully restrict
-// access" -> ENFORCING; warning is one of two fixed-literal reasons — a
-// wide-open/bypass policy (BYPASS ALL) or no policies at all (NO
-// POLICIES), two genuinely different conditions worth distinguishing
-// rather than folding into one term. PARTIAL COVER and BROAD TOKEN (also
-// named in the design) have no corresponding signal anywhere in this
-// module — implementing them would mean fabricating a distinction the
-// worker doesn't compute, so they're deliberately not attempted here (see
-// issue #434's follow-up comment) — this page's Service tokens table keeps
-// the generic badge text unchanged.
+// (evaluateApplication) plus two already-computed descriptive fields
+// (identity_summary, policy_rules) — no new worker-side detection logic or
+// Cloudflare API call, all four labels trace to data already on the wire.
+//
+// warning is one of two fixed-literal reasons — a wide-open/bypass policy
+// (BYPASS ALL) or no policies at all (NO POLICIES), two genuinely
+// different conditions worth distinguishing rather than folding into one
+// term.
+//
+// safe (isAppOpenOrUnconfigured false — policies meaningfully restrict)
+// splits further by HOW they restrict, cross-checked against the design
+// source directly (Claude Design project "FlareTower", FlareTower.dc.html
+// §13's accessRows): an app whose only identity signal is a service token
+// (rule-humanizer.ts's summarizeIdentity returns exactly "service token"
+// when every rule is service_token-only, no identity-provider rule
+// anywhere) is BROAD TOKEN — a shared, non-per-person credential grants
+// access to anyone holding it, unlike an SSO identity individually
+// revocable and attributable. Otherwise, an app layering at least one
+// REQUIRE condition on top of its identity ALLOW rule (device posture,
+// mTLS, a second factor — a PolicyRuleLine with verb "REQUIRE" anywhere
+// across its policies) is ENFORCING (defense in depth); identity-only with
+// no such layering is PARTIAL COVER.
 const APP_HEALTH_LABEL: Record<string, string> = {
   "a policy allows Everyone or bypasses identity verification": "BYPASS ALL",
   "no policies attached": "NO POLICIES",
 };
 
 function appHealthLabel(app: AppFinding): string {
-  if (app.status === "safe") return "ENFORCING";
   if (app.status === "not_evaluated") return "N/A";
-  return APP_HEALTH_LABEL[app.reason] ?? app.reason;
+  if (app.status !== "safe") return APP_HEALTH_LABEL[app.reason] ?? app.reason;
+  if (app.identity_summary === "service token") return "BROAD TOKEN";
+  const hasRequireRule = app.policy_rules.some((policy) =>
+    policy.some((line) => line.verb === "REQUIRE")
+  );
+  return hasRequireRule ? "ENFORCING" : "PARTIAL COVER";
 }
 
 const APP_COLUMNS: FindingsTableColumn<AppFinding>[] = [

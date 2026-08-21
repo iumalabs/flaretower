@@ -174,6 +174,54 @@ test("US2/AC4 — an application with zero policies attached is flagged, not sil
   await expect(noPoliciesRow.getByText("no policies attached")).toBeVisible();
 });
 
+test("issue #434 — an app secured only by identity with no extra layer renders PARTIAL COVER; one secured only by a service token renders BROAD TOKEN", async ({ page }) => {
+  await page.route("**/api/zero-trust/inventory*", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ...MOCK_ZT_INVENTORY,
+        applications_pagination: { page: 1, page_size: 50, total: 2, total_pages: 1 },
+        applications: [
+          {
+            app_id: "app-identity-only",
+            app_name: "billing-portal",
+            app_domain: "billing.example.com",
+            status: "safe",
+            reason: "policies meaningfully restrict access",
+            policy_count: 1,
+            covered_hostname_count: 1,
+            identity_summary: "Okta",
+            session_duration: "8h",
+            // No REQUIRE line anywhere — identity ALLOW alone, no layered
+            // defense-in-depth condition.
+            policy_rules: [[{ verb: "ALLOW", label: "emails ending in @acme.dev" }]],
+          },
+          {
+            app_id: "app-token-only",
+            app_name: "ci-deploy",
+            app_domain: "ci.example.com",
+            status: "safe",
+            reason: "policies meaningfully restrict access",
+            policy_count: 1,
+            covered_hostname_count: 1,
+            identity_summary: "service token",
+            session_duration: null,
+            policy_rules: [[{ verb: "ALLOW", label: "service token · deploy-bot" }]],
+          },
+        ],
+      }),
+    }));
+  await page.goto("/");
+  await page.getByRole("button", { name: "Zero Trust" }).click();
+
+  const identityOnlyRow = page.getByTestId("findings-row-app-identity-only");
+  await expect(identityOnlyRow.getByText("PARTIAL COVER")).toBeVisible();
+
+  const tokenOnlyRow = page.getByTestId("findings-row-app-token-only");
+  await expect(tokenOnlyRow.getByText("BROAD TOKEN")).toBeVisible();
+});
+
 test("US3 — service token statuses render distinctly: critical, warning, safe", async ({ page }) => {
   await page.getByRole("tab", { name: "Service tokens" }).click();
   const expiredRow = page.getByTestId("findings-row-tok-expired");
