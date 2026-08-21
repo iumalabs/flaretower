@@ -62,6 +62,12 @@ interface FindingsTableProps<Row> {
   // Workers (an internet-reachability judgment), not the generic "Status"
   // every other caller keeps by omitting this prop.
   statusLabel?: string;
+  // issue #434 — some pages need a module-specific word in the status
+  // badge itself (e.g. Zero Trust's ENFORCING/BYPASS ALL) rather than the
+  // generic CRITICAL/WARNING/PROTECTED/N/A every other caller keeps by
+  // omitting this. The badge's shape/color still come from `status`
+  // unchanged — only the text is overridden.
+  statusBadgeLabel?: (row: Row) => string;
 }
 
 const STATUS_ORDER: ExposureStatus[] = ["critical", "warning", "safe", "not_evaluated"];
@@ -89,6 +95,7 @@ export function FindingsTable<Row>(
     onRowClick,
     statusPosition = "left",
     statusLabel = "Status",
+    statusBadgeLabel,
   }: FindingsTableProps<Row>,
 ): JSX.Element {
   const [filter, setFilter] = useState<ExposureStatus | null>(null);
@@ -350,7 +357,10 @@ export function FindingsTable<Row>(
                   />
                   {statusPosition === "left" && (
                     <div style={{ width: 120, flex: "none", padding: "8px" }}>
-                      <ExposureStatusBadge status={row.status} />
+                      <ExposureStatusBadge
+                        status={row.status}
+                        label={statusBadgeLabel?.(row.data)}
+                      />
                     </div>
                   )}
                   {columns.map((c) => (
@@ -368,7 +378,10 @@ export function FindingsTable<Row>(
                   ))}
                   {statusPosition === "right" && (
                     <div style={{ width: 120, flex: "none", padding: "8px" }}>
-                      <ExposureStatusBadge status={row.status} />
+                      <ExposureStatusBadge
+                        status={row.status}
+                        label={statusBadgeLabel?.(row.data)}
+                      />
                     </div>
                   )}
                   <div style={{ width: 24, flex: "none", textAlign: "center" }}>

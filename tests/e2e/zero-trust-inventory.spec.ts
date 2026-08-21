@@ -17,7 +17,7 @@ const MOCK_ZT_INVENTORY = {
       app_name: "status-public",
       app_domain: "internal-tool.example.com",
       status: "warning",
-      reason: "policy allows Everyone",
+      reason: "a policy allows Everyone or bypasses identity verification",
       policy_count: 1,
       covered_hostname_count: 1,
       identity_summary: "— none —",
@@ -150,22 +150,27 @@ test("US1 — every application and every service token appears, none omitted", 
 });
 
 test("US2 — the open-policy application renders as warning, the scoped one as safe", async ({ page }) => {
+  // issue #434 — applications use the HEALTH vocabulary (BYPASS ALL /
+  // ENFORCING), not the generic WARNING/PROTECTED badge text.
   const openRow = page.getByTestId("findings-row-app-open");
-  await expect(openRow.getByText("WARNING")).toBeVisible();
+  await expect(openRow.getByText("BYPASS ALL")).toBeVisible();
 
   const scopedRow = page.getByTestId("findings-row-app-scoped");
-  await expect(scopedRow.getByText("PROTECTED")).toBeVisible();
+  await expect(scopedRow.getByText("ENFORCING")).toBeVisible();
 });
 
 test("US2/AC3 — a Bypass-policy application is flagged as open, the same as an Allow-Everyone one", async ({ page }) => {
   const bypassRow = page.getByTestId("findings-row-app-bypass");
-  await expect(bypassRow.getByText("WARNING")).toBeVisible();
+  await expect(bypassRow.getByText("BYPASS ALL")).toBeVisible();
   await expect(bypassRow.getByText("bypasses identity verification")).toBeVisible();
 });
 
 test("US2/AC4 — an application with zero policies attached is flagged, not silently treated as safe", async ({ page }) => {
   const noPoliciesRow = page.getByTestId("findings-row-app-no-policies");
-  await expect(noPoliciesRow.getByText("WARNING")).toBeVisible();
+  // issue #434 — a genuinely different condition from an open/bypass
+  // policy (nothing configured at all vs. an active wide-open policy), so
+  // it gets its own short label rather than being folded into BYPASS ALL.
+  await expect(noPoliciesRow.getByText("NO POLICIES", { exact: true })).toBeVisible();
   await expect(noPoliciesRow.getByText("no policies attached")).toBeVisible();
 });
 

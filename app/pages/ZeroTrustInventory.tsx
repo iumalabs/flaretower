@@ -103,6 +103,29 @@ async function fetchZeroTrustInventory(
 
 const NOT_AVAILABLE = "not available";
 
+// issue #434 — the design's HEALTH vocabulary for applications, derived
+// from worker/modules/zero-trust/evaluate.ts's real status+reason
+// (evaluateApplication): safe is always "policies meaningfully restrict
+// access" -> ENFORCING; warning is one of two fixed-literal reasons — a
+// wide-open/bypass policy (BYPASS ALL) or no policies at all (NO
+// POLICIES), two genuinely different conditions worth distinguishing
+// rather than folding into one term. PARTIAL COVER and BROAD TOKEN (also
+// named in the design) have no corresponding signal anywhere in this
+// module — implementing them would mean fabricating a distinction the
+// worker doesn't compute, so they're deliberately not attempted here (see
+// issue #434's follow-up comment) — this page's Service tokens table keeps
+// the generic badge text unchanged.
+const APP_HEALTH_LABEL: Record<string, string> = {
+  "a policy allows Everyone or bypasses identity verification": "BYPASS ALL",
+  "no policies attached": "NO POLICIES",
+};
+
+function appHealthLabel(app: AppFinding): string {
+  if (app.status === "safe") return "ENFORCING";
+  if (app.status === "not_evaluated") return "N/A";
+  return APP_HEALTH_LABEL[app.reason] ?? app.reason;
+}
+
 const APP_COLUMNS: FindingsTableColumn<AppFinding>[] = [
   {
     key: "application",
@@ -547,6 +570,7 @@ export function ZeroTrustInventory(): JSX.Element {
                       rows={appRows}
                       loadingLabel="Loading applications…"
                       pagination={appPagination}
+                      statusBadgeLabel={appHealthLabel}
                     />
                   )}
 
