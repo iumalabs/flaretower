@@ -171,6 +171,49 @@ function reasonColumn<Row extends { reason: string }>(): FindingsTableColumn<Row
   };
 }
 
+// issue #436 — the design's EXPOSURE vocabulary, derived from worker/
+// modules/storage/evaluate.ts's real status+reason. R2 buckets and KV/D1
+// resources sit on entirely disjoint signal axes — a bucket's exposure is
+// about public reachability (r2.dev / an uncovered or weakly-covered
+// custom domain), while a namespace/database's is about whether a
+// deployed Worker still references it — so each gets its own vocabulary.
+// Both are fully determined by status alone: each evaluate.ts function has
+// exactly one branch per status (bucket: one critical branch — r2.dev or
+// an uncovered custom domain, both real public reachability; one warning
+// branch — a custom domain covered by a policy that doesn't meaningfully
+// restrict, distinct from a hard-open critical case; two safe branches
+// that both mean "not exposed"), so no reason-text matching is needed.
+function bucketExposureLabel(bucket: BucketFinding): string {
+  switch (bucket.status) {
+    case "critical":
+      return "PUBLIC READ";
+    case "warning":
+      return "WEAK POLICY";
+    case "safe":
+      return "PRIVATE";
+    case "not_evaluated":
+      return "N/A";
+  }
+}
+
+// KV/D1 usage evaluation never produces "critical" (evaluateKvNamespace
+// Usage/evaluateD1DatabaseUsage only ever return safe/warning/not_evaluated)
+// — the fallback below is unreachable today, kept only so this stays total
+// against ExposureStatus's full union rather than assuming that never
+// changes.
+function bindingExposureLabel(resource: { status: ExposureStatus }): string {
+  switch (resource.status) {
+    case "safe":
+      return "INTERNAL";
+    case "warning":
+      return "ORPHANED";
+    case "not_evaluated":
+      return "N/A";
+    default:
+      return resource.status.toUpperCase();
+  }
+}
+
 const BUCKET_COLUMNS: FindingsTableColumn<BucketFinding>[] = [
   nameColumn<BucketFinding>("Bucket", "22%", (r) => r.bucket_name, () => "bucket"),
   {
@@ -395,6 +438,8 @@ export function StorageInventory(): JSX.Element {
                   description: "This account has no R2 buckets.",
                 }}
                 pagination={bucketPagination}
+                statusLabel="Exposure"
+                statusBadgeLabel={bucketExposureLabel}
               />
             ),
           },
@@ -411,6 +456,8 @@ export function StorageInventory(): JSX.Element {
                   description: "This account has no KV namespaces.",
                 }}
                 pagination={kvPagination}
+                statusLabel="Exposure"
+                statusBadgeLabel={bindingExposureLabel}
               />
             ),
           },
@@ -427,6 +474,8 @@ export function StorageInventory(): JSX.Element {
                   description: "This account has no D1 databases.",
                 }}
                 pagination={d1Pagination}
+                statusLabel="Exposure"
+                statusBadgeLabel={bindingExposureLabel}
               />
             ),
           },

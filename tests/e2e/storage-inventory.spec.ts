@@ -149,42 +149,46 @@ test("US1 — every bucket, namespace, and database appears, none omitted", asyn
 });
 
 test("US2 — an r2.dev-exposed bucket renders critical, a private bucket renders safe", async ({ page }) => {
+  // issue #436 — buckets use the EXPOSURE vocabulary (PUBLIC READ/PRIVATE/
+  // WEAK POLICY), not the generic CRITICAL/WARNING/PROTECTED badge text.
   const exposedRow = page.getByTestId("findings-row-public-uploads");
-  await expect(exposedRow.getByText("CRITICAL")).toBeVisible();
+  await expect(exposedRow.getByText("PUBLIC READ")).toBeVisible();
 
   const privateRow = page.getByTestId("findings-row-private-backups");
-  await expect(privateRow.getByText("PROTECTED")).toBeVisible();
+  await expect(privateRow.getByText("PRIVATE", { exact: true })).toBeVisible();
 });
 
 test("US2/T012 — a bucket with a custom domain covered by an open Access policy renders warning, distinct from critical/safe", async ({ page }) => {
   const exposedRow = page.getByTestId("findings-row-public-uploads");
-  await expect(exposedRow.getByText("CRITICAL")).toBeVisible();
+  await expect(exposedRow.getByText("PUBLIC READ")).toBeVisible();
 
   const privateRow = page.getByTestId("findings-row-private-backups");
-  await expect(privateRow.getByText("PROTECTED")).toBeVisible();
+  await expect(privateRow.getByText("PRIVATE", { exact: true })).toBeVisible();
 
   const looselyCoveredRow = page.getByTestId("findings-row-loosely-covered-assets");
-  await expect(looselyCoveredRow.getByText("WARNING")).toBeVisible();
+  await expect(looselyCoveredRow.getByText("WEAK POLICY")).toBeVisible();
 });
 
 test("US2/AC2 — an enabled custom domain not covered by any Access application renders critical", async ({ page }) => {
   const row = page.getByTestId("findings-row-uncovered-domain-assets");
-  await expect(row.getByText("CRITICAL")).toBeVisible();
+  await expect(row.getByText("PUBLIC READ")).toBeVisible();
   await expect(row.getByText("not covered by any Access application")).toBeVisible();
 });
 
 test("US2/AC4 — an enabled custom domain covered by a meaningfully scoped Access policy renders safe", async ({ page }) => {
   const row = page.getByTestId("findings-row-scoped-domain-assets");
-  await expect(row.getByText("PROTECTED")).toBeVisible();
+  await expect(row.getByText("PRIVATE", { exact: true })).toBeVisible();
 });
 
 test("US3 — a namespace referenced by a Worker renders safe, an unreferenced one renders warning", async ({ page }) => {
+  // issue #436 — KV/D1 use the EXPOSURE vocabulary (INTERNAL/ORPHANED), a
+  // binding-usage axis distinct from buckets' public-reachability axis.
   await page.getByRole("tab", { name: "KV namespaces" }).click();
   const usedRow = page.getByTestId("findings-row-kv-used");
-  await expect(usedRow.getByText("PROTECTED")).toBeVisible();
+  await expect(usedRow.getByText("INTERNAL")).toBeVisible();
 
   const unusedRow = page.getByTestId("findings-row-kv-unused");
-  await expect(unusedRow.getByText("WARNING")).toBeVisible();
+  await expect(unusedRow.getByText("ORPHANED")).toBeVisible();
 });
 
 test("specs/016 US1 — Bound to shows the Worker name, a count, or an explicit none state, across all 3 tables", async ({ page }) => {
