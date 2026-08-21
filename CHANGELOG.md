@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.13.1](https://github.com/iumalabs/flaretower/compare/v1.13.0...v1.13.1) (2026-08-21)
+
+
+### Bug Fixes
+
+* DNS Finding column shows the design's short labels, not full sentences ([#440](https://github.com/iumalabs/flaretower/issues/440)) ([0a91952](https://github.com/iumalabs/flaretower/commit/0a91952f52aa5ed6a34f957135c2c35f157a00cf))
+* panel headings use plain body text instead of mono/uppercase labels ([#438](https://github.com/iumalabs/flaretower/issues/438)) ([569aff4](https://github.com/iumalabs/flaretower/commit/569aff47fbf1e185eb2aa0c3d14671e3b3263ff5))
+* Storage EXPOSURE column uses the design's vocabulary, not generic badges ([#443](https://github.com/iumalabs/flaretower/issues/443)) ([673b566](https://github.com/iumalabs/flaretower/commit/673b566cee7982d857f0bc337b7b7bd8c8ece700))
+* Workers list anchor column reads Exposure, not the generic Status ([#439](https://github.com/iumalabs/flaretower/issues/439)) ([7dc5f2a](https://github.com/iumalabs/flaretower/commit/7dc5f2a943493d30cc825f187a8050f075ef60cd))
+* Zero Trust applications use HEALTH vocabulary, not generic WARNING/PROTECTED ([#442](https://github.com/iumalabs/flaretower/issues/442)) ([0e95e7e](https://github.com/iumalabs/flaretower/commit/0e95e7e4a39cc8a73b167640c1feb0cbbdec0d50))
+
 ## [1.13.0](https://github.com/iumalabs/flaretower/compare/v1.12.0...v1.13.0) (2026-08-18)
 
 
