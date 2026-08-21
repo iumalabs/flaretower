@@ -57,6 +57,7 @@ interface FlatFinding {
   proxied: boolean | null;
   ttl: number | null;
   is_platform_target: boolean;
+  status: ExposureStatus;
   reason: string;
 }
 
@@ -216,12 +217,38 @@ const COLUMNS: FindingsTableColumn<FlatFinding>[] = [
     // bypasses Cloudflare protection", which used to wrap to 5 stacked
     // lines and balloon that row's height far past its neighbors'.
     render: (r) => (
-      <span style={{ fontSize: "var(--text-body-size)", color: "var(--fg-muted)" }}>
-        {r.reason}
+      <span
+        title={r.reason}
+        style={{ fontSize: "var(--text-body-size)", color: "var(--fg-muted)" }}
+      >
+        {findingLabel(r.status, r.reason)}
       </span>
     ),
   },
 ];
+
+// issue #433 — the design's own fixed short vocabulary for this column
+// (DANGLING/ORIGIN EXPOSED/PUBLIC/OK/POLICY p=none), derived from the
+// worker's own status+reason (worker/modules/dns/evaluate.ts) rather than
+// showing that full sentence directly. `status === "critical"` here is
+// ALWAYS a dangling-target match (evaluate.ts has no other critical path),
+// so it never needs the reason text. The two `reason`s below are the
+// exact fixed literals evaluate.ts's warning/safe branches produce; an
+// unrecognized reason (a future evaluate.ts branch, or evaluationError's
+// free-text failure message) falls back to the full sentence rather than a
+// fabricated label — the row's `title` attribute always carries it too.
+const FINDING_LABEL: Record<string, string> = {
+  "DNS-only — bypasses Cloudflare protection": "ORIGIN EXPOSED",
+  "DMARC policy provides no enforcement (p=none)": "POLICY p=none",
+  "proxied through Cloudflare": "OK",
+  "not proxy-capable": "PUBLIC",
+};
+
+function findingLabel(status: ExposureStatus, reason: string): string {
+  if (status === "critical") return "DANGLING";
+  if (status === "not_evaluated") return "N/A";
+  return FINDING_LABEL[reason] ?? reason;
+}
 
 export function DnsInventory(): JSX.Element {
   const [data, setData] = useState<DnsInventoryResponse | null>(null);
@@ -294,6 +321,7 @@ export function DnsInventory(): JSX.Element {
         proxied: r.proxied,
         ttl: r.ttl,
         is_platform_target: r.is_platform_target,
+        status: r.status,
         reason: r.reason,
       },
     }))
