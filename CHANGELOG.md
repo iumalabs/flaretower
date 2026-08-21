@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.13.2](https://github.com/iumalabs/flaretower/compare/v1.13.1...v1.13.2) (2026-08-21)
+
+
+### Bug Fixes
+
+* Zero Trust applications distinguish PARTIAL COVER and BROAD TOKEN ([#444](https://github.com/iumalabs/flaretower/issues/444)) ([f8421fd](https://github.com/iumalabs/flaretower/commit/f8421fde586e6ca1d997845cb558ac583d992679))
+
 ## [1.13.1](https://github.com/iumalabs/flaretower/compare/v1.13.0...v1.13.1) (2026-08-21)
 
 
