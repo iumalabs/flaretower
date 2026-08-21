@@ -46,6 +46,7 @@ interface FlatFinding {
   last_build_status: ExposureStatus;
   last_build_deployment_id: string | null;
   last_build_created_at: string | null;
+  health_status: ExposureStatus;
   health_reason: string;
 }
 
@@ -76,6 +77,30 @@ function lastBuildText(r: FlatFinding): string {
   if (r.last_build_status === "safe") return "success";
   if (r.last_build_status === "not_evaluated") return "not evaluated";
   return "failed";
+}
+
+// issue #435 — the design's short vocabulary for preview-URL exposure
+// (OPEN/ACCESS), reusing this page's own already-computed health_status
+// (worker/modules/pages/evaluate.ts's evaluateSubdomainExposure — Access
+// coverage of the project's *.pages.dev subdomain, which by Cloudflare's
+// own wildcard-domain matching also covers every preview deployment
+// under it). Not a second taxonomy alongside the existing Health column —
+// this *is* the Health column's own real data, just labeled the way the
+// design source's dedicated Preview column names it, exactly the same
+// treatment already applied to DNS's Finding column (issue #433).
+// specs/015-pages-dashboard's FR-003 (don't invent a distinct severity
+// tier) stays satisfied: no new signal, no new taxonomy, only a short
+// label for a status that already exists.
+function previewExposureLabel(status: ExposureStatus): string {
+  switch (status) {
+    case "critical":
+    case "warning":
+      return "OPEN";
+    case "safe":
+      return "ACCESS";
+    case "not_evaluated":
+      return "N/A";
+  }
 }
 
 const COLUMNS: FindingsTableColumn<FlatFinding>[] = [
@@ -212,6 +237,7 @@ export function PagesInventory(): JSX.Element {
         last_build_status: p.last_build_status,
         last_build_deployment_id: p.deployment?.deployment_id ?? null,
         last_build_created_at: p.last_build_created_at,
+        health_status: p.health_status,
         health_reason: p.health_reason,
       },
     }))
@@ -279,6 +305,8 @@ export function PagesInventory(): JSX.Element {
           description: "No evaluation runs yet. Trigger one via POST /api/pages/evaluate.",
         }}
         pagination={pagination}
+        statusLabel="Preview"
+        statusBadgeLabel={(r) => previewExposureLabel(r.health_status)}
       />
     </div>
   );
