@@ -122,6 +122,92 @@ test("US1 — clicking a Worker row opens its detail page with per-route status"
   );
 });
 
+// issue #431 — a real breadcrumb, and visual-only action buttons derived
+// from this Worker's own routes (workers.dev is critical here -> "Disable
+// workers.dev"; the custom domain is safe, not critical -> no "Attach
+// Access application"; no route is warning -> no "Review policy"; re-scan
+// is always offered).
+test("issue #431 — breadcrumb navigates back, and action buttons reflect this Worker's own findings", async ({ page }) => {
+  await page.route(
+    "**/api/workers/dashboard*",
+    (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(MOCK_DASHBOARD),
+      }),
+  );
+  await page.route(
+    "**/api/workers/api-gateway/detail",
+    (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(MOCK_DETAIL),
+      }),
+  );
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "Workers" }).click();
+  await page.getByTestId("findings-row-api-gateway").click();
+
+  const breadcrumb = page.getByRole("navigation", { name: "Breadcrumb" });
+  await expect(breadcrumb.getByText("Workers", { exact: true })).toBeVisible();
+  await expect(breadcrumb.getByText("api-gateway", { exact: true })).toBeVisible();
+
+  await expect(page.getByTestId("worker-action-Disable workers.dev")).toBeVisible();
+  await expect(page.getByTestId("worker-action-Re-scan Worker")).toBeVisible();
+  await expect(page.getByTestId("worker-action-Attach Access application")).toHaveCount(0);
+  await expect(page.getByTestId("worker-action-Review policy")).toHaveCount(0);
+
+  await breadcrumb.getByRole("button", { name: "Workers" }).click();
+  await expect(page.getByTestId("findings-row-api-gateway")).toBeVisible();
+});
+
+test("issue #431 — a critical custom domain derives Attach Access application; a warning route derives Review policy", async ({ page }) => {
+  await page.route(
+    "**/api/workers/dashboard*",
+    (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(MOCK_DASHBOARD),
+      }),
+  );
+  await page.route("**/api/workers/api-gateway/detail", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ...MOCK_DETAIL,
+        routes: [
+          {
+            hostname: "api.acme.dev",
+            kind: "custom_domain",
+            status: "critical",
+            reason: "no Access application covers this hostname",
+            policy: null,
+          },
+          {
+            hostname: "status.acme.dev",
+            kind: "custom_domain",
+            status: "warning",
+            reason: "Access application policy includes Everyone",
+            policy: null,
+          },
+        ],
+      }),
+    }));
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "Workers" }).click();
+  await page.getByTestId("findings-row-api-gateway").click();
+
+  await expect(page.getByTestId("worker-action-Attach Access application")).toBeVisible();
+  await expect(page.getByTestId("worker-action-Review policy")).toBeVisible();
+  await expect(page.getByTestId("worker-action-Disable workers.dev")).toHaveCount(0);
+});
+
 test("US1 — a Worker not in the latest evaluation run shows an explicit not-found state", async ({ page }) => {
   await page.route(
     "**/api/workers/dashboard*",
