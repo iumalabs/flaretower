@@ -3,6 +3,7 @@ import type { JSX } from "react";
 import { type ExposureStatus, ExposureStatusBadge } from "../components/ExposureStatusBadge.tsx";
 import { EmptyState } from "../components/EmptyState.tsx";
 import { RoutePolicy, type RoutePolicyData } from "../components/RoutePolicy.tsx";
+import { SECTION_HEADING_STYLE } from "../lib/section-heading-style.ts";
 
 interface RouteEntry {
   hostname: string;
@@ -123,11 +124,7 @@ export function WorkerDetailPage({ workerName, onBack }: WorkerDetailPageProps):
 
       <div
         style={{
-          fontFamily: "var(--font-mono)",
-          fontSize: "var(--text-label-size)",
-          letterSpacing: "var(--text-label-ls)",
-          color: "var(--fg-faint)",
-          textTransform: "uppercase",
+          ...SECTION_HEADING_STYLE,
           margin: "20px 0 10px",
         }}
       >
@@ -189,11 +186,7 @@ export function WorkerDetailPage({ workerName, onBack }: WorkerDetailPageProps):
         <>
           <div
             style={{
-              fontFamily: "var(--font-mono)",
-              fontSize: "var(--text-label-size)",
-              letterSpacing: "var(--text-label-ls)",
-              color: "var(--fg-faint)",
-              textTransform: "uppercase",
+              ...SECTION_HEADING_STYLE,
               margin: "20px 0 10px",
             }}
           >

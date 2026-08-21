@@ -528,6 +528,27 @@ test("US2 — the recent-activity control brings the Recent changes panel into v
   await expect(page.locator("#recent-changes-panel")).toBeInViewport();
 });
 
+// Regression (issue #432): panel headings are body text at weight 600, not
+// the small mono/uppercase label style meant for table column headers.
+test("US2 — the Recent changes panel heading uses plain Sans text, not mono/uppercase", async ({ page }) => {
+  await page.route("**/api/workers/dashboard*", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(MOCK_DASHBOARD),
+    }));
+  await page.goto("/");
+  await page.getByRole("button", { name: "Workers" }).click();
+
+  const heading = page.getByText("Recent changes", { exact: true });
+  const style = await heading.evaluate((el) => ({
+    fontFamily: getComputedStyle(el).fontFamily,
+    textTransform: getComputedStyle(el).textTransform,
+  }));
+  expect(style.fontFamily).toContain("IBM Plex Sans");
+  expect(style.textTransform).not.toBe("uppercase");
+});
+
 // ---- User Story 3 — complete metric tile row ----
 
 test("US3 — the CPU P99 tile shows a context line, like the other three tiles", async ({ page }) => {

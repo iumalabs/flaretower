@@ -12,6 +12,7 @@ import { EmptyState } from "../components/EmptyState.tsx";
 import { TabStrip } from "../components/TabStrip.tsx";
 import { RescanButton } from "../components/RescanButton.tsx";
 import { useRescan } from "../lib/use-rescan.ts";
+import { SECTION_HEADING_STYLE } from "../lib/section-heading-style.ts";
 
 interface PolicyRuleLine {
   verb: "ALLOW" | "REQUIRE" | "DENY";
@@ -234,11 +235,7 @@ function PolicyDetailPanel({ app }: { app: AppFinding | undefined }): JSX.Elemen
     >
       <div
         style={{
-          fontFamily: "var(--font-mono)",
-          fontSize: "var(--text-label-size)",
-          letterSpacing: "var(--text-label-ls)",
-          color: "var(--fg-faint)",
-          textTransform: "uppercase",
+          ...SECTION_HEADING_STYLE,
           marginBottom: 12,
         }}
       >

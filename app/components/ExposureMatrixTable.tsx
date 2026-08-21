@@ -4,6 +4,7 @@ import { type ExposureStatus, ExposureStatusBadge } from "./ExposureStatusBadge.
 import { EmptyState } from "./EmptyState.tsx";
 import { LoadingSkeleton } from "./LoadingSkeleton.tsx";
 import { RoutePolicy, type RoutePolicyData } from "./RoutePolicy.tsx";
+import { SECTION_HEADING_STYLE } from "../lib/section-heading-style.ts";
 
 export interface HostnameFinding {
   hostname: string;
@@ -344,15 +345,7 @@ export function ExposureMatrixTable(
                     }}
                   >
                     <div style={{ flex: 1.4, display: "flex", flexDirection: "column", gap: 10 }}>
-                      <div
-                        style={{
-                          fontFamily: "var(--font-mono)",
-                          fontSize: "var(--text-label-size)",
-                          letterSpacing: "var(--text-label-ls)",
-                          color: "var(--fg-faint)",
-                          textTransform: "uppercase",
-                        }}
-                      >
+                      <div style={SECTION_HEADING_STYLE}>
                         Routes & effective policy
                       </div>
                       {loadingDetail === row.workerName && (
@@ -407,15 +400,7 @@ export function ExposureMatrixTable(
                         gap: 7,
                       }}
                     >
-                      <div
-                        style={{
-                          fontFamily: "var(--font-mono)",
-                          fontSize: "var(--text-label-size)",
-                          letterSpacing: "var(--text-label-ls)",
-                          color: "var(--fg-faint)",
-                          textTransform: "uppercase",
-                        }}
-                      >
+                      <div style={SECTION_HEADING_STYLE}>
                         Actions
                       </div>
                       {actions.map((a) => (
