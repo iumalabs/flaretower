@@ -104,6 +104,25 @@ test("US1 — every deployed Worker appears once, with environment and rolled-up
   await expect(searchRow.getByText("PROTECTED")).toBeVisible();
 });
 
+// Regression (issue #430): the anchor column is a reachability judgment,
+// not a generic table status — its header must read "Exposure".
+test("US1 — the anchor column is labeled Exposure, not the generic Status", async ({ page }) => {
+  await page.route("**/api/workers/dashboard*", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(MOCK_DASHBOARD),
+    }));
+  await page.goto("/");
+  await page.getByRole("button", { name: "Workers" }).click();
+
+  // The sidebar nav also has an "Exposure" item — the column header is the
+  // last "Exposure" text node in DOM order (sidebar renders before main
+  // content).
+  await expect(page.getByText("Exposure", { exact: true }).last()).toBeVisible();
+  await expect(page.getByText("Status", { exact: true })).toHaveCount(0);
+});
+
 test("US1 — sidebar shows Workers and Exposure as separate nav items with independent badges", async ({ page }) => {
   await page.route("**/api/workers/dashboard*", (route) =>
     route.fulfill({
