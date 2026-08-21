@@ -58,6 +58,10 @@ interface FindingsTableProps<Row> {
   // accent bar always stays on the true left regardless of this setting —
   // it's a general row-emphasis cue, not part of the status column itself.
   statusPosition?: "left" | "right";
+  // issue #430 — the status column's header text reads "Exposure" on
+  // Workers (an internet-reachability judgment), not the generic "Status"
+  // every other caller keeps by omitting this prop.
+  statusLabel?: string;
 }
 
 const STATUS_ORDER: ExposureStatus[] = ["critical", "warning", "safe", "not_evaluated"];
@@ -84,6 +88,7 @@ export function FindingsTable<Row>(
     pagination,
     onRowClick,
     statusPosition = "left",
+    statusLabel = "Status",
   }: FindingsTableProps<Row>,
 ): JSX.Element {
   const [filter, setFilter] = useState<ExposureStatus | null>(null);
@@ -242,7 +247,7 @@ export function FindingsTable<Row>(
                   textTransform: "uppercase",
                 }}
               >
-                Status
+                {statusLabel}
               </span>
             </div>
           )}
@@ -296,7 +301,7 @@ export function FindingsTable<Row>(
                   textTransform: "uppercase",
                 }}
               >
-                Status
+                {statusLabel}
               </span>
             </div>
           )}

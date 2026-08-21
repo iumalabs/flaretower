@@ -492,6 +492,7 @@ export function WorkersDashboardPage(
             : (
               <FindingsTable
                 statusPosition="right"
+                statusLabel="Exposure"
                 columns={COLUMNS}
                 rows={rows}
                 loadingLabel="Loading Workers inventory…"
