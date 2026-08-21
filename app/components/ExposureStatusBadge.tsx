@@ -40,7 +40,14 @@ const BORDER_VAR: Record<ExposureStatus, string> = {
   not_evaluated: "var(--status-neutral-border)",
 };
 
-export function ExposureStatusBadge({ status }: { status: ExposureStatus }): JSX.Element {
+export function ExposureStatusBadge(
+  // issue #434 — some pages need a module-specific word in place of the
+  // generic CRITICAL/WARNING/PROTECTED/N/A text (e.g. Zero Trust's
+  // ENFORCING/BYPASS ALL) while keeping the same shape/color severity
+  // language every page already shares. Optional and additive — omitting
+  // it keeps every existing caller's exact current text.
+  { status, label }: { status: ExposureStatus; label?: string },
+): JSX.Element {
   return (
     <span
       style={{
@@ -61,7 +68,7 @@ export function ExposureStatusBadge({ status }: { status: ExposureStatus }): JSX
       <svg width="12" height="12" viewBox="0 0 12 12" fill={COLOR_VAR[status]} aria-hidden="true">
         {SHAPES[status]}
       </svg>
-      {LABELS[status]}
+      {label ?? LABELS[status]}
     </span>
   );
 }
