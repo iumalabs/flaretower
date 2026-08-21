@@ -388,7 +388,10 @@ test("specs/023 FR-011 — navigating to a Worker's detail page and back preserv
   await page.getByTestId("findings-row-worker-2").click();
   await expect(page.getByRole("heading", { name: "worker-2" })).toBeVisible();
 
-  await page.getByRole("button", { name: "← Back to Workers" }).click();
+  await page.getByRole("navigation", { name: "Breadcrumb" }).getByRole("button", {
+    name: "Workers",
+  })
+    .click();
   await expect(page.getByTestId("pagination-status")).toHaveText("5 total · page 2 of 3");
   await expect(page.getByTestId("findings-row-worker-2")).toBeVisible();
 });
