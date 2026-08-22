@@ -1,5 +1,6 @@
 import { assertEquals, assertRejects } from "@std/assert";
 import {
+  GlobalFetchQueueTimeoutError,
   GlobalFetchTimeoutError,
   mapWithConcurrency,
   withGlobalFetchSlot,
@@ -124,4 +125,58 @@ Deno.test("withGlobalFetchSlot - a wrapped call that never settles times out and
       })),
   );
   assertEquals(completed, 6);
+});
+
+// issue #461: a caller that never gets a turn in acquireGlobalFetchSlot()'s
+// queue (all 6 slots held by other, still-running callers) previously hung
+// indefinitely — the held-slot GlobalFetchTimeoutError race above only
+// starts once a caller actually has a slot and is running `fn()`. A
+// starved queued caller must instead fail fast with its own error.
+Deno.test("withGlobalFetchSlot - a caller that never gets a turn (all 6 slots held) times out on the wait itself, not just the held-slot duration", async () => {
+  const releasers: Array<() => void> = [];
+  const holds = Array.from(
+    { length: 6 },
+    () => withGlobalFetchSlot(() => new Promise<void>((resolve) => releasers.push(resolve))),
+  );
+
+  // A 7th caller queues behind the 6 held slots — short queueTimeoutMs so
+  // the test doesn't wait out the real 15s default.
+  await assertRejects(
+    () => withGlobalFetchSlot(() => Promise.resolve(), undefined, 10),
+    GlobalFetchQueueTimeoutError,
+  );
+
+  // Release the 6 held slots so nothing leaks past this test.
+  releasers.forEach((release) => release());
+  await Promise.all(holds);
+
+  // The timed-out 7th caller must not have left a stale entry in the
+  // waiter queue or otherwise corrupted state — a fresh batch of 6 must
+  // still complete normally.
+  let completed = 0;
+  await Promise.all(
+    Array.from({ length: 6 }, () =>
+      withGlobalFetchSlot(() => {
+        completed++;
+        return Promise.resolve();
+      })),
+  );
+  assertEquals(completed, 6);
+});
+
+Deno.test("withGlobalFetchSlot - a caller that DOES get a turn before its queue timeout succeeds normally", async () => {
+  const releasers: Array<() => void> = [];
+  const holds = Array.from(
+    { length: 6 },
+    () => withGlobalFetchSlot(() => new Promise<void>((resolve) => releasers.push(resolve))),
+  );
+
+  // Release one held slot shortly after queuing the 7th caller, well
+  // within its (short, test-only) queue timeout.
+  setTimeout(() => releasers[0](), 5);
+  const result = await withGlobalFetchSlot(() => Promise.resolve("ok"), undefined, 1000);
+  assertEquals(result, "ok");
+
+  releasers.slice(1).forEach((release) => release());
+  await Promise.all(holds);
 });

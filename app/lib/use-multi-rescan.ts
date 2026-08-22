@@ -28,34 +28,40 @@ export function useMultiRescan(onSuccess: () => void): UseMultiRescanResult {
   const [pending, setPending] = useState(false);
   const [errors, setErrors] = useState<ModuleRescanError[]>([]);
 
-  function trigger() {
+  async function trigger() {
     setPending(true);
     setErrors([]);
-    // Promise.allSettled, not Promise.all — one module's failure must not
-    // hide the other five's success (spec.md Edge Cases).
-    Promise.allSettled(
-      MODULES.map((m) =>
-        fetch(m.endpoint, { method: "POST" }).then((res) => {
-          if (!res.ok) throw new Error(`${res.status}`);
-        })
-      ),
-    )
-      .then((results) => {
-        const failed: ModuleRescanError[] = [];
-        results.forEach((result, i) => {
-          if (result.status === "rejected") {
-            const message = result.reason instanceof Error
-              ? result.reason.message
-              : "unknown error";
-            failed.push({ label: MODULES[i].label, message });
-          }
-        });
-        setErrors(failed);
-        // Refetch regardless of per-module outcome — the modules that
-        // succeeded already have fresh data worth showing.
-        onSuccess();
-      })
-      .finally(() => setPending(false));
+
+    // issue #461 — sequential, not concurrent (was Promise.allSettled
+    // firing all six at once). Each module's own evaluate call can need
+    // several worker/concurrency.ts fetch slots internally (its own
+    // per-entity fan-out); firing all six interactive invocations at once
+    // let them land on the same Worker isolate and collectively blow past
+    // GLOBAL_FETCH_LIMIT, starving a waiter in acquireGlobalFetchSlot()'s
+    // queue with no timeout on the wait itself — the Workers runtime's own
+    // hang-detector then killed the whole request with a generic 500
+    // (Cloudflare error 1101), not a clean per-module error. Running one
+    // module at a time gives each evaluate call the full slot budget to
+    // itself, exactly like the already-reliable single-module RescanButton
+    // click on each page. Still collects every module's own outcome
+    // independently — one module's failure still doesn't hide (or stop)
+    // the rest (spec.md Edge Cases).
+    const failed: ModuleRescanError[] = [];
+    for (const m of MODULES) {
+      try {
+        const res = await fetch(m.endpoint, { method: "POST" });
+        if (!res.ok) throw new Error(`${res.status}`);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "unknown error";
+        failed.push({ label: m.label, message });
+      }
+    }
+
+    setErrors(failed);
+    // Refetch regardless of per-module outcome — the modules that
+    // succeeded already have fresh data worth showing.
+    onSuccess();
+    setPending(false);
   }
 
   return { pending, errors, trigger };
