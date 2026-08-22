@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.14.0](https://github.com/iumalabs/flaretower/compare/v1.13.4...v1.14.0) (2026-08-22)
+
+
+### Features
+
+* Pages Access column shows production domain's own Access coverage ([#459](https://github.com/iumalabs/flaretower/issues/459)) ([2491743](https://github.com/iumalabs/flaretower/commit/24917432dfedf33a948d565189bd3e68aa6321d4))
+
 ## [1.13.4](https://github.com/iumalabs/flaretower/compare/v1.13.3...v1.13.4) (2026-08-22)
 
 
