@@ -3,6 +3,7 @@ import { Hono } from "hono";
 import {
   buildPagesInventoryResponse,
   deriveProductionDomain,
+  deriveProductionDomainAccess,
   pagesRoutes,
 } from "../../worker/modules/pages/routes.ts";
 import { PaginationParamError } from "../../worker/pagination.ts";
@@ -10,9 +11,40 @@ import { PaginationParamError } from "../../worker/pagination.ts";
 function domainRow(
   status: string,
   domainName: string,
-): { project_name: string; domain_name: string; status: string; reason: string } {
-  return { project_name: "marketing-site", domain_name: domainName, status, reason: "test" };
+  access?: { status: string | null; reason: string | null; coveringAppId: string | null },
+) {
+  return {
+    project_name: "marketing-site",
+    domain_name: domainName,
+    status,
+    reason: "test",
+    access_status: access?.status ?? null,
+    access_reason: access?.reason ?? null,
+    covering_app_id: access?.coveringAppId ?? null,
+  };
 }
+
+// issue #457
+Deno.test("deriveProductionDomainAccess - returns the access fields for the same domain deriveProductionDomain picks", () => {
+  const domains = [
+    domainRow("warning", "staging.example.com"),
+    domainRow("safe", "example.com", {
+      status: "safe",
+      reason: "covered by Access application(s): app-1",
+      coveringAppId: "app-1",
+    }),
+  ];
+  assertEquals(deriveProductionDomainAccess(domains), {
+    status: "safe",
+    reason: "covered by Access application(s): app-1",
+    covering_app_id: "app-1",
+  });
+});
+
+Deno.test("deriveProductionDomainAccess - null when the project has zero active domains", () => {
+  const domains = [domainRow("warning", "staging.example.com")];
+  assertEquals(deriveProductionDomainAccess(domains), null);
+});
 
 Deno.test("deriveProductionDomain - returns the first safe-status domain", () => {
   const domains = [
@@ -48,6 +80,7 @@ function projectOut(overrides: Partial<{
   return {
     project_name: "site",
     production_domain: null,
+    production_domain_access: null,
     production_branch: "main",
     last_build_status: "safe",
     last_build_reason: "success",

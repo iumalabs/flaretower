@@ -12,6 +12,11 @@ const MOCK_PAGES_INVENTORY = {
     {
       project_name: "marketing-site",
       production_domain: "example.com",
+      production_domain_access: {
+        status: "safe",
+        reason: "covered by Access application(s): access-app",
+        covering_app_id: "access-app",
+      },
       production_branch: "main",
       last_build_status: "safe",
       last_build_reason: "latest production deployment succeeded",
@@ -41,6 +46,7 @@ const MOCK_PAGES_INVENTORY = {
     {
       project_name: "empty-project",
       production_domain: null,
+      production_domain_access: null,
       production_branch: null,
       last_build_status: "warning",
       last_build_reason: "no production deployment exists yet",
@@ -168,6 +174,65 @@ test("issue #435 — a warning-tier subdomain-exposure status also renders OPEN,
   await page.getByRole("button", { name: "Pages" }).click();
 
   await expect(page.getByTestId("findings-row-marketing-site").getByText("OPEN")).toBeVisible();
+});
+
+// issue #457 — the Access column shows the production custom domain's own
+// Access coverage (a separate signal from Preview), with the covering
+// app's real name when protected, never a fabricated "public by design"
+// claim when it isn't.
+test("issue #457 — the Access column shows the covering app's name, WEAK POLICY, NO POLICY, or an explicit none state", async ({ page }) => {
+  await page.route("**/api/pages/inventory*", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ...MOCK_PAGES_INVENTORY,
+        projects: [
+          {
+            ...MOCK_PAGES_INVENTORY.projects[0],
+            project_name: "protected-site",
+            production_domain_access: {
+              status: "safe",
+              reason: "covered by Access application(s): access-app",
+              covering_app_id: "access-app",
+            },
+          },
+          {
+            ...MOCK_PAGES_INVENTORY.projects[0],
+            project_name: "weak-policy-site",
+            production_domain_access: {
+              status: "warning",
+              reason:
+                "covering Access application(s) do not meaningfully restrict access: app-1 has a policy that allows Everyone",
+              covering_app_id: null,
+            },
+          },
+          {
+            ...MOCK_PAGES_INVENTORY.projects[0],
+            project_name: "no-policy-site",
+            production_domain_access: {
+              status: "not_evaluated",
+              reason: "no Access application covers this domain",
+              covering_app_id: null,
+            },
+          },
+          { ...MOCK_PAGES_INVENTORY.projects[1] },
+        ],
+        projects_pagination: { page: 1, page_size: 50, total: 4, total_pages: 1 },
+      }),
+    }));
+  await page.goto("/");
+  await page.getByRole("button", { name: "Pages" }).click();
+
+  await expect(page.getByTestId("findings-row-protected-site").getByText("access-app"))
+    .toBeVisible();
+  await expect(page.getByTestId("findings-row-weak-policy-site").getByText("WEAK POLICY"))
+    .toBeVisible();
+  await expect(page.getByTestId("findings-row-no-policy-site").getByText("NO POLICY"))
+    .toBeVisible();
+  // empty-project has no production domain at all (production_domain_access: null).
+  await expect(page.getByTestId("findings-row-empty-project").getByText("—", { exact: true }))
+    .toBeVisible();
 });
 
 // Regression coverage: a build timestamp a few seconds ahead of the

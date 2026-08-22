@@ -57,6 +57,23 @@ export interface DomainEvaluation {
   reason: string;
 }
 
+// issue #457 — Access-policy coverage of a production custom domain, a
+// genuinely separate signal from DomainEvaluation's own `status` (domain
+// activation/SSL health, unchanged). Never "critical": unlike a Worker's
+// hostname, a Pages project's production domain is routinely meant to be
+// public (marketing sites, docs, blogs) — this codebase has no signal
+// distinguishing "no Access app because this is intentionally public"
+// from "no Access app, and that's a real gap," so "no covering app"
+// reports as not_evaluated (an honest "nothing to report") rather than
+// guessing a severity.
+export interface DomainAccessEvaluation {
+  projectName: string;
+  domainName: string;
+  status: DomainStatus;
+  reason: string;
+  coveringAppId: string | null;
+}
+
 export interface SubdomainEvaluation {
   projectName: string;
   subdomain: string;

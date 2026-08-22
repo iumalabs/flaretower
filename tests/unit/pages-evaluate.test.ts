@@ -3,6 +3,7 @@ import {
   evaluateCustomDomain,
   evaluateDeployment,
   evaluateDeployments,
+  evaluateDomainAccess,
   evaluateSubdomainExposure,
 } from "../../worker/modules/pages/evaluate.ts";
 import type {
@@ -122,6 +123,68 @@ Deno.test("evaluateSubdomainExposure - not_evaluated when the project itself is 
   const result = evaluateSubdomainExposure(
     project({ evaluationError: "could not list Pages projects: network error" }),
     [scopedApp("app-1", "marketing-site.pages.dev")],
+  );
+  assertEquals(result.status, "not_evaluated");
+});
+
+// issue #457
+Deno.test("evaluateDomainAccess - not_evaluated (never critical) when no Access application covers the domain", () => {
+  const result = evaluateDomainAccess(
+    "marketing-site",
+    { domainName: "example.com", status: "active" },
+    [scopedApp("app-1", "other.example.com")],
+  );
+  assertEquals(result.status, "not_evaluated");
+  assertEquals(result.coveringAppId, null);
+});
+
+Deno.test("evaluateDomainAccess - safe with the covering app's id when covered by a scoped-policy application", () => {
+  const result = evaluateDomainAccess(
+    "marketing-site",
+    { domainName: "example.com", status: "active" },
+    [scopedApp("app-1", "example.com")],
+  );
+  assertEquals(result.status, "safe");
+  assertEquals(result.coveringAppId, "app-1");
+});
+
+Deno.test("evaluateDomainAccess - warning when covered by an Allow-Everyone application", () => {
+  const result = evaluateDomainAccess(
+    "marketing-site",
+    { domainName: "example.com", status: "active" },
+    [everyoneApp("app-1", "example.com")],
+  );
+  assertEquals(result.status, "warning");
+  assertEquals(result.coveringAppId, null);
+});
+
+Deno.test("evaluateDomainAccess - warning when the covering application has zero policies", () => {
+  const result = evaluateDomainAccess(
+    "marketing-site",
+    { domainName: "example.com", status: "active" },
+    [{ appId: "app-1", appDomain: "example.com", policies: [] }],
+  );
+  assertEquals(result.status, "warning");
+});
+
+Deno.test("evaluateDomainAccess - not_evaluated when the Access applications list could not be fetched at all", () => {
+  const result = evaluateDomainAccess(
+    "marketing-site",
+    { domainName: "example.com", status: "active" },
+    null,
+  );
+  assertEquals(result.status, "not_evaluated");
+});
+
+Deno.test("evaluateDomainAccess - not_evaluated when the domain itself has an evaluationError, takes priority over apps", () => {
+  const result = evaluateDomainAccess(
+    "marketing-site",
+    {
+      domainName: "example.com",
+      status: "active",
+      evaluationError: "could not list custom domains",
+    },
+    [scopedApp("app-1", "example.com")],
   );
   assertEquals(result.status, "not_evaluated");
 });

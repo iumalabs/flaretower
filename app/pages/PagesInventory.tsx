@@ -12,9 +12,23 @@ import { RescanButton } from "../components/RescanButton.tsx";
 import { useRescan } from "../lib/use-rescan.ts";
 import { formatRelativeTime } from "../lib/format-relative-time.ts";
 
+// issue #457 — the production custom domain's own Access-policy coverage,
+// a separate signal from health_status (which is the *.pages.dev
+// subdomain's exposure). Never "critical" — see worker/modules/pages/
+// types.ts's DomainAccessEvaluation doc comment for why. Null when the
+// project has no active production domain to evaluate at all (distinct
+// from "not_evaluated", which means a domain exists but its coverage
+// couldn't be determined or genuinely has none).
+interface ProductionDomainAccess {
+  status: "safe" | "warning" | "not_evaluated";
+  reason: string;
+  covering_app_id: string | null;
+}
+
 interface ProjectRow {
   project_name: string;
   production_domain: string | null;
+  production_domain_access: ProductionDomainAccess | null;
   production_branch: string | null;
   last_build_status: ExposureStatus;
   last_build_reason: string;
@@ -42,6 +56,7 @@ interface PagesInventoryResponse {
 interface FlatFinding {
   project_name: string;
   production_domain: string | null;
+  production_domain_access: ProductionDomainAccess | null;
   production_branch: string | null;
   last_build_status: ExposureStatus;
   last_build_deployment_id: string | null;
@@ -103,6 +118,25 @@ function previewExposureLabel(status: ExposureStatus): string {
   }
 }
 
+// issue #457 — the design's separate Access column: whether the
+// PRODUCTION custom domain (not the *.pages.dev subdomain Preview covers)
+// has its own covering Access application. A genuinely new signal
+// (worker/modules/pages/evaluate.ts's evaluateDomainAccess), not a
+// relabel — safe shows the covering app's name, warning means an app
+// covers it but doesn't meaningfully restrict access (reusing the exact
+// isPolicyEffectivelyOpen logic Preview's own check already uses).
+// not_evaluated splits into two honest sub-labels by its own real reason
+// text: a genuine "nothing covers this domain" fact (NO POLICY) versus an
+// actual evaluation failure (N/A) — never a fabricated "public by design"
+// claim, since no owner-confirmation signal exists anywhere here.
+function accessLabel(access: ProductionDomainAccess | null): string {
+  if (!access) return "—";
+  if (access.status === "safe") return access.covering_app_id ?? "—";
+  if (access.status === "warning") return "WEAK POLICY";
+  if (access.reason === "no Access application covers this domain") return "NO POLICY";
+  return "N/A";
+}
+
 const COLUMNS: FindingsTableColumn<FlatFinding>[] = [
   {
     key: "project",
@@ -139,9 +173,31 @@ const COLUMNS: FindingsTableColumn<FlatFinding>[] = [
     ),
   },
   {
+    key: "access",
+    label: "Access",
+    width: "13%",
+    sortValue: (r) => accessLabel(r.production_domain_access),
+    render: (r) => {
+      const access = r.production_domain_access;
+      const color = !access || access.status === "not_evaluated"
+        ? "var(--fg-faint)"
+        : access.status === "warning"
+        ? "var(--status-warning)"
+        : "var(--status-safe)";
+      return (
+        <span
+          title={access?.reason}
+          style={{ fontFamily: "var(--font-mono)", fontSize: "var(--text-code-size)", color }}
+        >
+          {accessLabel(access)}
+        </span>
+      );
+    },
+  },
+  {
     key: "branch",
     label: "Branch",
-    width: "14%",
+    width: "12%",
     sortValue: (r) => r.production_branch ?? "",
     render: (r) => (
       <span
@@ -233,6 +289,7 @@ export function PagesInventory(): JSX.Element {
       data: {
         project_name: p.project_name,
         production_domain: p.production_domain,
+        production_domain_access: p.production_domain_access,
         production_branch: p.production_branch,
         last_build_status: p.last_build_status,
         last_build_deployment_id: p.deployment?.deployment_id ?? null,
