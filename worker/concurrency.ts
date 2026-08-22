@@ -46,11 +46,20 @@ export async function mapWithConcurrency<T, R>(
 // running at once.
 //
 // Deliberately plain module-level state rather than an object threaded
-// explicitly through every call site — simpler, and this Worker has no
-// realistic scenario where two unrelated invocations sharing one isolate
-// would meaningfully suffer from being (slightly, briefly) throttled
-// against each other; that cost is far cheaper than re-exceeding the
-// connection limit, which is issue #292's actual production failure.
+// explicitly through every call site — simpler, and being throttled a bit
+// against another concurrent invocation sharing this isolate is far
+// cheaper than re-exceeding the connection limit, which is issue #292's
+// actual production failure. (This used to claim there was "no realistic
+// scenario" where concurrent invocations would meaningfully contend for
+// this budget — issue #461 disproved that: specs/024's account-wide
+// RE-SCAN button deliberately fires six truly-concurrent interactive
+// invocations, which collectively starved this queue with no bound on how
+// long a caller may wait for a turn. Fixed on the client side by not
+// firing them concurrently in the first place — see
+// app/lib/use-multi-rescan.ts — but acquireGlobalFetchSlot() below now
+// also bounds the wait itself, so any other concurrent-invocation
+// scenario this module-level design doesn't anticipate fails fast and
+// cleanly instead of hanging until the Workers runtime kills the request.)
 // Every acquire is guaranteed to release via try/finally in
 // withGlobalFetchSlot(), so a permit can never leak even if the wrapped
 // call throws — or, since issue #390, if it instead hangs forever without
@@ -59,16 +68,52 @@ const GLOBAL_FETCH_LIMIT = 6;
 let globalInFlight = 0;
 const globalWaiters: Array<() => void> = [];
 
-function acquireGlobalFetchSlot(): Promise<void> {
+export class GlobalFetchQueueTimeoutError extends Error {
+  constructor(timeoutMs: number) {
+    super(
+      `Timed out after ${timeoutMs}ms waiting for a global fetch slot — too many concurrent requests on this isolate`,
+    );
+    this.name = "GlobalFetchQueueTimeoutError";
+  }
+}
+
+// issue #461 — this queue previously had no timeout of its own: a waiter
+// that never got a turn (specs/024's account-wide RE-SCAN button firing
+// all six modules' interactive evaluate requests at once, landing on the
+// same isolate and collectively needing far more than GLOBAL_FETCH_LIMIT
+// slots in total) just hung until the Workers runtime's own hang-detector
+// killed the entire request with a generic 500 — no clean error, no
+// GlobalFetchTimeoutError, since that race only starts once `fn()` is
+// actually running (below). Bounding the wait itself means a starved
+// caller fails fast with a real error instead. `timeoutMs` is overridable
+// only so tests can exercise the timeout path without waiting out the
+// real default, same as GLOBAL_FETCH_TIMEOUT_MS below.
+const GLOBAL_FETCH_QUEUE_TIMEOUT_MS = 15_000;
+
+function acquireGlobalFetchSlot(
+  timeoutMs: number = GLOBAL_FETCH_QUEUE_TIMEOUT_MS,
+): Promise<void> {
   if (globalInFlight < GLOBAL_FETCH_LIMIT) {
     globalInFlight++;
     return Promise.resolve();
   }
-  return new Promise((resolve) => {
-    globalWaiters.push(() => {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const waiter = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
       globalInFlight++;
       resolve();
-    });
+    };
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      const idx = globalWaiters.indexOf(waiter);
+      if (idx !== -1) globalWaiters.splice(idx, 1);
+      reject(new GlobalFetchQueueTimeoutError(timeoutMs));
+    }, timeoutMs);
+    globalWaiters.push(waiter);
   });
 }
 
@@ -104,8 +149,9 @@ const GLOBAL_FETCH_TIMEOUT_MS = 20_000;
 export async function withGlobalFetchSlot<T>(
   fn: () => Promise<T>,
   timeoutMs: number = GLOBAL_FETCH_TIMEOUT_MS,
+  queueTimeoutMs: number = GLOBAL_FETCH_QUEUE_TIMEOUT_MS,
 ): Promise<T> {
-  await acquireGlobalFetchSlot();
+  await acquireGlobalFetchSlot(queueTimeoutMs);
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     return await Promise.race([

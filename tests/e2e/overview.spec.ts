@@ -430,6 +430,34 @@ test("US1 — one module's evaluate failure doesn't hide the other five's succes
   await expect(page.getByRole("button", { name: "RE-SCAN" })).toBeEnabled();
 });
 
+// issue #461 — RE-SCAN used to fire all six modules' evaluate requests
+// concurrently (Promise.allSettled), which could overwhelm
+// worker/concurrency.ts's shared per-isolate fetch-slot budget when all
+// six landed on the same Worker isolate, hanging until the Workers
+// runtime killed the whole request. Fixed to fire them one at a time.
+test("US1 — RE-SCAN fires the six modules' evaluate requests one at a time, never two at once", async ({ page }) => {
+  let inFlight = 0;
+  let maxConcurrent = 0;
+  for (const endpoint of EVALUATE_ENDPOINTS) {
+    await page.route(endpoint, async (route) => {
+      inFlight++;
+      maxConcurrent = Math.max(maxConcurrent, inFlight);
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      inFlight--;
+      await route.fulfill({
+        status: 202,
+        contentType: "application/json",
+        body: JSON.stringify({ run_id: "run-2" }),
+      });
+    });
+  }
+
+  await page.getByRole("button", { name: "RE-SCAN" }).click();
+  await expect(page.getByRole("button", { name: "RE-SCAN" })).toBeVisible();
+
+  expect(maxConcurrent).toBe(1);
+});
+
 test("US1 — a stale fetch-error banner clears once a later RE-SCAN succeeds", async ({ page }) => {
   await page.route(
     "**/api/audit/summary",
