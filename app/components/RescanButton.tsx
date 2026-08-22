@@ -14,13 +14,17 @@ export function RescanButton({ pending, error, onClick }: RescanButtonProps): JS
         onClick={onClick}
         disabled={pending}
         style={{
-          background: "none",
-          border: "1px solid var(--border)",
+          // issue #450 — this is the page-header toolbar's primary action,
+          // matching Overview's and Workers' own RE-SCAN button styling
+          // (brand-orange fill), not a secondary/ghost control.
+          background: "var(--brand-primary)",
+          color: "var(--bg-base)",
+          border: "none",
           padding: "4px 10px",
           cursor: pending ? "default" : "pointer",
-          color: "var(--fg-secondary)",
           font: "inherit",
           fontSize: "var(--text-body-size)",
+          fontWeight: 600,
         }}
       >
         {pending ? "Scanning…" : "Re-scan"}
