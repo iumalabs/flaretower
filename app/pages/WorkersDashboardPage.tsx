@@ -101,7 +101,7 @@ const COLUMNS: FindingsTableColumn<WorkerRow>[] = [
   {
     key: "worker",
     label: "Worker",
-    width: "20%",
+    width: "17%",
     sortValue: (r) => r.worker_name,
     render: (r) => (
       <span
@@ -118,7 +118,7 @@ const COLUMNS: FindingsTableColumn<WorkerRow>[] = [
   {
     key: "env",
     label: "Env",
-    width: "12%",
+    width: "9%",
     sortValue: (r) => r.environment,
     render: (r) => (
       <span style={{ fontSize: "var(--text-body-size)", color: "var(--fg-muted)" }}>
@@ -129,14 +129,14 @@ const COLUMNS: FindingsTableColumn<WorkerRow>[] = [
   {
     key: "routes",
     label: "Routes",
-    width: "8%",
+    width: "5%",
     sortValue: (r) => r.route_count,
     render: (r) => <span style={{ color: "var(--fg-muted)" }}>{r.route_count}</span>,
   },
   {
     key: "requests",
     label: "Requests 24h",
-    width: "14%",
+    width: "12%",
     sortValue: (r) => r.requests_24h ?? -1,
     render: (r) => (
       <span style={{ color: r.requests_24h === null ? "var(--fg-faint)" : "var(--fg-muted)" }}>
@@ -147,7 +147,7 @@ const COLUMNS: FindingsTableColumn<WorkerRow>[] = [
   {
     key: "errors",
     label: "Errors",
-    width: "10%",
+    width: "7%",
     sortValue: (r) => r.errors_24h ?? -1,
     render: (r) => (
       <span
@@ -166,7 +166,7 @@ const COLUMNS: FindingsTableColumn<WorkerRow>[] = [
   {
     key: "cpu",
     label: "CPU P50",
-    width: "10%",
+    width: "7%",
     sortValue: (r) => r.cpu_p50_ms ?? -1,
     render: (r) => (
       <span style={{ color: r.cpu_p50_ms === null ? "var(--fg-faint)" : "var(--fg-muted)" }}>
@@ -177,6 +177,19 @@ const COLUMNS: FindingsTableColumn<WorkerRow>[] = [
   {
     key: "last-deploy",
     label: "Last Deploy",
+    // issue #451 — this was the table's only column without an explicit
+    // width (a flex:1 catch-all absorbing whatever space was left). With
+    // the Recent changes panel present, that meant this column alone
+    // absorbed 100% of the squeeze whenever the row didn't fit — wrapping
+    // its ISO timestamp onto 2-3 lines and leaving the fixed-width
+    // Exposure column with no breathing room against the panel, clipping
+    // its header text. A fixed width, matching every other column here,
+    // makes the row's own minimum content width fixed instead — a
+    // genuinely too-narrow viewport now scrolls the table horizontally
+    // (FindingsTable's own overflowX:auto wrapper, already in place after
+    // an earlier "Last Deploy column cut off" incident on this same page)
+    // instead of collapsing one column into unreadable wrapped text.
+    width: "15%",
     sortValue: (r) => r.last_deploy_at ?? "",
     render: (r) => (
       <span style={{ fontSize: "var(--text-meta-size)", color: "var(--fg-faint)" }}>

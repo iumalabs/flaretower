@@ -123,6 +123,41 @@ test("US1 — the anchor column is labeled Exposure, not the generic Status", as
   await expect(page.getByText("Status", { exact: true })).toHaveCount(0);
 });
 
+// issue #451 — at 1440x900 (the design reference's own viewport) the
+// table's columns must not collide with or be clipped by the Recent
+// changes panel sitting beside it.
+test("issue #451 — the table doesn't overflow into the Recent changes panel at 1440x900", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.route("**/api/workers/dashboard*", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(MOCK_DASHBOARD),
+    }));
+  await page.goto("/");
+  await page.getByRole("button", { name: "Workers" }).click();
+
+  // The full word, not "EXPOSURI" or any other clipped fragment.
+  await expect(page.getByText("Exposure", { exact: true }).last()).toBeVisible();
+  const exposureHeader = page.getByText("Exposure", { exact: true }).last();
+  const panel = page.locator("#recent-changes-panel");
+  const [headerBox, panelBox] = await Promise.all([
+    exposureHeader.boundingBox(),
+    panel.boundingBox(),
+  ]);
+  // The header must end strictly before the panel begins — no overlap.
+  expect(headerBox).not.toBeNull();
+  expect(panelBox).not.toBeNull();
+  expect(headerBox!.x + headerBox!.width).toBeLessThanOrEqual(panelBox!.x);
+
+  // The row's own status badge (not just the header) is fully on-screen.
+  const badge = page.getByTestId("findings-row-api-gateway").getByText("CRITICAL");
+  await expect(badge).toBeVisible();
+  const badgeBox = await badge.boundingBox();
+  expect(badgeBox).not.toBeNull();
+  expect(badgeBox!.x + badgeBox!.width).toBeLessThanOrEqual(panelBox!.x);
+});
+
 test("US1 — sidebar shows Workers and Exposure as separate nav items with independent badges", async ({ page }) => {
   await page.route("**/api/workers/dashboard*", (route) =>
     route.fulfill({
