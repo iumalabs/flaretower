@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.13.4](https://github.com/iumalabs/flaretower/compare/v1.13.3...v1.13.4) (2026-08-22)
+
+
+### Bug Fixes
+
+* primary action buttons render brand-orange on every module page ([#452](https://github.com/iumalabs/flaretower/issues/452)) ([09800b6](https://github.com/iumalabs/flaretower/commit/09800b663a7227bb80aeef8efdac7192a3b1fbbe))
+* Workers table columns no longer collide with the Recent changes panel ([#453](https://github.com/iumalabs/flaretower/issues/453)) ([2d66e7d](https://github.com/iumalabs/flaretower/commit/2d66e7da226256a0975cb77176ed57d0a788d077))
+
 ## [1.13.3](https://github.com/iumalabs/flaretower/compare/v1.13.2...v1.13.3) (2026-08-21)
 
 
