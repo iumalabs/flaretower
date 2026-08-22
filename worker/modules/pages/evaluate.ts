@@ -6,6 +6,7 @@ import type {
   AccessPolicy,
   CustomDomain,
   DeploymentEvaluation,
+  DomainAccessEvaluation,
   DomainEvaluation,
   PagesProjectInventoryItem,
   ProductionDeployment,
@@ -153,6 +154,75 @@ export function evaluateSubdomainExposure(
   };
 }
 
+// issue #457 — Access-policy coverage of a production custom domain,
+// reusing the same coverage/openness helpers as evaluateSubdomainExposure
+// above but deliberately never "critical" (see DomainAccessEvaluation's
+// own doc comment for why): a production domain being publicly reachable
+// isn't inherently a gap the way an unprotected pages.dev subdomain is.
+export function evaluateDomainAccess(
+  projectName: string,
+  domain: CustomDomain,
+  apps: AccessApplication[] | null,
+): DomainAccessEvaluation {
+  if (domain.evaluationError) {
+    return {
+      projectName,
+      domainName: domain.domainName,
+      status: "not_evaluated",
+      reason: domain.evaluationError,
+      coveringAppId: null,
+    };
+  }
+
+  if (apps === null) {
+    return {
+      projectName,
+      domainName: domain.domainName,
+      status: "not_evaluated",
+      reason: "could not evaluate Access coverage (Access applications API error)",
+      coveringAppId: null,
+    };
+  }
+
+  const covering = findCoveringApps(domain.domainName, apps);
+
+  if (covering.length === 0) {
+    return {
+      projectName,
+      domainName: domain.domainName,
+      status: "not_evaluated",
+      reason: "no Access application covers this domain",
+      coveringAppId: null,
+    };
+  }
+
+  const openApps = covering.filter(isAppOpenOrUnconfigured);
+  if (openApps.length > 0) {
+    const reasons = openApps.map((a) =>
+      a.policies.length === 0
+        ? `${a.appId} has no policies attached`
+        : `${a.appId} has a policy that allows Everyone`
+    );
+    return {
+      projectName,
+      domainName: domain.domainName,
+      status: "warning",
+      reason: `covering Access application(s) do not meaningfully restrict access: ${
+        reasons.join("; ")
+      }`,
+      coveringAppId: null,
+    };
+  }
+
+  return {
+    projectName,
+    domainName: domain.domainName,
+    status: "safe",
+    reason: `covered by Access application(s): ${covering.map((a) => a.appId).join(", ")}`,
+    coveringAppId: covering[0].appId,
+  };
+}
+
 export function evaluateDeployment(
   projectName: string,
   deployment: ProductionDeployment | null,
@@ -211,6 +281,15 @@ export function evaluateSubdomainExposures(
   apps: AccessApplication[] | null,
 ): SubdomainEvaluation[] {
   return inventory.map((project) => evaluateSubdomainExposure(project, apps));
+}
+
+export function evaluateDomainAccesses(
+  inventory: PagesProjectInventoryItem[],
+  apps: AccessApplication[] | null,
+): DomainAccessEvaluation[] {
+  return inventory.flatMap((project) =>
+    project.customDomains.map((domain) => evaluateDomainAccess(project.projectName, domain, apps))
+  );
 }
 
 export function evaluateDeployments(
