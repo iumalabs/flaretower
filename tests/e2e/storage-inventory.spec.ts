@@ -363,6 +363,15 @@ test("US1 — re-scan refreshes the page's findings without a reload (FR-001..FR
   await expect(page.getByText("run run-2")).toBeVisible();
 });
 
+// issue #450 — the page-header toolbar's primary action is brand-orange
+// filled, not the generic gray/transparent ghost-button style.
+test("issue #450 — the Re-scan button is filled brand-orange, not gray/transparent", async ({ page }) => {
+  const background = await page.getByRole("button", { name: "Re-scan" }).evaluate((el) =>
+    getComputedStyle(el).backgroundColor
+  );
+  expect(background).toBe("rgb(246, 130, 31)");
+});
+
 test("re-scan failure leaves existing data untouched and shows an inline error (FR-005)", async ({ page }) => {
   await page.route(
     "**/api/storage/evaluate",

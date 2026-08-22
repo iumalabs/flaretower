@@ -457,14 +457,20 @@ function AuditLogPanel({ data, error }: { data: AuditLogResponse | null; error: 
           type="button"
           onClick={() => downloadJsonl(filtered)}
           style={{
+            // issue #450 — this is the page-header toolbar's primary
+            // action, matching Overview's/Workers'/RescanButton's own
+            // brand-orange fill, not a secondary/ghost control. A
+            // separate inline button (not RescanButton) since this page
+            // exports rather than re-scans, but the same fix applies.
             marginLeft: "auto",
             fontFamily: "var(--font-mono)",
             fontSize: "var(--text-label-size)",
             letterSpacing: "var(--text-label-ls)",
-            color: "var(--fg-secondary)",
-            background: "transparent",
-            border: "1px solid var(--border)",
+            color: "var(--bg-base)",
+            background: "var(--brand-primary)",
+            border: "none",
             padding: "5px 9px",
+            fontWeight: 600,
             cursor: "pointer",
           }}
         >

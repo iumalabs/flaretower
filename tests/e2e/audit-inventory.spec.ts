@@ -297,6 +297,15 @@ test("specs/018 US3 — exporting a filtered view downloads only the currently-v
   expect(entry.target).toBe("api-gateway");
 });
 
+// issue #450 — the page-header toolbar's primary action is brand-orange
+// filled, not the generic gray/transparent ghost-button style.
+test("issue #450 — the Export button is filled brand-orange, not gray/transparent", async ({ page }) => {
+  const background = await page.getByRole("button", { name: "EXPORT JSONL" }).evaluate((el) =>
+    getComputedStyle(el).backgroundColor
+  );
+  expect(background).toBe("rgb(246, 130, 31)");
+});
+
 test("US1 — alerts from multiple modules appear in the unified inbox, each labeled with its source", async ({ page }) => {
   await page.getByRole("tab", { name: "Unified alerts inbox" }).click();
   const sslRow = page.getByTestId("findings-row-a1");
