@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.14.1](https://github.com/iumalabs/flaretower/compare/v1.14.0...v1.14.1) (2026-08-22)
+
+
+### Bug Fixes
+
+* RE-SCAN no longer hangs the Worker by firing 6 evaluate calls at once ([#462](https://github.com/iumalabs/flaretower/issues/462)) ([0a2a43a](https://github.com/iumalabs/flaretower/commit/0a2a43a001fb428a6c005feb6d0b3a978a768a05))
+
 ## [1.14.0](https://github.com/iumalabs/flaretower/compare/v1.13.4...v1.14.0) (2026-08-22)
 
 
