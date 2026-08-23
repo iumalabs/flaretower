@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.15.1](https://github.com/iumalabs/flaretower/compare/v1.15.0...v1.15.1) (2026-08-23)
+
+
+### Bug Fixes
+
+* Access application reason text shows its real name, not a raw UUID ([#476](https://github.com/iumalabs/flaretower/issues/476)) ([c38791a](https://github.com/iumalabs/flaretower/commit/c38791a7a04ebe5e31ac7cf60d0ade49f0d4a437))
+
 ## [1.15.0](https://github.com/iumalabs/flaretower/compare/v1.14.3...v1.15.0) (2026-08-23)
 
 
