@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.14.2](https://github.com/iumalabs/flaretower/compare/v1.14.1...v1.14.2) (2026-08-23)
+
+
+### Bug Fixes
+
+* an Access application with no domain no longer crashes evaluate ([#468](https://github.com/iumalabs/flaretower/issues/468)) ([9c68b06](https://github.com/iumalabs/flaretower/commit/9c68b06f843d28eebda53945fef71240a59d2aa5))
+
 ## [1.14.1](https://github.com/iumalabs/flaretower/compare/v1.14.0...v1.14.1) (2026-08-22)
 
 
