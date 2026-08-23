@@ -3,6 +3,10 @@ import { Hono } from "hono";
 import {
   boundToLabel,
   buildStorageInventoryResponse,
+  getPreviousBucketStatuses,
+  getPreviousD1DatabaseStatuses,
+  getPreviousKvNamespaceStatuses,
+  previousStatusReader,
   storageRoutes,
 } from "../../worker/modules/storage/routes.ts";
 import { PaginationParamError } from "../../worker/pagination.ts";
@@ -17,6 +21,76 @@ Deno.test("boundToLabel - the single Worker's name when referenced by exactly on
 
 Deno.test("boundToLabel - a count, not a name list, when referenced by more than one", () => {
   assertEquals(boundToLabel(["worker-a", "worker-b", "worker-c"]), "3 workers");
+});
+
+// issue #465 — a stale D1 read replica could serve getPrevious*Statuses an
+// older run than the one that actually preceded this invocation, causing a
+// database to repeatedly re-fire a fake "safe -> warning" alert although its
+// real status never changed. `previousStatusReader` must route these reads
+// through a "first-primary" session (guaranteed to see every committed
+// write) instead of env.DB directly.
+function createSessionSpyD1() {
+  const sessionCalls: string[] = [];
+  let dbPrepareCalled = false;
+
+  function makeStatement(sql: string) {
+    return {
+      bind() {
+        return this;
+      },
+      all<T>() {
+        if (/r2_bucket_findings/i.test(sql)) {
+          return Promise.resolve(
+            { results: [{ bucket_name: "b1", status: "warning" }] as unknown as T[] },
+          );
+        }
+        if (/kv_namespace_findings/i.test(sql)) {
+          return Promise.resolve(
+            { results: [{ namespace_id: "kv-1", status: "warning" }] as unknown as T[] },
+          );
+        }
+        if (/d1_database_findings/i.test(sql)) {
+          return Promise.resolve(
+            { results: [{ database_uuid: "db-1", status: "warning" }] as unknown as T[] },
+          );
+        }
+        return Promise.resolve({ results: [] as T[] });
+      },
+    };
+  }
+
+  const session = { prepare: (sql: string) => makeStatement(sql) } as unknown as D1DatabaseSession;
+
+  const db = {
+    prepare(sql: string) {
+      dbPrepareCalled = true;
+      return makeStatement(sql);
+    },
+    withSession(constraint: string) {
+      sessionCalls.push(constraint);
+      return session;
+    },
+  } as unknown as D1Database;
+
+  return { db, sessionCalls, wasDbPrepareCalled: () => dbPrepareCalled };
+}
+
+Deno.test("previousStatusReader - reads go through a first-primary D1 session, never env.DB directly", async () => {
+  const { db, sessionCalls, wasDbPrepareCalled } = createSessionSpyD1();
+  const env = { DB: db, CF_ACCOUNT_ID: "acct-1", CF_API_TOKEN: "fake-token" };
+
+  const reader = previousStatusReader(env);
+  const [buckets, kv, d1] = await Promise.all([
+    getPreviousBucketStatuses(reader),
+    getPreviousKvNamespaceStatuses(reader),
+    getPreviousD1DatabaseStatuses(reader),
+  ]);
+
+  assertEquals(sessionCalls, ["first-primary"]);
+  assertEquals(wasDbPrepareCalled(), false);
+  assertEquals(buckets.get("b1"), "warning");
+  assertEquals(kv.get("kv-1"), "warning");
+  assertEquals(d1.get("db-1"), "warning");
 });
 
 // specs/020-list-pagination — buildStorageInventoryResponse() is pure

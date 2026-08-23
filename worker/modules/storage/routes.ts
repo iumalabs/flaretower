@@ -24,26 +24,53 @@ interface Env {
 
 export const storageRoutes = new Hono<{ Bindings: Env }>();
 
+// issue #465 — D1 read queries can be served by a read replica that lags
+// behind the primary (Cloudflare's documented D1 replication behavior).
+// getPrevious*Statuses below runs in a fresh Worker invocation every time
+// (the scheduled hourly run, or a manual/account-wide RE-SCAN), so a stale
+// replica here means "the most recent run" silently isn't the most recent
+// run — some OTHER, still-more-recent invocation's write hasn't propagated
+// to whichever replica this read landed on yet. Confirmed live: the same
+// D1 database repeatedly re-fired a fresh "safe -> warning" alert while its
+// real status had stayed "warning" the entire time — the previous-status
+// read was seeing an older run than the one that actually preceded it.
+// `env.DB.withSession("first-primary")` forces this invocation's first
+// query to hit the primary (which always has every committed write),
+// eliminating that lag for exactly the read that needs it. The batched
+// INSERTs later in this function are unaffected — D1 writes always go to
+// the primary regardless of session.
+// Exported for tests/unit/storage-routes.test.ts to verify the reads below
+// actually go through a "first-primary" session, not env.DB directly.
+export function previousStatusReader(env: Env): D1DatabaseSession {
+  return env.DB.withSession("first-primary");
+}
+
 // The most recent run's per-entity status, read BEFORE the current run is
 // inserted — same pattern as every prior module.
-async function getPreviousBucketStatuses(env: Env): Promise<Map<string, BucketStatus>> {
-  const { results: rows } = await env.DB.prepare(
+export async function getPreviousBucketStatuses(
+  reader: D1DatabaseSession,
+): Promise<Map<string, BucketStatus>> {
+  const { results: rows } = await reader.prepare(
     `SELECT bucket_name, status FROM r2_bucket_findings
      WHERE run_id = (SELECT run_id FROM r2_bucket_findings ORDER BY evaluated_at DESC LIMIT 1)`,
   ).all<{ bucket_name: string; status: BucketStatus }>();
   return new Map(rows.map((r) => [r.bucket_name, r.status]));
 }
 
-async function getPreviousKvNamespaceStatuses(env: Env): Promise<Map<string, UsageStatus>> {
-  const { results: rows } = await env.DB.prepare(
+export async function getPreviousKvNamespaceStatuses(
+  reader: D1DatabaseSession,
+): Promise<Map<string, UsageStatus>> {
+  const { results: rows } = await reader.prepare(
     `SELECT namespace_id, status FROM kv_namespace_findings
      WHERE run_id = (SELECT run_id FROM kv_namespace_findings ORDER BY evaluated_at DESC LIMIT 1)`,
   ).all<{ namespace_id: string; status: UsageStatus }>();
   return new Map(rows.map((r) => [r.namespace_id, r.status]));
 }
 
-async function getPreviousD1DatabaseStatuses(env: Env): Promise<Map<string, UsageStatus>> {
-  const { results: rows } = await env.DB.prepare(
+export async function getPreviousD1DatabaseStatuses(
+  reader: D1DatabaseSession,
+): Promise<Map<string, UsageStatus>> {
+  const { results: rows } = await reader.prepare(
     `SELECT database_uuid, status FROM d1_database_findings
      WHERE run_id = (SELECT run_id FROM d1_database_findings ORDER BY evaluated_at DESC LIMIT 1)`,
   ).all<{ database_uuid: string; status: UsageStatus }>();
@@ -66,6 +93,7 @@ export async function runStorageEvaluation(
   }
 > {
   const creds = { accountId: env.CF_ACCOUNT_ID, apiToken: env.CF_API_TOKEN };
+  const reader = previousStatusReader(env);
   const [
     { buckets, kvNamespaces, d1Databases, accessApplications, bindingReferences },
     previousBucketStatuses,
@@ -73,9 +101,9 @@ export async function runStorageEvaluation(
     previousD1DatabaseStatuses,
   ] = await Promise.all([
     buildStorageInventory(creds),
-    getPreviousBucketStatuses(env),
-    getPreviousKvNamespaceStatuses(env),
-    getPreviousD1DatabaseStatuses(env),
+    getPreviousBucketStatuses(reader),
+    getPreviousKvNamespaceStatuses(reader),
+    getPreviousD1DatabaseStatuses(reader),
   ]);
 
   const bucketResults = evaluateBuckets(
