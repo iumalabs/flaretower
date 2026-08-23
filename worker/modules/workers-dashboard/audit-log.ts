@@ -107,8 +107,23 @@ export async function fetchAccountAuditLog(
   }
 }
 
+// issue #467 — Cloudflare's audit log API returns oldValue/newValue as
+// empty strings (not omitted/undefined) for several action types
+// (update_consumer_settings, script_deploy, script_update,
+// script_schedules, script_on_subdomain, patch_settings), which the
+// undefined-only guard didn't catch: JSON.stringify("") is the string '""'
+// (quote characters included), so those rows rendered the literal
+// '"" -> ""' instead of falling through to the UI's own "—" fallback
+// (app/pages/AuditInventory.tsx). Checking for "" alongside undefined,
+// rather than a full falsy check, deliberately still shows a real diff
+// when either side is legitimately `0` or `false` (e.g. a boolean setting
+// toggle) — only "nothing on either side" counts as nothing to show.
+function isEmptyAuditValue(value: unknown): boolean {
+  return value === undefined || value === "";
+}
+
 function summarizeValueChange(oldValue: unknown, newValue: unknown): string | null {
-  if (oldValue === undefined && newValue === undefined) return null;
+  if (isEmptyAuditValue(oldValue) && isEmptyAuditValue(newValue)) return null;
   return `${JSON.stringify(oldValue) ?? "?"} -> ${JSON.stringify(newValue) ?? "?"}`;
 }
 

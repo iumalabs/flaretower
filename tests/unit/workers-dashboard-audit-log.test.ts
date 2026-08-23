@@ -18,7 +18,7 @@ function rawEntry(actor: string) {
   };
 }
 
-function pageResponse(entries: ReturnType<typeof rawEntry>[]) {
+function pageResponse(entries: Array<Record<string, unknown>>) {
   return new Response(
     JSON.stringify({ result: entries }),
     { status: 200, headers: { "Content-Type": "application/json" } },
@@ -39,6 +39,52 @@ Deno.test("fetchAccountAuditLog - parses raw entries into RecentChangeEntry", as
   assertEquals(entries[0].target, "worker_script");
   assertEquals(entries[0].resultSummary, '{"workers_dev":false} -> {"workers_dev":true}');
   assertEquals(truncated, false);
+});
+
+// issue #467 — Cloudflare returns oldValue/newValue as "" (not omitted)
+// for several action types (update_consumer_settings, script_deploy,
+// etc.); this must fall through to null (the UI's own "—" fallback), not
+// a literal '"" -> ""' string.
+Deno.test('fetchAccountAuditLog - empty-string oldValue/newValue summarizes to null, not a literal \'"" -> ""\'', async () => {
+  const fetchImpl = (() =>
+    Promise.resolve(pageResponse([{
+      when: "2026-08-07T13:42:08Z",
+      action: { type: "update_consumer_settings" },
+      actor: { email: "wrangler" },
+      interface: { type: "api" },
+      resource: { type: "worker_script" },
+      oldValue: "",
+      newValue: "",
+    }]))) as typeof fetch;
+
+  const { entries } = await fetchAccountAuditLog(
+    creds,
+    new Date("2026-08-06T00:00:00Z"),
+    fetchImpl,
+  );
+  assertEquals(entries[0].resultSummary, null);
+});
+
+// A real diff where one side happens to be an empty string (not both)
+// must still render — only "nothing on either side" counts as nothing.
+Deno.test("fetchAccountAuditLog - a real diff still shows when only one side is an empty string", async () => {
+  const fetchImpl = (() =>
+    Promise.resolve(pageResponse([{
+      when: "2026-08-07T13:42:08Z",
+      action: { type: "patch_settings" },
+      actor: { email: "wrangler" },
+      interface: { type: "api" },
+      resource: { type: "zone_settings" },
+      oldValue: "",
+      newValue: "flexible",
+    }]))) as typeof fetch;
+
+  const { entries } = await fetchAccountAuditLog(
+    creds,
+    new Date("2026-08-06T00:00:00Z"),
+    fetchImpl,
+  );
+  assertEquals(entries[0].resultSummary, '"" -> "flexible"');
 });
 
 Deno.test("fetchAccountAuditLog - a page shorter than per_page is the last page, not truncated", async () => {
