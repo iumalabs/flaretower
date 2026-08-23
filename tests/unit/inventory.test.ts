@@ -1,5 +1,8 @@
 import { assertEquals } from "@std/assert";
-import { buildWorkerInventory } from "../../worker/modules/workers-access-exposure/inventory.ts";
+import {
+  buildWorkerInventory,
+  listAccessApplications,
+} from "../../worker/modules/workers-access-exposure/inventory.ts";
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -190,4 +193,21 @@ Deno.test("buildWorkerInventory - workers.dev disabled for one specific script (
 
   assertEquals(inventory.length, 1);
   assertEquals(inventory[0].hostnames, []);
+});
+
+// issue #464 — Cloudflare omits `domain` for some Access application types
+// (e.g. bookmark apps); this must not throw and must never surface as a
+// literal `undefined`.
+Deno.test("listAccessApplications - an app with no domain field falls back to a sentinel string, never undefined", async () => {
+  const fetchImpl = mockFetch([
+    [
+      "/access/apps",
+      () => jsonResponse({ success: true, result: [{ id: "app-1", policies: [] }], errors: [] }),
+    ],
+  ]);
+
+  const apps = await listAccessApplications(creds, fetchImpl);
+
+  assertEquals(apps?.length, 1);
+  assertEquals(apps?.[0].domain, "(no domain)");
 });
