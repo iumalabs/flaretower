@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.14.3](https://github.com/iumalabs/flaretower/compare/v1.14.2...v1.14.3) (2026-08-23)
+
+
+### Bug Fixes
+
+* storage's previous-status reads no longer risk a stale D1 replica ([#471](https://github.com/iumalabs/flaretower/issues/471)) ([8cc58ac](https://github.com/iumalabs/flaretower/commit/8cc58ace849dfd65fa2580f40f296fe5efc046a4))
+
 ## [1.14.2](https://github.com/iumalabs/flaretower/compare/v1.14.1...v1.14.2) (2026-08-23)
 
 
