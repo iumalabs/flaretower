@@ -8,6 +8,7 @@
     "npm:@fontsource/ibm-plex-mono@5": "5.3.0",
     "npm:@fontsource/ibm-plex-sans@5": "5.3.0",
     "npm:@playwright/test@^1.62.1": "1.62.1",
+    "npm:@sentry/react@10": "10.70.0_react@19.2.8",
     "npm:@types/react-dom@^19.2.4": "19.2.4_@types+react@19.2.18",
     "npm:@types/react@^19.2.18": "19.2.18",
     "npm:@vitejs/plugin-react@5": "5.2.0_vite@8.2.1",
@@ -681,6 +682,62 @@
     "@rolldown/pluginutils@1.0.1": {
       "integrity": "sha512-2j9bGt5Jh8hj+vPtgzPtl72j0yRxHAyumoo6TNfAjsLB04UtpSvPbPcDcBMxz7n+9CYB0c1GxQFxYRg2jimqGw=="
     },
+    "@sentry/browser-utils@10.70.0": {
+      "integrity": "sha512-IvjhafF5NFXrPCg5EHbAPGDwIhHxgUcLlHTklZ3DAdA6ky88BJYMfevbcnOEmgavf4nylhCaquRUFNB5+szj+A==",
+      "dependencies": [
+        "@sentry/conventions",
+        "@sentry/core"
+      ]
+    },
+    "@sentry/browser@10.70.0": {
+      "integrity": "sha512-IK6+J+8H06tZe+A8L37TT5ZxxwNtyQatW8zl5RYYJ/e9CsjrM8fPi8I1OT7uquTw8UtjqFHt7bEef/Vy63ksPg==",
+      "dependencies": [
+        "@sentry/browser-utils",
+        "@sentry/conventions",
+        "@sentry/core",
+        "@sentry/feedback",
+        "@sentry/replay",
+        "@sentry/replay-canvas"
+      ]
+    },
+    "@sentry/conventions@0.16.0": {
+      "integrity": "sha512-fO9PLmHdVURcSPUpWCItWAtgKiMwGdJHbovoSEyLplX5sxs2ugvI4CBPTrkkgqhObnZOD0CnWBKDzSVQYBKEyQ=="
+    },
+    "@sentry/core@10.70.0": {
+      "integrity": "sha512-ozhCTDqg89oB4XmWfAwuHshABpvT7AkRpaPnogopPfMAaI61G1t8EKCJ4W7aum8JSBonlfyjPCyW5oYZFm0KvA==",
+      "dependencies": [
+        "@sentry/conventions"
+      ]
+    },
+    "@sentry/feedback@10.70.0": {
+      "integrity": "sha512-6VQn2ETJjHkk4QQDdx/587/JDfXsk3yBTLZ3UZOMtBVrkmwgk+1FJZ8ULJ3ud1xZcuh2icunIkc7tGVv2axdnw==",
+      "dependencies": [
+        "@sentry/core"
+      ]
+    },
+    "@sentry/react@10.70.0_react@19.2.8": {
+      "integrity": "sha512-j1d/4hvoaUVKs5GRrfmwUCkiEmkfaeHsk+xgausZlzg5YvmwpF+gyevBLNP26GFEH7nyHXW4l8dbbo0eNieJmw==",
+      "dependencies": [
+        "@sentry/browser",
+        "@sentry/conventions",
+        "@sentry/core",
+        "react"
+      ]
+    },
+    "@sentry/replay-canvas@10.70.0": {
+      "integrity": "sha512-irzpw22bK5CF3jbecDa0gBUcfjv7tgeUoLAvtIfeHOP5ajmf3o4Cp99a9RQqkfgvkcMeRZBUwE91SQhp6Ank+w==",
+      "dependencies": [
+        "@sentry/core",
+        "@sentry/replay"
+      ]
+    },
+    "@sentry/replay@10.70.0": {
+      "integrity": "sha512-xMnSGzJn9Xd29rYd32lkx/gFW+5mtgqADJ2FiZvis0MBGZuDlNRwPn0/Cs1xA3JNXKV3NGfhdmmvs90w4dHSmw==",
+      "dependencies": [
+        "@sentry/browser-utils",
+        "@sentry/core"
+      ]
+    },
     "@sindresorhus/is@7.2.0": {
       "integrity": "sha512-P1Cz1dWaFfR4IR+U13mqqiGsLFf1KbayybWwdd2vfctdV6hDpUkgCY0nKOLLTMSoRd/jJNjtbqzf13K8DCCXQw=="
     },
@@ -1194,6 +1251,7 @@
       "npm:@fontsource/ibm-plex-mono@5",
       "npm:@fontsource/ibm-plex-sans@5",
       "npm:@playwright/test@^1.62.1",
+      "npm:@sentry/react@10",
       "npm:@types/react-dom@^19.2.4",
       "npm:@types/react@^19.2.18",
       "npm:@vitejs/plugin-react@5",
