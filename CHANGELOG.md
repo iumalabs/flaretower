@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.15.2](https://github.com/iumalabs/flaretower/compare/v1.15.1...v1.15.2) (2026-08-23)
+
+
+### Bug Fixes
+
+* Audit log RESULT no longer shows a literal '"" -&gt; ""' non-diff ([#478](https://github.com/iumalabs/flaretower/issues/478)) ([979133b](https://github.com/iumalabs/flaretower/commit/979133bedbacdb46b0bd7c1a70e02f56a7bb1b19))
+
 ## [1.15.1](https://github.com/iumalabs/flaretower/compare/v1.15.0...v1.15.1) (2026-08-23)
 
 
