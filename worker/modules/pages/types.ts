@@ -12,6 +12,10 @@ export interface AccessPolicy {
 
 export interface AccessApplication {
   appId: string;
+  // issue #466 — falls back to `appDomain` when Cloudflare's API doesn't
+  // return a name for a given app (older apps predating the `name` field)
+  // — never a raw UUID shown to the operator as if it were a name.
+  appName: string;
   appDomain: string;
   policies: AccessPolicy[];
 }
@@ -72,6 +76,10 @@ export interface DomainAccessEvaluation {
   status: DomainStatus;
   reason: string;
   coveringAppId: string | null;
+  // issue #466 — the same app's resolved name (never a raw UUID), for
+  // display; coveringAppId is kept as-is for anything that needs the real
+  // identifier.
+  coveringAppName: string | null;
 }
 
 export interface SubdomainEvaluation {

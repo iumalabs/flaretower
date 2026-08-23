@@ -54,17 +54,19 @@ function project(overrides: Partial<PagesProjectInventoryItem> = {}): PagesProje
   };
 }
 
-function scopedApp(appId: string, appDomain: string): AccessApplication {
+function scopedApp(appId: string, appDomain: string, appName: string = appId): AccessApplication {
   return {
     appId,
+    appName,
     appDomain,
     policies: [{ decision: "allow", includesEveryone: false, hasScopedInclude: true }],
   };
 }
 
-function everyoneApp(appId: string, appDomain: string): AccessApplication {
+function everyoneApp(appId: string, appDomain: string, appName: string = appId): AccessApplication {
   return {
     appId,
+    appName,
     appDomain,
     policies: [{ decision: "allow", includesEveryone: true, hasScopedInclude: false }],
   };
@@ -97,7 +99,7 @@ Deno.test("evaluateSubdomainExposure - warning when covered by an Allow-Everyone
 Deno.test("evaluateSubdomainExposure - warning when the covering application has zero policies", () => {
   const result = evaluateSubdomainExposure(
     project(),
-    [{ appId: "app-1", appDomain: "marketing-site.pages.dev", policies: [] }],
+    [{ appId: "app-1", appName: "app-1", appDomain: "marketing-site.pages.dev", policies: [] }],
   );
   assertEquals(result.status, "warning");
 });
@@ -112,11 +114,26 @@ Deno.test("evaluateSubdomainExposure - a deny-Everyone policy is not 'open' (dec
     project(),
     [{
       appId: "app-1",
+      appName: "app-1",
       appDomain: "marketing-site.pages.dev",
       policies: [{ decision: "deny", includesEveryone: true, hasScopedInclude: false }],
     }],
   );
   assertEquals(result.status, "safe");
+});
+
+// issue #466 — the reason text must read as a human-readable name, never
+// the app's raw Cloudflare UUID.
+Deno.test("evaluateSubdomainExposure - reason text uses the covering app's name, not its raw id", () => {
+  const result = evaluateSubdomainExposure(
+    project(),
+    [scopedApp(
+      "7f8ccc38-6277-4694-85ca-5f6ddac498ff",
+      "marketing-site.pages.dev",
+      "gateway-admin",
+    )],
+  );
+  assertEquals(result.reason, "covered by Access application(s): gateway-admin");
 });
 
 Deno.test("evaluateSubdomainExposure - not_evaluated when the project itself is a sentinel entry (projects list failed entirely), takes priority over apps", () => {
@@ -138,14 +155,18 @@ Deno.test("evaluateDomainAccess - not_evaluated (never critical) when no Access 
   assertEquals(result.coveringAppId, null);
 });
 
-Deno.test("evaluateDomainAccess - safe with the covering app's id when covered by a scoped-policy application", () => {
+Deno.test("evaluateDomainAccess - safe with the covering app's id and name when covered by a scoped-policy application", () => {
   const result = evaluateDomainAccess(
     "marketing-site",
     { domainName: "example.com", status: "active" },
-    [scopedApp("app-1", "example.com")],
+    [scopedApp("7f8ccc38-6277-4694-85ca-5f6ddac498ff", "example.com", "gateway-admin")],
   );
   assertEquals(result.status, "safe");
-  assertEquals(result.coveringAppId, "app-1");
+  assertEquals(result.coveringAppId, "7f8ccc38-6277-4694-85ca-5f6ddac498ff");
+  assertEquals(result.coveringAppName, "gateway-admin");
+  // issue #466 — the reason text must read as a human-readable name, never
+  // the app's raw Cloudflare UUID.
+  assertEquals(result.reason, "covered by Access application(s): gateway-admin");
 });
 
 Deno.test("evaluateDomainAccess - warning when covered by an Allow-Everyone application", () => {
@@ -162,7 +183,7 @@ Deno.test("evaluateDomainAccess - warning when the covering application has zero
   const result = evaluateDomainAccess(
     "marketing-site",
     { domainName: "example.com", status: "active" },
-    [{ appId: "app-1", appDomain: "example.com", policies: [] }],
+    [{ appId: "app-1", appName: "app-1", appDomain: "example.com", policies: [] }],
   );
   assertEquals(result.status, "warning");
 });

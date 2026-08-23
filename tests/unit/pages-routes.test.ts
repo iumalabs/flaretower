@@ -11,7 +11,12 @@ import { PaginationParamError } from "../../worker/pagination.ts";
 function domainRow(
   status: string,
   domainName: string,
-  access?: { status: string | null; reason: string | null; coveringAppId: string | null },
+  access?: {
+    status: string | null;
+    reason: string | null;
+    coveringAppId: string | null;
+    coveringAppName?: string | null;
+  },
 ) {
   return {
     project_name: "marketing-site",
@@ -21,6 +26,7 @@ function domainRow(
     access_status: access?.status ?? null,
     access_reason: access?.reason ?? null,
     covering_app_id: access?.coveringAppId ?? null,
+    covering_app_name: access?.coveringAppName ?? null,
   };
 }
 
@@ -32,12 +38,14 @@ Deno.test("deriveProductionDomainAccess - returns the access fields for the same
       status: "safe",
       reason: "covered by Access application(s): app-1",
       coveringAppId: "app-1",
+      coveringAppName: "gateway-admin",
     }),
   ];
   assertEquals(deriveProductionDomainAccess(domains), {
     status: "safe",
     reason: "covered by Access application(s): app-1",
     covering_app_id: "app-1",
+    covering_app_name: "gateway-admin",
   });
 });
 

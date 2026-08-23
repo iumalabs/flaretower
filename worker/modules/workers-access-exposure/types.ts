@@ -24,6 +24,10 @@ export interface AccessPolicySummary {
 
 export interface AccessApplicationSummary {
   id: string;
+  // issue #466 — falls back to `domain` when Cloudflare's API doesn't
+  // return a name for a given app (older apps predating the `name` field)
+  // — never a raw UUID shown to the operator as if it were a name.
+  name: string;
   domain: string;
   policies: AccessPolicySummary[];
 }

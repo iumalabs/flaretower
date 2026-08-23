@@ -211,3 +211,28 @@ Deno.test("listAccessApplications - an app with no domain field falls back to a 
   assertEquals(apps?.length, 1);
   assertEquals(apps?.[0].domain, "(no domain)");
 });
+
+// issue #466 — falls back to the domain (or its own "(no domain)"
+// sentinel) when Cloudflare's API doesn't return a name — never a raw
+// UUID shown to the operator as if it were a name.
+Deno.test("listAccessApplications - captures the app's real name; falls back to domain when absent", async () => {
+  const fetchImpl = mockFetch([
+    [
+      "/access/apps",
+      () =>
+        jsonResponse({
+          success: true,
+          result: [
+            { id: "app-1", name: "gateway-admin", domain: "api.example.com", policies: [] },
+            { id: "app-2", domain: "no-name.example.com", policies: [] },
+          ],
+          errors: [],
+        }),
+    ],
+  ]);
+
+  const apps = await listAccessApplications(creds, fetchImpl);
+
+  assertEquals(apps?.[0].name, "gateway-admin");
+  assertEquals(apps?.[1].name, "no-name.example.com");
+});

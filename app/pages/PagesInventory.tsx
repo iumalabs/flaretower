@@ -23,6 +23,10 @@ interface ProductionDomainAccess {
   status: "safe" | "warning" | "not_evaluated";
   reason: string;
   covering_app_id: string | null;
+  // issue #466 — the same app's resolved name, never a raw UUID; display
+  // prefers this, falling back to covering_app_id only for rows persisted
+  // before this field existed.
+  covering_app_name: string | null;
 }
 
 interface ProjectRow {
@@ -131,7 +135,7 @@ function previewExposureLabel(status: ExposureStatus): string {
 // claim, since no owner-confirmation signal exists anywhere here.
 function accessLabel(access: ProductionDomainAccess | null): string {
   if (!access) return "—";
-  if (access.status === "safe") return access.covering_app_id ?? "—";
+  if (access.status === "safe") return access.covering_app_name ?? access.covering_app_id ?? "—";
   if (access.status === "warning") return "WEAK POLICY";
   if (access.reason === "no Access application covers this domain") return "NO POLICY";
   return "N/A";

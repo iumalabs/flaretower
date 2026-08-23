@@ -131,8 +131,8 @@ export function evaluateSubdomainExposure(
   if (openApps.length > 0) {
     const reasons = openApps.map((a) =>
       a.policies.length === 0
-        ? `${a.appId} has no policies attached`
-        : `${a.appId} has a policy that allows Everyone`
+        ? `${a.appName} has no policies attached`
+        : `${a.appName} has a policy that allows Everyone`
     );
     return {
       projectName: project.projectName,
@@ -149,7 +149,7 @@ export function evaluateSubdomainExposure(
     projectName: project.projectName,
     subdomain: project.subdomain,
     status: "safe",
-    reason: `covered by Access application(s): ${covering.map((a) => a.appId).join(", ")}`,
+    reason: `covered by Access application(s): ${covering.map((a) => a.appName).join(", ")}`,
     productionBranch,
   };
 }
@@ -171,6 +171,7 @@ export function evaluateDomainAccess(
       status: "not_evaluated",
       reason: domain.evaluationError,
       coveringAppId: null,
+      coveringAppName: null,
     };
   }
 
@@ -181,6 +182,7 @@ export function evaluateDomainAccess(
       status: "not_evaluated",
       reason: "could not evaluate Access coverage (Access applications API error)",
       coveringAppId: null,
+      coveringAppName: null,
     };
   }
 
@@ -193,6 +195,7 @@ export function evaluateDomainAccess(
       status: "not_evaluated",
       reason: "no Access application covers this domain",
       coveringAppId: null,
+      coveringAppName: null,
     };
   }
 
@@ -200,8 +203,8 @@ export function evaluateDomainAccess(
   if (openApps.length > 0) {
     const reasons = openApps.map((a) =>
       a.policies.length === 0
-        ? `${a.appId} has no policies attached`
-        : `${a.appId} has a policy that allows Everyone`
+        ? `${a.appName} has no policies attached`
+        : `${a.appName} has a policy that allows Everyone`
     );
     return {
       projectName,
@@ -211,6 +214,7 @@ export function evaluateDomainAccess(
         reasons.join("; ")
       }`,
       coveringAppId: null,
+      coveringAppName: null,
     };
   }
 
@@ -218,8 +222,9 @@ export function evaluateDomainAccess(
     projectName,
     domainName: domain.domainName,
     status: "safe",
-    reason: `covered by Access application(s): ${covering.map((a) => a.appId).join(", ")}`,
+    reason: `covered by Access application(s): ${covering.map((a) => a.appName).join(", ")}`,
     coveringAppId: covering[0].appId,
+    coveringAppName: covering[0].appName,
   };
 }
 
