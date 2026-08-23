@@ -97,8 +97,8 @@ export function evaluateHostname(
   if (openApps.length > 0) {
     const reasons = openApps.map((a) =>
       a.policies.length === 0
-        ? `${a.id} has no policies attached`
-        : `${a.id} has a policy that allows Everyone`
+        ? `${a.name} has no policies attached`
+        : `${a.name} has a policy that allows Everyone`
     );
     return {
       hostname: hostname.hostname,
@@ -121,7 +121,7 @@ export function evaluateHostname(
     hostname: hostname.hostname,
     kind: hostname.kind,
     status: "safe",
-    reason: `covered by Access application(s): ${covering.map((a) => a.id).join(", ")}`,
+    reason: `covered by Access application(s): ${covering.map((a) => a.name).join(", ")}`,
     coveringAppIds: covering.map((a) => a.id),
   };
 }

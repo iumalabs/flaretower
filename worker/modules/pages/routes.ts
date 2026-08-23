@@ -107,8 +107,8 @@ export async function runPagesEvaluation(
     return env.DB.prepare(
       `INSERT INTO pages_domain_findings
          (id, project_name, domain_name, status, reason, evaluated_at, run_id, run_trigger,
-          access_status, access_reason, covering_app_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          access_status, access_reason, covering_app_id, covering_app_name)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).bind(
       crypto.randomUUID(),
       d.projectName,
@@ -121,6 +121,7 @@ export async function runPagesEvaluation(
       access?.status ?? null,
       access?.reason ?? null,
       access?.coveringAppId ?? null,
+      access?.coveringAppName ?? null,
     );
   });
 
@@ -249,6 +250,8 @@ interface DomainFindingRow {
   access_status: string | null;
   access_reason: string | null;
   covering_app_id: string | null;
+  // issue #466 — nullable: rows written before migration 0016 have none.
+  covering_app_name: string | null;
 }
 
 interface SubdomainFindingRow {
@@ -282,13 +285,19 @@ export function deriveProductionDomain(domains: readonly DomainFindingRow[]): st
 // project.
 export function deriveProductionDomainAccess(
   domains: readonly DomainFindingRow[],
-): { status: string | null; reason: string | null; covering_app_id: string | null } | null {
+): {
+  status: string | null;
+  reason: string | null;
+  covering_app_id: string | null;
+  covering_app_name: string | null;
+} | null {
   const production = domains.find((d) => d.status === "safe");
   if (!production) return null;
   return {
     status: production.access_status,
     reason: production.access_reason,
     covering_app_id: production.covering_app_id,
+    covering_app_name: production.covering_app_name,
   };
 }
 
@@ -299,6 +308,7 @@ interface ProjectRowOut {
     status: string | null;
     reason: string | null;
     covering_app_id: string | null;
+    covering_app_name: string | null;
   } | null;
   production_branch: string | null;
   last_build_status: string | null;
@@ -316,6 +326,7 @@ interface ProjectRowOut {
       access_status: string | null;
       access_reason: string | null;
       covering_app_id: string | null;
+      covering_app_name: string | null;
     }
   >;
 }
@@ -378,7 +389,7 @@ pagesRoutes.get("/inventory", async (c) => {
           `SELECT project_name, deployment_id, status, reason, created_at FROM pages_deployment_findings WHERE run_id = ?`,
         ).bind(latest.run_id).all<DeploymentFindingRow>(),
         c.env.DB.prepare(
-          `SELECT project_name, domain_name, status, reason, access_status, access_reason, covering_app_id
+          `SELECT project_name, domain_name, status, reason, access_status, access_reason, covering_app_id, covering_app_name
            FROM pages_domain_findings WHERE run_id = ? ORDER BY domain_name`,
         ).bind(latest.run_id).all<DomainFindingRow>(),
       ]);
@@ -424,6 +435,7 @@ pagesRoutes.get("/inventory", async (c) => {
           access_status: d.access_status,
           access_reason: d.access_reason,
           covering_app_id: d.covering_app_id,
+          covering_app_name: d.covering_app_name,
         })),
       };
     });

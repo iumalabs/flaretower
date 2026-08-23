@@ -6,24 +6,26 @@ import {
 } from "../../worker/modules/workers-access-exposure/evaluate.ts";
 import type { AccessApplicationSummary } from "../../worker/modules/workers-access-exposure/types.ts";
 
-function scopedApp(id: string, domain: string): AccessApplicationSummary {
+function scopedApp(id: string, domain: string, name: string = id): AccessApplicationSummary {
   return {
     id,
+    name,
     domain,
     policies: [{ decision: "allow", includesEveryone: false, hasScopedInclude: true }],
   };
 }
 
-function everyoneApp(id: string, domain: string): AccessApplicationSummary {
+function everyoneApp(id: string, domain: string, name: string = id): AccessApplicationSummary {
   return {
     id,
+    name,
     domain,
     policies: [{ decision: "allow", includesEveryone: true, hasScopedInclude: false }],
   };
 }
 
-function policylessApp(id: string, domain: string): AccessApplicationSummary {
-  return { id, domain, policies: [] };
+function policylessApp(id: string, domain: string, name: string = id): AccessApplicationSummary {
+  return { id, name, domain, policies: [] };
 }
 
 Deno.test("hostnameCoveredByAppDomain - exact match", () => {
@@ -120,6 +122,7 @@ Deno.test("evaluateHostname - safe when the covering app's policy is scoped (not
 Deno.test("evaluateHostname - a deny-Everyone policy is not 'open' (decision matters, not just includesEveryone)", () => {
   const denyEveryone: AccessApplicationSummary = {
     id: "app-1",
+    name: "app-1",
     domain: "billing.example.com",
     policies: [{ decision: "deny", includesEveryone: true, hasScopedInclude: false }],
   };
@@ -132,6 +135,7 @@ Deno.test("evaluateHostname - a deny-Everyone policy is not 'open' (decision mat
 Deno.test("evaluateHostname - bypass policies are treated as open regardless of includes", () => {
   const bypassApp: AccessApplicationSummary = {
     id: "app-1",
+    name: "app-1",
     domain: "billing.example.com",
     policies: [{ decision: "bypass", includesEveryone: false, hasScopedInclude: true }],
   };
@@ -139,6 +143,27 @@ Deno.test("evaluateHostname - bypass policies are treated as open regardless of 
     bypassApp,
   ]);
   assertEquals(result.status, "warning");
+});
+
+// issue #466 — the reason text must read as a human-readable name, never
+// the app's raw Cloudflare UUID.
+Deno.test("evaluateHostname - reason text uses the covering app's name, not its raw id", () => {
+  const result = evaluateHostname(
+    { hostname: "billing.example.com", kind: "custom_domain" },
+    [scopedApp("7f8ccc38-6277-4694-85ca-5f6ddac498ff", "billing.example.com", "gateway-admin")],
+  );
+  assertEquals(result.status, "safe");
+  assertEquals(result.reason, "covered by Access application(s): gateway-admin");
+
+  const open = evaluateHostname(
+    { hostname: "status.example.com", kind: "custom_domain" },
+    [everyoneApp("7f8ccc38-6277-4694-85ca-5f6ddac498ff", "status.example.com", "gateway-admin")],
+  );
+  assertEquals(
+    open.reason,
+    "covering Access application(s) do not meaningfully restrict access: " +
+      "gateway-admin has a policy that allows Everyone",
+  );
 });
 
 Deno.test("evaluateWorker - hostnames on the same Worker are evaluated independently", () => {
