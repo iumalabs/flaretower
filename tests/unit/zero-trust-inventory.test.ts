@@ -84,6 +84,29 @@ Deno.test("listAccessApplications - captures session_duration and self_hosted_do
   assertEquals(apps[1].sessionDuration, null);
 });
 
+// issue #464 — Cloudflare omits `domain` for some Access application types
+// (e.g. bookmark apps); this must not throw (TypeError on `.toLowerCase()`
+// downstream, or D1_TYPE_ERROR binding `undefined` in routes.ts) and must
+// never surface as a literal `undefined` in appDomain, appName, or
+// coveredHostnames.
+Deno.test("listAccessApplications - an app with no domain field falls back to a sentinel string, never undefined", async () => {
+  const fetchImpl = mockFetch([
+    ["/access/apps", () =>
+      jsonResponse({
+        success: true,
+        result: [{ id: "app-1", policies: [] }],
+        errors: [],
+      })],
+  ]);
+
+  const apps = await listAccessApplications(creds, fetchImpl);
+
+  assertEquals(apps.length, 1);
+  assertEquals(apps[0].appDomain, "(no domain)");
+  assertEquals(apps[0].appName, "(no domain)");
+  assertEquals(apps[0].coveredHostnames, ["(no domain)"]);
+});
+
 Deno.test("listAccessApplications - captures the app's real name; falls back to domain when absent", async () => {
   const fetchImpl = mockFetch([
     ["/access/apps", () =>

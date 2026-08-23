@@ -88,7 +88,10 @@ interface RawAccessPolicy {
 
 interface RawAccessApp {
   id: string;
-  domain: string;
+  // issue #464 — Cloudflare omits `domain` for some Access application
+  // types (e.g. bookmark apps), so this can genuinely be absent on a real
+  // account despite the API docs implying it's always present.
+  domain?: string;
   policies?: RawAccessPolicy[];
 }
 
@@ -126,7 +129,11 @@ export async function listAccessApplications(
   );
   return apps.map((app) => ({
     appId: app.id,
-    appDomain: app.domain,
+    // issue #464 — an app with no domain can't cover any hostname; a
+    // sentinel string (never matching a real hostname) keeps every
+    // downstream consumer's `appDomain: string` assumption intact instead
+    // of threading `| undefined` through the whole module.
+    appDomain: app.domain ?? "(no domain)",
     policies: (app.policies ?? []).map(summarizePolicy),
   }));
 }

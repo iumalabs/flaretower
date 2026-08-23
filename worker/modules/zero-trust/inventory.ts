@@ -79,7 +79,12 @@ interface RawAccessPolicy {
 interface RawAccessApp {
   id: string;
   name?: string;
-  domain: string;
+  // issue #464 — Cloudflare omits `domain` for some Access application
+  // types (e.g. bookmark apps), so this can genuinely be absent on a real
+  // account despite the API docs implying it's always present. zt_app_findings
+  // / zt_app_alerts also declare app_domain TEXT NOT NULL (migration 0004),
+  // so callers must never bind this raw value straight into D1.
+  domain?: string;
   self_hosted_domains?: string[];
   session_duration?: string;
   policies?: RawAccessPolicy[];
@@ -115,11 +120,13 @@ function summarizePolicy(policy: RawAccessPolicy): AccessPolicy {
 
 // self_hosted_domains covers a multi-hostname app (specs/014-access-dashboard
 // research.md §1); a legacy app with only the singular `domain` field falls
-// back to a one-element list equal to it.
+// back to a one-element list equal to it. issue #464 — domain itself may be
+// undefined (see RawAccessApp), so the fallback list uses the same sentinel
+// as listAccessApplications below.
 function coveredHostnames(app: RawAccessApp): string[] {
   return app.self_hosted_domains && app.self_hosted_domains.length > 0
     ? app.self_hosted_domains
-    : [app.domain];
+    : [app.domain ?? "(no domain)"];
 }
 
 export async function listAccessApplications(
@@ -131,17 +138,23 @@ export async function listAccessApplications(
     creds,
     fetchImpl,
   );
-  return apps.map((app) => ({
-    appId: app.id,
-    // Falls back to the domain when Cloudflare's API doesn't return a name
-    // for a given app (older apps predating the `name` field) — never a
-    // raw UUID shown to the operator as if it were a name.
-    appName: app.name && app.name.length > 0 ? app.name : app.domain,
-    appDomain: app.domain,
-    policies: (app.policies ?? []).map(summarizePolicy),
-    coveredHostnames: coveredHostnames(app),
-    sessionDuration: app.session_duration ?? null,
-  }));
+  return apps.map((app) => {
+    // issue #464 — resolved once per app so appName's fallback and
+    // appDomain agree, and neither can end up `undefined` when Cloudflare
+    // omits `domain` (e.g. bookmark-type apps).
+    const domain = app.domain ?? "(no domain)";
+    return {
+      appId: app.id,
+      // Falls back to the domain when Cloudflare's API doesn't return a
+      // name for a given app (older apps predating the `name` field) —
+      // never a raw UUID shown to the operator as if it were a name.
+      appName: app.name && app.name.length > 0 ? app.name : domain,
+      appDomain: domain,
+      policies: (app.policies ?? []).map(summarizePolicy),
+      coveredHostnames: coveredHostnames(app),
+      sessionDuration: app.session_duration ?? null,
+    };
+  });
 }
 
 // specs/014-access-dashboard research.md §2 — resolves a policy's
