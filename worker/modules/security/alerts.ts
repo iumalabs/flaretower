@@ -199,3 +199,76 @@ export function diffForMinTlsAlerts(
   }
   return alerts;
 }
+
+// issue #481 — the auto-resolve counterpart to every diffFor*Alerts above:
+// an open (unacknowledged, unresolved) alert whose zone is back to "safe"
+// in the run that just completed no longer belongs in the Unified Alerts
+// Inbox/Overview. Deliberately checks `=== "safe"`, not `!== "warning"` (or
+// `!== "critical"`) — a zone missing from `results` entirely, or evaluated
+// as "not_evaluated" (a transient per-check API failure), must NOT
+// auto-resolve: that would silently hide a still-open alert behind a data
+// gap rather than a genuine fix (mirrors this codebase's established
+// "never fabricate a clean state" rule — e.g. summary.ts's `hasData`).
+// Pure — no D1 access (constitution Principle III); routes.ts reads the
+// open alerts, calls this, and writes the resulting ids' resolved_at.
+export interface OpenAlert {
+  id: string;
+  zoneId: string;
+}
+
+function resolvedAlertIds<T extends { zoneId: string; status: string }>(
+  results: T[],
+  openAlerts: readonly OpenAlert[],
+): string[] {
+  const safeZoneIds = new Set(results.filter((r) => r.status === "safe").map((r) => r.zoneId));
+  return openAlerts.filter((a) => safeZoneIds.has(a.zoneId)).map((a) => a.id);
+}
+
+export function resolveForSslTlsAlerts(
+  results: SslTlsEvaluation[],
+  openAlerts: readonly OpenAlert[],
+): string[] {
+  return resolvedAlertIds(results, openAlerts);
+}
+
+export function resolveForDnssecAlerts(
+  results: DnssecEvaluation[],
+  openAlerts: readonly OpenAlert[],
+): string[] {
+  return resolvedAlertIds(results, openAlerts);
+}
+
+export function resolveForWafAlerts(
+  results: WafEvaluation[],
+  openAlerts: readonly OpenAlert[],
+): string[] {
+  return resolvedAlertIds(results, openAlerts);
+}
+
+export function resolveForRateLimitingAlerts(
+  results: RateLimitingEvaluation[],
+  openAlerts: readonly OpenAlert[],
+): string[] {
+  return resolvedAlertIds(results, openAlerts);
+}
+
+export function resolveForBotFightModeAlerts(
+  results: BotFightModeEvaluation[],
+  openAlerts: readonly OpenAlert[],
+): string[] {
+  return resolvedAlertIds(results, openAlerts);
+}
+
+export function resolveForAlwaysHttpsAlerts(
+  results: AlwaysHttpsEvaluation[],
+  openAlerts: readonly OpenAlert[],
+): string[] {
+  return resolvedAlertIds(results, openAlerts);
+}
+
+export function resolveForMinTlsAlerts(
+  results: MinTlsVersionEvaluation[],
+  openAlerts: readonly OpenAlert[],
+): string[] {
+  return resolvedAlertIds(results, openAlerts);
+}

@@ -58,3 +58,41 @@ export function diffForTokenAlerts(
   }
   return alerts;
 }
+
+// issue #481 — the auto-resolve counterpart to diffForAppAlerts/
+// diffForTokenAlerts above: an open (unacknowledged, unresolved) alert
+// whose app/token is back to "safe" in the run that just completed no
+// longer belongs in the Unified Alerts Inbox/Overview. Deliberately checks
+// `=== "safe"`, not `!== "warning"` (or `!== "critical"`) — an entity
+// missing from `results` entirely, or evaluated as "not_evaluated" (a
+// transient per-check API failure), must NOT auto-resolve: that would
+// silently hide a still-open alert behind a data gap rather than a genuine
+// fix (mirrors this codebase's established "never fabricate a clean state"
+// rule — e.g. summary.ts's `hasData`). Pure — no D1 access (constitution
+// Principle III); routes.ts reads the open alerts, calls this, and writes
+// the resulting ids' resolved_at.
+export interface OpenAppAlert {
+  id: string;
+  appId: string;
+}
+
+export interface OpenTokenAlert {
+  id: string;
+  tokenId: string;
+}
+
+export function resolveForAppAlerts(
+  results: AppEvaluation[],
+  openAlerts: readonly OpenAppAlert[],
+): string[] {
+  const safeAppIds = new Set(results.filter((r) => r.status === "safe").map((r) => r.appId));
+  return openAlerts.filter((a) => safeAppIds.has(a.appId)).map((a) => a.id);
+}
+
+export function resolveForTokenAlerts(
+  results: TokenEvaluation[],
+  openAlerts: readonly OpenTokenAlert[],
+): string[] {
+  const safeTokenIds = new Set(results.filter((r) => r.status === "safe").map((r) => r.tokenId));
+  return openAlerts.filter((a) => safeTokenIds.has(a.tokenId)).map((a) => a.id);
+}

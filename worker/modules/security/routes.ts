@@ -30,6 +30,14 @@ import {
   diffForRateLimitingAlerts,
   diffForSslTlsAlerts,
   diffForWafAlerts,
+  type OpenAlert,
+  resolveForAlwaysHttpsAlerts,
+  resolveForBotFightModeAlerts,
+  resolveForDnssecAlerts,
+  resolveForMinTlsAlerts,
+  resolveForRateLimitingAlerts,
+  resolveForSslTlsAlerts,
+  resolveForWafAlerts,
 } from "./alerts.ts";
 import type {
   AlwaysHttpsEvaluation,
@@ -114,6 +122,58 @@ async function getPreviousMinTlsStatuses(env: Env): Promise<Map<string, SettingS
   return new Map(rows.map((r) => [r.zone_id, r.status]));
 }
 
+// issue #481 — every alert still open (unacknowledged, unresolved), read
+// BEFORE the current run so resolveFor*Alerts (alerts.ts) can decide which
+// of them the run that's about to be inserted just resolved.
+async function getOpenSslTlsAlerts(env: Env): Promise<OpenAlert[]> {
+  const { results } = await env.DB.prepare(
+    `SELECT id, zone_id AS zoneId FROM ssl_tls_alerts WHERE acknowledged_at IS NULL AND resolved_at IS NULL`,
+  ).all<OpenAlert>();
+  return results;
+}
+
+async function getOpenDnssecAlerts(env: Env): Promise<OpenAlert[]> {
+  const { results } = await env.DB.prepare(
+    `SELECT id, zone_id AS zoneId FROM dnssec_alerts WHERE acknowledged_at IS NULL AND resolved_at IS NULL`,
+  ).all<OpenAlert>();
+  return results;
+}
+
+async function getOpenWafAlerts(env: Env): Promise<OpenAlert[]> {
+  const { results } = await env.DB.prepare(
+    `SELECT id, zone_id AS zoneId FROM waf_alerts WHERE acknowledged_at IS NULL AND resolved_at IS NULL`,
+  ).all<OpenAlert>();
+  return results;
+}
+
+async function getOpenRateLimitingAlerts(env: Env): Promise<OpenAlert[]> {
+  const { results } = await env.DB.prepare(
+    `SELECT id, zone_id AS zoneId FROM rate_limiting_alerts WHERE acknowledged_at IS NULL AND resolved_at IS NULL`,
+  ).all<OpenAlert>();
+  return results;
+}
+
+async function getOpenBotFightModeAlerts(env: Env): Promise<OpenAlert[]> {
+  const { results } = await env.DB.prepare(
+    `SELECT id, zone_id AS zoneId FROM bot_fight_mode_alerts WHERE acknowledged_at IS NULL AND resolved_at IS NULL`,
+  ).all<OpenAlert>();
+  return results;
+}
+
+async function getOpenAlwaysHttpsAlerts(env: Env): Promise<OpenAlert[]> {
+  const { results } = await env.DB.prepare(
+    `SELECT id, zone_id AS zoneId FROM always_https_alerts WHERE acknowledged_at IS NULL AND resolved_at IS NULL`,
+  ).all<OpenAlert>();
+  return results;
+}
+
+async function getOpenMinTlsAlerts(env: Env): Promise<OpenAlert[]> {
+  const { results } = await env.DB.prepare(
+    `SELECT id, zone_id AS zoneId FROM min_tls_alerts WHERE acknowledged_at IS NULL AND resolved_at IS NULL`,
+  ).all<OpenAlert>();
+  return results;
+}
+
 // Shared by POST /evaluate (interactive) and the scheduled handler —
 // constitution Principle III.
 export async function runSecurityEvaluation(
@@ -131,6 +191,7 @@ export async function runSecurityEvaluation(
     alwaysUseHttpsResults: AlwaysHttpsEvaluation[];
     minTlsVersionResults: MinTlsVersionEvaluation[];
     newAlertCount: number;
+    resolvedAlertCount: number;
   }
 > {
   const creds = { accountId: env.CF_ACCOUNT_ID, apiToken: env.CF_API_TOKEN };
@@ -143,6 +204,13 @@ export async function runSecurityEvaluation(
     previousBotFightModeStatuses,
     previousAlwaysHttpsStatuses,
     previousMinTlsStatuses,
+    openSslTlsAlerts,
+    openDnssecAlerts,
+    openWafAlerts,
+    openRateLimitingAlerts,
+    openBotFightModeAlerts,
+    openAlwaysHttpsAlerts,
+    openMinTlsAlerts,
   ] = await Promise.all([
     buildSecurityInventory(creds),
     getPreviousSslTlsStatuses(env),
@@ -152,6 +220,13 @@ export async function runSecurityEvaluation(
     getPreviousBotFightModeStatuses(env),
     getPreviousAlwaysHttpsStatuses(env),
     getPreviousMinTlsStatuses(env),
+    getOpenSslTlsAlerts(env),
+    getOpenDnssecAlerts(env),
+    getOpenWafAlerts(env),
+    getOpenRateLimitingAlerts(env),
+    getOpenBotFightModeAlerts(env),
+    getOpenAlwaysHttpsAlerts(env),
+    getOpenMinTlsAlerts(env),
   ]);
 
   const sslTlsResults = evaluateSslTlsModes(zones);
@@ -307,6 +382,44 @@ export async function runSecurityEvaluation(
   );
   const newMinTlsAlerts = diffForMinTlsAlerts(minTlsVersionResults, previousMinTlsStatuses);
 
+  // issue #481 — the ids resolveFor*Alerts (alerts.ts) says just recovered
+  // to safe, turned into one UPDATE statement per id against its own
+  // alerts table.
+  function resolveStatements(table: string, ids: string[]): D1PreparedStatement[] {
+    return ids.map((id) =>
+      env.DB.prepare(`UPDATE ${table} SET resolved_at = ? WHERE id = ?`).bind(evaluatedAt, id)
+    );
+  }
+
+  const resolvedSslTlsAlertStatements = resolveStatements(
+    "ssl_tls_alerts",
+    resolveForSslTlsAlerts(sslTlsResults, openSslTlsAlerts),
+  );
+  const resolvedDnssecAlertStatements = resolveStatements(
+    "dnssec_alerts",
+    resolveForDnssecAlerts(dnssecResults, openDnssecAlerts),
+  );
+  const resolvedWafAlertStatements = resolveStatements(
+    "waf_alerts",
+    resolveForWafAlerts(wafResults, openWafAlerts),
+  );
+  const resolvedRateLimitingAlertStatements = resolveStatements(
+    "rate_limiting_alerts",
+    resolveForRateLimitingAlerts(rateLimitingResults, openRateLimitingAlerts),
+  );
+  const resolvedBotFightModeAlertStatements = resolveStatements(
+    "bot_fight_mode_alerts",
+    resolveForBotFightModeAlerts(botFightModeResults, openBotFightModeAlerts),
+  );
+  const resolvedAlwaysHttpsAlertStatements = resolveStatements(
+    "always_https_alerts",
+    resolveForAlwaysHttpsAlerts(alwaysUseHttpsResults, openAlwaysHttpsAlerts),
+  );
+  const resolvedMinTlsAlertStatements = resolveStatements(
+    "min_tls_alerts",
+    resolveForMinTlsAlerts(minTlsVersionResults, openMinTlsAlerts),
+  );
+
   const sslTlsAlertStatements = newSslTlsAlerts.map((a) =>
     env.DB.prepare(
       `INSERT INTO ssl_tls_alerts (id, zone_id, zone_name, previous_status, new_status, run_id, detected_at)
@@ -420,6 +533,13 @@ export async function runSecurityEvaluation(
     ...botFightModeAlertStatements,
     ...alwaysHttpsAlertStatements,
     ...minTlsAlertStatements,
+    ...resolvedSslTlsAlertStatements,
+    ...resolvedDnssecAlertStatements,
+    ...resolvedWafAlertStatements,
+    ...resolvedRateLimitingAlertStatements,
+    ...resolvedBotFightModeAlertStatements,
+    ...resolvedAlwaysHttpsAlertStatements,
+    ...resolvedMinTlsAlertStatements,
   ];
   if (alertStatements.length > 0) {
     await env.DB.batch(alertStatements);
@@ -438,6 +558,11 @@ export async function runSecurityEvaluation(
     newAlertCount: newSslTlsAlerts.length + newDnssecAlerts.length + newWafAlerts.length +
       newRateLimitingAlerts.length + newBotFightModeAlerts.length + newAlwaysHttpsAlerts.length +
       newMinTlsAlerts.length,
+    resolvedAlertCount: resolvedSslTlsAlertStatements.length +
+      resolvedDnssecAlertStatements.length +
+      resolvedWafAlertStatements.length + resolvedRateLimitingAlertStatements.length +
+      resolvedBotFightModeAlertStatements.length + resolvedAlwaysHttpsAlertStatements.length +
+      resolvedMinTlsAlertStatements.length,
   };
 }
 
@@ -923,31 +1048,31 @@ securityRoutes.get("/alerts", async (c) => {
   ] = await Promise.all([
     c.env.DB.prepare(
       `SELECT id, zone_id, zone_name, previous_status, new_status, detected_at, acknowledged_at
-       FROM ssl_tls_alerts WHERE acknowledged_at IS NULL ORDER BY detected_at DESC`,
+       FROM ssl_tls_alerts WHERE acknowledged_at IS NULL AND resolved_at IS NULL ORDER BY detected_at DESC`,
     ).all<SslTlsAlertRow>(),
     c.env.DB.prepare(
       `SELECT id, zone_id, zone_name, previous_status, new_status, detected_at, acknowledged_at
-       FROM dnssec_alerts WHERE acknowledged_at IS NULL ORDER BY detected_at DESC`,
+       FROM dnssec_alerts WHERE acknowledged_at IS NULL AND resolved_at IS NULL ORDER BY detected_at DESC`,
     ).all<DnssecAlertRow>(),
     c.env.DB.prepare(
       `SELECT id, zone_id, zone_name, previous_status, new_status, detected_at, acknowledged_at
-       FROM waf_alerts WHERE acknowledged_at IS NULL ORDER BY detected_at DESC`,
+       FROM waf_alerts WHERE acknowledged_at IS NULL AND resolved_at IS NULL ORDER BY detected_at DESC`,
     ).all<WafAlertRow>(),
     c.env.DB.prepare(
       `SELECT id, zone_id, zone_name, previous_status, new_status, detected_at, acknowledged_at
-       FROM rate_limiting_alerts WHERE acknowledged_at IS NULL ORDER BY detected_at DESC`,
+       FROM rate_limiting_alerts WHERE acknowledged_at IS NULL AND resolved_at IS NULL ORDER BY detected_at DESC`,
     ).all<RateLimitingAlertRow>(),
     c.env.DB.prepare(
       `SELECT id, zone_id, zone_name, previous_status, new_status, detected_at, acknowledged_at
-       FROM bot_fight_mode_alerts WHERE acknowledged_at IS NULL ORDER BY detected_at DESC`,
+       FROM bot_fight_mode_alerts WHERE acknowledged_at IS NULL AND resolved_at IS NULL ORDER BY detected_at DESC`,
     ).all<BotFightModeAlertRow>(),
     c.env.DB.prepare(
       `SELECT id, zone_id, zone_name, previous_status, new_status, detected_at, acknowledged_at
-       FROM always_https_alerts WHERE acknowledged_at IS NULL ORDER BY detected_at DESC`,
+       FROM always_https_alerts WHERE acknowledged_at IS NULL AND resolved_at IS NULL ORDER BY detected_at DESC`,
     ).all<AlwaysHttpsAlertRow>(),
     c.env.DB.prepare(
       `SELECT id, zone_id, zone_name, previous_status, new_status, detected_at, acknowledged_at
-       FROM min_tls_alerts WHERE acknowledged_at IS NULL ORDER BY detected_at DESC`,
+       FROM min_tls_alerts WHERE acknowledged_at IS NULL AND resolved_at IS NULL ORDER BY detected_at DESC`,
     ).all<MinTlsAlertRow>(),
   ]);
 

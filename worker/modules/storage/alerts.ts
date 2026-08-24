@@ -84,3 +84,51 @@ export function diffForD1DatabaseAlerts(
   }
   return alerts;
 }
+
+// issue #481 — the auto-resolve counterpart to every diffFor*Alerts above:
+// an open (unacknowledged, unresolved) alert whose entity is back to "safe"
+// in the run that just completed no longer belongs in the Unified Alerts
+// Inbox/Overview. Deliberately checks `=== "safe"`, not `!== "warning"` (or
+// `!== "critical"`) — an entity missing from `results` entirely, or
+// evaluated as "not_evaluated" (a transient per-check API failure), must
+// NOT auto-resolve: that would silently hide a still-open alert behind a
+// data gap rather than a genuine fix (mirrors this codebase's established
+// "never fabricate a clean state" rule — e.g. summary.ts's `hasData`).
+// Pure — no D1 access (constitution Principle III); routes.ts reads the
+// open alerts, calls this, and writes the resulting ids' resolved_at.
+export interface OpenAlert {
+  id: string;
+  entityId: string;
+}
+
+function resolvedAlertIds<T extends { status: string }>(
+  results: T[],
+  identity: (r: T) => string,
+  openAlerts: readonly OpenAlert[],
+): string[] {
+  const safeEntityIds = new Set(
+    results.filter((r) => r.status === "safe").map((r) => identity(r)),
+  );
+  return openAlerts.filter((a) => safeEntityIds.has(a.entityId)).map((a) => a.id);
+}
+
+export function resolveForBucketAlerts(
+  results: BucketEvaluation[],
+  openAlerts: readonly OpenAlert[],
+): string[] {
+  return resolvedAlertIds(results, (r) => r.bucketName, openAlerts);
+}
+
+export function resolveForKvNamespaceAlerts(
+  results: KvNamespaceEvaluation[],
+  openAlerts: readonly OpenAlert[],
+): string[] {
+  return resolvedAlertIds(results, (r) => r.namespaceId, openAlerts);
+}
+
+export function resolveForD1DatabaseAlerts(
+  results: D1DatabaseEvaluation[],
+  openAlerts: readonly OpenAlert[],
+): string[] {
+  return resolvedAlertIds(results, (r) => r.databaseUuid, openAlerts);
+}

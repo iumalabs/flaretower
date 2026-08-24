@@ -3,7 +3,14 @@ import { requireRole } from "../../auth/access-jwt.ts";
 import { type PageQuery, paginateArray, PaginationParamError } from "../../pagination.ts";
 import { buildZeroTrustInventory, listAccessGroups, listIdentityProviders } from "./inventory.ts";
 import { evaluateApplications, evaluateServiceTokens } from "./evaluate.ts";
-import { diffForAppAlerts, diffForTokenAlerts } from "./alerts.ts";
+import {
+  diffForAppAlerts,
+  diffForTokenAlerts,
+  type OpenAppAlert,
+  type OpenTokenAlert,
+  resolveForAppAlerts,
+  resolveForTokenAlerts,
+} from "./alerts.ts";
 import { summarizeGroupRules } from "./rule-humanizer.ts";
 import type {
   AccessGroup,
@@ -40,6 +47,29 @@ async function getPreviousTokenStatuses(env: Env): Promise<Map<string, TokenStat
   return new Map(rows.map((r) => [r.token_id, r.status]));
 }
 
+// issue #481 — every alert still open (unacknowledged, unresolved), read
+// BEFORE the current run so resolveForAppAlerts/resolveForTokenAlerts
+// (alerts.ts) can decide which of them the run that's about to be
+// inserted just resolved. Row shape stays snake_case (matching the raw D1
+// columns, same as getPreviousAppStatuses/getPreviousTokenStatuses above)
+// and is mapped to the camelCase OpenAppAlert/OpenTokenAlert explicitly —
+// D1 does not rename columns to match a generic type parameter, so typing
+// `.all<OpenAppAlert>()` directly against a `SELECT id, app_id` (no `AS`)
+// would silently leave `.appId` undefined on every row.
+async function getOpenAppAlerts(env: Env): Promise<OpenAppAlert[]> {
+  const { results } = await env.DB.prepare(
+    `SELECT id, app_id FROM zt_app_alerts WHERE acknowledged_at IS NULL AND resolved_at IS NULL`,
+  ).all<{ id: string; app_id: string }>();
+  return results.map((r) => ({ id: r.id, appId: r.app_id }));
+}
+
+async function getOpenTokenAlerts(env: Env): Promise<OpenTokenAlert[]> {
+  const { results } = await env.DB.prepare(
+    `SELECT id, token_id FROM zt_token_alerts WHERE acknowledged_at IS NULL AND resolved_at IS NULL`,
+  ).all<{ id: string; token_id: string }>();
+  return results.map((r) => ({ id: r.id, tokenId: r.token_id }));
+}
+
 // Shared by POST /evaluate (interactive) and the scheduled handler —
 // constitution Principle III.
 export async function runZeroTrustEvaluation(
@@ -52,6 +82,7 @@ export async function runZeroTrustEvaluation(
     appResults: AppEvaluation[];
     tokenResults: TokenEvaluation[];
     newAlertCount: number;
+    resolvedAlertCount: number;
   }
 > {
   const creds = { accountId: env.CF_ACCOUNT_ID, apiToken: env.CF_API_TOKEN };
@@ -69,12 +100,16 @@ export async function runZeroTrustEvaluation(
     previousTokenStatuses,
     identityProviders,
     groups,
+    openAppAlerts,
+    openTokenAlerts,
   ] = await Promise.all([
     buildZeroTrustInventory(creds),
     getPreviousAppStatuses(env),
     getPreviousTokenStatuses(env),
     listIdentityProviders(creds).catch(() => []),
     listAccessGroups(creds),
+    getOpenAppAlerts(env),
+    getOpenTokenAlerts(env),
   ]);
   const identityProviderNames = new Map(identityProviders.map((p) => [p.id, p.name]));
   const groupNames = new Map((groups ?? []).map((g) => [g.groupId, g.name]));
@@ -143,6 +178,24 @@ export async function runZeroTrustEvaluation(
   const newAppAlerts = diffForAppAlerts(appResults, previousAppStatuses);
   const newTokenAlerts = diffForTokenAlerts(tokenResults, previousTokenStatuses);
 
+  // issue #481 — the ids resolveForAppAlerts/resolveForTokenAlerts
+  // (alerts.ts) say just recovered to safe, turned into one UPDATE
+  // statement per id against its own alerts table.
+  function resolveStatements(table: string, ids: string[]): D1PreparedStatement[] {
+    return ids.map((id) =>
+      env.DB.prepare(`UPDATE ${table} SET resolved_at = ? WHERE id = ?`).bind(evaluatedAt, id)
+    );
+  }
+
+  const resolvedAppAlertStatements = resolveStatements(
+    "zt_app_alerts",
+    resolveForAppAlerts(appResults, openAppAlerts),
+  );
+  const resolvedTokenAlertStatements = resolveStatements(
+    "zt_token_alerts",
+    resolveForTokenAlerts(tokenResults, openTokenAlerts),
+  );
+
   const appAlertStatements = newAppAlerts.map((a) =>
     env.DB.prepare(
       `INSERT INTO zt_app_alerts (id, app_id, app_domain, previous_status, new_status, run_id, detected_at)
@@ -173,7 +226,12 @@ export async function runZeroTrustEvaluation(
     )
   );
 
-  const alertStatements = [...appAlertStatements, ...tokenAlertStatements];
+  const alertStatements = [
+    ...appAlertStatements,
+    ...tokenAlertStatements,
+    ...resolvedAppAlertStatements,
+    ...resolvedTokenAlertStatements,
+  ];
   if (alertStatements.length > 0) {
     await env.DB.batch(alertStatements);
   }
@@ -184,6 +242,7 @@ export async function runZeroTrustEvaluation(
     appResults,
     tokenResults,
     newAlertCount: newAppAlerts.length + newTokenAlerts.length,
+    resolvedAlertCount: resolvedAppAlertStatements.length + resolvedTokenAlertStatements.length,
   };
 }
 
@@ -462,11 +521,11 @@ zeroTrustRoutes.get("/alerts", async (c) => {
   const [{ results: appRows }, { results: tokenRows }] = await Promise.all([
     c.env.DB.prepare(
       `SELECT id, app_id, app_domain, previous_status, new_status, detected_at, acknowledged_at
-       FROM zt_app_alerts WHERE acknowledged_at IS NULL ORDER BY detected_at DESC`,
+       FROM zt_app_alerts WHERE acknowledged_at IS NULL AND resolved_at IS NULL ORDER BY detected_at DESC`,
     ).all<AppAlertRow>(),
     c.env.DB.prepare(
       `SELECT id, token_id, token_name, previous_status, new_status, detected_at, acknowledged_at
-       FROM zt_token_alerts WHERE acknowledged_at IS NULL ORDER BY detected_at DESC`,
+       FROM zt_token_alerts WHERE acknowledged_at IS NULL AND resolved_at IS NULL ORDER BY detected_at DESC`,
     ).all<TokenAlertRow>(),
   ]);
 

@@ -98,3 +98,58 @@ export function diffForDeploymentAlerts(
   }
   return alerts;
 }
+
+// issue #481 — the auto-resolve counterpart to every diffFor*Alerts above:
+// an open (unacknowledged, unresolved) alert whose entity is back to
+// "safe" in the run that just completed no longer belongs in the Unified
+// Alerts Inbox/Overview. Deliberately checks `=== "safe"`, not `!==
+// "warning"` (or `!== "critical"`) — an entity missing from `results`
+// entirely, or evaluated as "not_evaluated" (a transient per-check API
+// failure), must NOT auto-resolve: that would silently hide a still-open
+// alert behind a data gap rather than a genuine fix (mirrors this
+// codebase's established "never fabricate a clean state" rule — e.g.
+// summary.ts's `hasData`). Pure — no D1 access (constitution Principle
+// III); routes.ts reads the open alerts, calls this, and writes the
+// resulting ids' resolved_at.
+export interface DomainOpenAlert {
+  id: string;
+  projectName: string;
+  domainName: string;
+}
+
+export interface OpenAlert {
+  id: string;
+  projectName: string;
+}
+
+export function resolveForDomainAlerts(
+  results: DomainEvaluation[],
+  openAlerts: readonly DomainOpenAlert[],
+): string[] {
+  const safeKeys = new Set(
+    results.filter((r) => r.status === "safe").map((r) => domainKey(r.projectName, r.domainName)),
+  );
+  return openAlerts
+    .filter((a) => safeKeys.has(domainKey(a.projectName, a.domainName)))
+    .map((a) => a.id);
+}
+
+export function resolveForSubdomainAlerts(
+  results: SubdomainEvaluation[],
+  openAlerts: readonly OpenAlert[],
+): string[] {
+  const safeProjects = new Set(
+    results.filter((r) => r.status === "safe").map((r) => r.projectName),
+  );
+  return openAlerts.filter((a) => safeProjects.has(a.projectName)).map((a) => a.id);
+}
+
+export function resolveForDeploymentAlerts(
+  results: DeploymentEvaluation[],
+  openAlerts: readonly OpenAlert[],
+): string[] {
+  const safeProjects = new Set(
+    results.filter((r) => r.status === "safe").map((r) => r.projectName),
+  );
+  return openAlerts.filter((a) => safeProjects.has(a.projectName)).map((a) => a.id);
+}
