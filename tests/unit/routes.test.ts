@@ -2,6 +2,7 @@ import { assertEquals } from "@std/assert";
 import { Hono } from "hono";
 import {
   exposureRoutes,
+  previousStatusReader,
   runEvaluation,
 } from "../../worker/modules/workers-access-exposure/routes.ts";
 
@@ -111,6 +112,13 @@ function createMockD1(): D1Database {
       // just needs to resolve with one result per statement.
       return Promise.resolve(statements.map(() => ({} as D1Result)));
     },
+    // issue #470 — routes.ts's getPreviousStatuses/getOpenAlerts now read
+    // through a "first-primary" session (previousStatusReader) rather than
+    // env.DB directly; this in-memory mock has no real replica distinction
+    // to model, so the session just reuses the same `prepare` above.
+    withSession() {
+      return { prepare };
+    },
   } as unknown as D1Database;
 }
 
@@ -139,6 +147,27 @@ function withMockFetch<T>(handlers: Array<[string, () => Response]>, fn: () => P
     globalThis.fetch = original;
   });
 }
+
+// issue #470 (same class as #465, fixed for storage first) — proves what
+// type-checking can't: that previousStatusReader() actually opens a
+// "first-primary" session rather than the default constraint or no session
+// at all.
+Deno.test("previousStatusReader - opens a first-primary D1 session, not env.DB directly", () => {
+  let sessionConstraint: string | undefined;
+  const fakeSession = {} as D1DatabaseSession;
+  const db = {
+    withSession(constraint: string) {
+      sessionConstraint = constraint;
+      return fakeSession;
+    },
+  } as unknown as D1Database;
+  const env = { DB: db, CF_ACCOUNT_ID: "acct-1", CF_API_TOKEN: "fake-token" };
+
+  const reader = previousStatusReader(env);
+
+  assertEquals(sessionConstraint, "first-primary");
+  assertEquals(reader, fakeSession);
+});
 
 Deno.test("GET /inventory - a Worker with zero public hostnames still appears, with an empty hostname list (T040)", async () => {
   const db = createMockD1();

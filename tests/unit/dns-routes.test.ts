@@ -1,6 +1,10 @@
 import { assertEquals } from "@std/assert";
 import { Hono } from "hono";
-import { dnsRoutes, runDnsEvaluation } from "../../worker/modules/dns/routes.ts";
+import {
+  dnsRoutes,
+  previousStatusReader,
+  runDnsEvaluation,
+} from "../../worker/modules/dns/routes.ts";
 
 // A stateful in-memory D1 stand-in: INSERT statements commit straight into
 // the relevant in-memory table on bind() (routes.ts always immediately
@@ -122,6 +126,15 @@ function createMockD1(): D1Database {
 
   return {
     prepare,
+    // issue #470 — getPreviousDnsStatuses/getOpenDnsAlerts now read through
+    // a withSession("first-primary") reader (routes.ts's
+    // previousStatusReader), not env.DB.prepare directly. This mock has no
+    // real replica to route around, so its session just shares the same
+    // `prepare` — sufficient for these tests, which only care that the read
+    // still sees every previously-inserted row.
+    withSession(_constraint: string) {
+      return { prepare };
+    },
     batch(statements: unknown[]) {
       // Each statement already committed its row on bind() above — batch()
       // just needs to resolve with one result per statement.
@@ -129,6 +142,29 @@ function createMockD1(): D1Database {
     },
   } as unknown as D1Database;
 }
+
+// issue #470 (same class as #465, fixed for storage/security first) —
+// getPreviousDnsStatuses/getOpenDnsAlerts only ever receive a
+// D1DatabaseSession (never env.DB directly), so this proves the one thing
+// type-checking can't: that previousStatusReader() actually opens a
+// "first-primary" session rather than, say, the default constraint or no
+// session at all.
+Deno.test("previousStatusReader - opens a first-primary D1 session, not env.DB directly", () => {
+  let sessionConstraint: string | undefined;
+  const fakeSession = {} as D1DatabaseSession;
+  const db = {
+    withSession(constraint: string) {
+      sessionConstraint = constraint;
+      return fakeSession;
+    },
+  } as unknown as D1Database;
+  const env = { DB: db, CF_ACCOUNT_ID: "acct-1", CF_API_TOKEN: "fake-token" };
+
+  const reader = previousStatusReader(env);
+
+  assertEquals(sessionConstraint, "first-primary");
+  assertEquals(reader, fakeSession);
+});
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {

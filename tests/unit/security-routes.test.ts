@@ -2,6 +2,7 @@ import { assertEquals, assertThrows } from "@std/assert";
 import { Hono } from "hono";
 import {
   buildSecurityInventoryResponse,
+  previousStatusReader,
   securityRoutes,
 } from "../../worker/modules/security/routes.ts";
 import { PaginationParamError } from "../../worker/pagination.ts";
@@ -16,6 +17,29 @@ import { PaginationParamError } from "../../worker/pagination.ts";
 // zero-trust-routes.test.ts.
 globalThis.fetch =
   (() => Promise.reject(new Error("network disabled in this unit test"))) as typeof fetch;
+
+// issue #470 (same class as #465, fixed for storage first) — every
+// getPrevious*Statuses/getOpen*Alerts read in runSecurityEvaluation only
+// ever receives a D1DatabaseSession (never env.DB directly, not even as an
+// available parameter), so this proves the one thing type-checking can't:
+// that previousStatusReader() actually opens a "first-primary" session
+// rather than, say, the default constraint or no session at all.
+Deno.test("previousStatusReader - opens a first-primary D1 session, not env.DB directly", () => {
+  let sessionConstraint: string | undefined;
+  const fakeSession = {} as D1DatabaseSession;
+  const db = {
+    withSession(constraint: string) {
+      sessionConstraint = constraint;
+      return fakeSession;
+    },
+  } as unknown as D1Database;
+  const env = { DB: db, CF_ACCOUNT_ID: "acct-1", CF_API_TOKEN: "fake-token" };
+
+  const reader = previousStatusReader(env);
+
+  assertEquals(sessionConstraint, "first-primary");
+  assertEquals(reader, fakeSession);
+});
 
 interface FindingRow {
   zone_id: string;

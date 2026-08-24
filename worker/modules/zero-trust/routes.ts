@@ -29,18 +29,37 @@ interface Env {
 
 export const zeroTrustRoutes = new Hono<{ Bindings: Env }>();
 
+// issue #470 (same class as #465, already fixed for storage and security)
+// — D1 read queries can be served by a read replica that lags behind the
+// primary (Cloudflare's documented D1 replication behavior). Every read
+// below runs in a fresh Worker invocation every time (the scheduled hourly
+// run, or a manual/account-wide RE-SCAN), so a stale replica means "the
+// most recent run"/"currently open alerts" silently isn't accurate — some
+// OTHER, still-more-recent invocation's write hasn't propagated to
+// whichever replica this read landed on yet. `env.DB.withSession
+// ("first-primary")` forces this invocation's first query to hit the
+// primary (which always has every committed write), eliminating that lag
+// for exactly the reads that need it. The batched INSERT/UPDATE statements
+// later in this file are unaffected — D1 writes always go to the primary
+// regardless of session.
+export function previousStatusReader(env: Env): D1DatabaseSession {
+  return env.DB.withSession("first-primary");
+}
+
 // The most recent run's per-entity status, read BEFORE the current run is
 // inserted — same pattern as every prior module.
-async function getPreviousAppStatuses(env: Env): Promise<Map<string, AppStatus>> {
-  const { results: rows } = await env.DB.prepare(
+async function getPreviousAppStatuses(reader: D1DatabaseSession): Promise<Map<string, AppStatus>> {
+  const { results: rows } = await reader.prepare(
     `SELECT app_id, status FROM zt_app_findings
      WHERE run_id = (SELECT run_id FROM zt_app_findings ORDER BY evaluated_at DESC LIMIT 1)`,
   ).all<{ app_id: string; status: AppStatus }>();
   return new Map(rows.map((r) => [r.app_id, r.status]));
 }
 
-async function getPreviousTokenStatuses(env: Env): Promise<Map<string, TokenStatus>> {
-  const { results: rows } = await env.DB.prepare(
+async function getPreviousTokenStatuses(
+  reader: D1DatabaseSession,
+): Promise<Map<string, TokenStatus>> {
+  const { results: rows } = await reader.prepare(
     `SELECT token_id, status FROM zt_token_findings
      WHERE run_id = (SELECT run_id FROM zt_token_findings ORDER BY evaluated_at DESC LIMIT 1)`,
   ).all<{ token_id: string; status: TokenStatus }>();
@@ -56,15 +75,15 @@ async function getPreviousTokenStatuses(env: Env): Promise<Map<string, TokenStat
 // D1 does not rename columns to match a generic type parameter, so typing
 // `.all<OpenAppAlert>()` directly against a `SELECT id, app_id` (no `AS`)
 // would silently leave `.appId` undefined on every row.
-async function getOpenAppAlerts(env: Env): Promise<OpenAppAlert[]> {
-  const { results } = await env.DB.prepare(
+async function getOpenAppAlerts(reader: D1DatabaseSession): Promise<OpenAppAlert[]> {
+  const { results } = await reader.prepare(
     `SELECT id, app_id FROM zt_app_alerts WHERE acknowledged_at IS NULL AND resolved_at IS NULL`,
   ).all<{ id: string; app_id: string }>();
   return results.map((r) => ({ id: r.id, appId: r.app_id }));
 }
 
-async function getOpenTokenAlerts(env: Env): Promise<OpenTokenAlert[]> {
-  const { results } = await env.DB.prepare(
+async function getOpenTokenAlerts(reader: D1DatabaseSession): Promise<OpenTokenAlert[]> {
+  const { results } = await reader.prepare(
     `SELECT id, token_id FROM zt_token_alerts WHERE acknowledged_at IS NULL AND resolved_at IS NULL`,
   ).all<{ id: string; token_id: string }>();
   return results.map((r) => ({ id: r.id, tokenId: r.token_id }));
@@ -86,6 +105,7 @@ export async function runZeroTrustEvaluation(
   }
 > {
   const creds = { accountId: env.CF_ACCOUNT_ID, apiToken: env.CF_API_TOKEN };
+  const reader = previousStatusReader(env);
   // Identity providers and groups are fetched here too (not persisted
   // themselves, research.md §3) purely to resolve login_method/group rule
   // names into policyRules at evaluation time — GET /inventory separately
@@ -104,12 +124,12 @@ export async function runZeroTrustEvaluation(
     openTokenAlerts,
   ] = await Promise.all([
     buildZeroTrustInventory(creds),
-    getPreviousAppStatuses(env),
-    getPreviousTokenStatuses(env),
+    getPreviousAppStatuses(reader),
+    getPreviousTokenStatuses(reader),
     listIdentityProviders(creds).catch(() => []),
     listAccessGroups(creds),
-    getOpenAppAlerts(env),
-    getOpenTokenAlerts(env),
+    getOpenAppAlerts(reader),
+    getOpenTokenAlerts(reader),
   ]);
   const identityProviderNames = new Map(identityProviders.map((p) => [p.id, p.name]));
   const groupNames = new Map((groups ?? []).map((g) => [g.groupId, g.name]));

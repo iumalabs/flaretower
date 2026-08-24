@@ -32,10 +32,29 @@ export const exposureRoutes = new Hono<{ Bindings: Env }>();
 // for a convergence-scale fix.
 const NO_HOSTNAMES_MARKER_HOSTNAME = "(no public hostnames)";
 
+// issue #470 (same class as #465, already fixed for storage/security) — D1
+// read queries can be served by a read replica that lags behind the
+// primary (Cloudflare's documented D1 replication behavior). Both reads
+// below run in a fresh Worker invocation every time (the scheduled hourly
+// run, or a manual/account-wide RE-SCAN), so a stale replica means "the
+// most recent run"/"currently open alerts" silently isn't accurate — some
+// OTHER, still-more-recent invocation's write hasn't propagated to
+// whichever replica this read landed on yet. `env.DB.withSession
+// ("first-primary")` forces this invocation's first query to hit the
+// primary (which always has every committed write), eliminating that lag
+// for exactly the reads that need it. The batched INSERT/UPDATE statements
+// later in this file are unaffected — D1 writes always go to the primary
+// regardless of session.
+export function previousStatusReader(env: Env): D1DatabaseSession {
+  return env.DB.withSession("first-primary");
+}
+
 // The most recent run's per-hostname status, read BEFORE the current run is
 // inserted — this is what diffForAlerts() compares the new results against.
-async function getPreviousStatuses(env: Env): Promise<Map<string, ExposureStatus>> {
-  const { results: rows } = await env.DB.prepare(
+async function getPreviousStatuses(
+  reader: D1DatabaseSession,
+): Promise<Map<string, ExposureStatus>> {
+  const { results: rows } = await reader.prepare(
     `SELECT hostname, status FROM exposure_findings
      WHERE run_id = (SELECT run_id FROM exposure_findings ORDER BY evaluated_at DESC LIMIT 1)`,
   ).all<{ hostname: string; status: ExposureStatus }>();
@@ -46,8 +65,8 @@ async function getPreviousStatuses(env: Env): Promise<Map<string, ExposureStatus
 // issue #481 — every alert still open (unacknowledged, unresolved), read
 // BEFORE the current run so resolveForAlerts (alerts.ts) can decide which
 // of them the run that's about to be inserted just resolved.
-async function getOpenAlerts(env: Env): Promise<OpenAlert[]> {
-  const { results } = await env.DB.prepare(
+async function getOpenAlerts(reader: D1DatabaseSession): Promise<OpenAlert[]> {
+  const { results } = await reader.prepare(
     `SELECT id, hostname FROM exposure_alerts WHERE acknowledged_at IS NULL AND resolved_at IS NULL`,
   ).all<OpenAlert>();
   return results;
@@ -70,11 +89,12 @@ export async function runEvaluation(
   }
 > {
   const creds = { accountId: env.CF_ACCOUNT_ID, apiToken: env.CF_API_TOKEN };
+  const reader = previousStatusReader(env);
   const [inventory, apps, previousStatuses, openAlerts] = await Promise.all([
     buildWorkerInventory(creds),
     listAccessApplications(creds),
-    getPreviousStatuses(env),
-    getOpenAlerts(env),
+    getPreviousStatuses(reader),
+    getOpenAlerts(reader),
   ]);
   const results = evaluateInventory(inventory, apps);
 
