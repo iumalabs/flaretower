@@ -290,6 +290,12 @@ test("specs/014 US3 — a Groups-fetch failure shows an explicit 'not available'
       contentType: "application/json",
       body: JSON.stringify({ ...MOCK_ZT_INVENTORY, access_groups: null }),
     }));
+  // Reset to "/" first: the beforeEach's own nav click already pushed the
+  // URL to "/zero-trust" (issue #480 — App.tsx now syncs the URL with the
+  // active page), and this suite's dev server (`vite dev`, unlike prod's
+  // Cloudflare Workers Assets) has no SPA fallback for a bare reload at a
+  // non-root path — it 404s instead of re-serving the app shell.
+  await page.evaluate(() => history.replaceState(null, "", "/"));
   await page.reload();
   await page.getByRole("button", { name: "Zero Trust" }).click();
 
@@ -319,6 +325,12 @@ test("T026 — a completed run with zero apps and zero tokens shows a distinct m
         access_groups: [],
       }),
     }));
+  // Reset to "/" first: the beforeEach's own nav click already pushed the
+  // URL to "/zero-trust" (issue #480 — App.tsx now syncs the URL with the
+  // active page), and this suite's dev server (`vite dev`, unlike prod's
+  // Cloudflare Workers Assets) has no SPA fallback for a bare reload at a
+  // non-root path — it 404s instead of re-serving the app shell.
+  await page.evaluate(() => history.replaceState(null, "", "/"));
   await page.reload();
   await page.getByRole("button", { name: "Zero Trust" }).click();
 
@@ -345,6 +357,12 @@ test("T026 — a run_id of null renders the 'never evaluated' message, not the e
         access_groups: [],
       }),
     }));
+  // Reset to "/" first: the beforeEach's own nav click already pushed the
+  // URL to "/zero-trust" (issue #480 — App.tsx now syncs the URL with the
+  // active page), and this suite's dev server (`vite dev`, unlike prod's
+  // Cloudflare Workers Assets) has no SPA fallback for a bare reload at a
+  // non-root path — it 404s instead of re-serving the app shell.
+  await page.evaluate(() => history.replaceState(null, "", "/"));
   await page.reload();
   await page.getByRole("button", { name: "Zero Trust" }).click();
 
