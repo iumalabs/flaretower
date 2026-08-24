@@ -18,6 +18,7 @@ import {
   type AuditSummaryModuleEntry,
   computeModuleBadgeCounts,
 } from "./lib/module-badge-counts.ts";
+import { pageForPath, pathForPage } from "./lib/page-routes.ts";
 
 const PAGES = [
   // onNavigateToAudit is a no-op here — this entry's render() is never
@@ -65,6 +66,8 @@ const PAGES = [
 // special-case below, never via `active.render()`.
 type PageKey = typeof PAGES[number]["key"] | "worker-detail";
 
+const NAV_KEYS = NAV_ITEMS.map((item) => item.key);
+
 async function fetchModuleBadges(): Promise<AuditSummaryModuleEntry[]> {
   const res = await fetch("/api/audit/summary");
   if (!res.ok) {
@@ -94,10 +97,39 @@ async function fetchWorkersDeployedCount(): Promise<number> {
 // minimal-dependency spirit applies to the frontend too).
 export function App(): JSX.Element {
   // "overview" is the default/initial page (tasks.md T033, User Story 3) —
-  // "is anything wrong right now" answered before navigating anywhere.
-  const [page, setPage] = useState<PageKey>("overview");
+  // "is anything wrong right now" answered before navigating anywhere — but
+  // a full page load on any other route (bookmark, refresh, shared link)
+  // must land on THAT page, not silently fall back to it (issue #480).
+  const [page, setPage] = useState<PageKey>(
+    () => pageForPath(globalThis.location.pathname, NAV_KEYS) as PageKey,
+  );
   const [badges, setBadges] = useState<{ key: string; count: number }[]>([]);
   const active = PAGES.find((p) => p.key === page) ?? PAGES[0];
+
+  // Keeps the URL in sync with in-app navigation (sidebar clicks, the
+  // Overview "N more" link) so a refresh/bookmark taken from that URL later
+  // lands back on the same page (issue #480) — history.pushState only, no
+  // reload. "worker-detail" has no bookmarkable path (see page-routes.ts),
+  // so it's a no-op push there and the URL stays whatever it already was.
+  function navigate(key: PageKey) {
+    setPage(key);
+    const path = pathForPage(key);
+    if (path && globalThis.location.pathname !== path) {
+      globalThis.history.pushState(null, "", path);
+    }
+  }
+
+  // Browser back/forward: the URL changes without any of the click handlers
+  // below running, so the page state has to be re-derived from the new
+  // location directly (setPage, not navigate — pushing again on a popstate
+  // would fight the browser's own history navigation).
+  useEffect(() => {
+    function onPopState() {
+      setPage(pageForPath(globalThis.location.pathname, NAV_KEYS) as PageKey);
+    }
+    globalThis.addEventListener("popstate", onPopState);
+    return () => globalThis.removeEventListener("popstate", onPopState);
+  }, []);
 
   // specs/023-worker-detail-page (FR-011, data-model.md's Frontend
   // navigation state) — lifted out of WorkersDashboardPage so navigating to
@@ -120,12 +152,12 @@ export function App(): JSX.Element {
 
   function handleSelectWorker(workerName: string) {
     setSelectedWorker(workerName);
-    setPage("worker-detail");
+    navigate("worker-detail");
   }
 
   function handleBackFromWorkerDetail() {
     setSelectedWorker(null);
-    setPage("workers");
+    navigate("workers");
   }
 
   useEffect(() => {
@@ -164,7 +196,7 @@ export function App(): JSX.Element {
       <Sidebar
         items={NAV_ITEMS}
         activeKey={page}
-        onSelect={(key) => setPage(key as PageKey)}
+        onSelect={(key) => navigate(key as PageKey)}
         badges={badges}
         footer={{ version: __APP_VERSION__ ? `v${__APP_VERSION__} · self-hosted` : "self-hosted" }}
       />
@@ -176,7 +208,7 @@ export function App(): JSX.Element {
             // callback, so it's special-cased here rather than widening every
             // PAGES entry's render() signature for one caller.
             page === "overview"
-              ? <OverviewPage onNavigateToAudit={() => setPage("audit")} />
+              ? <OverviewPage onNavigateToAudit={() => navigate("audit")} />
               // specs/023-worker-detail-page — "workers" needs its
               // page/sort state lifted (FR-011) and an onSelectWorker
               // callback; "worker-detail" isn't a PAGES entry at all.
