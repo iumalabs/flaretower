@@ -64,58 +64,89 @@ interface Env {
 
 export const securityRoutes = new Hono<{ Bindings: Env }>();
 
+// issue #470 (same class as #465, already fixed for storage) — D1 read
+// queries can be served by a read replica that lags behind the primary
+// (Cloudflare's documented D1 replication behavior). Every read below runs
+// in a fresh Worker invocation every time (the scheduled hourly run, or a
+// manual/account-wide RE-SCAN), so a stale replica means "the most recent
+// run"/"currently open alerts" silently isn't accurate — some OTHER,
+// still-more-recent invocation's write hasn't propagated to whichever
+// replica this read landed on yet. `env.DB.withSession("first-primary")`
+// forces this invocation's first query to hit the primary (which always
+// has every committed write), eliminating that lag for exactly the reads
+// that need it. The batched INSERT/UPDATE statements later in this file
+// are unaffected — D1 writes always go to the primary regardless of
+// session.
+export function previousStatusReader(env: Env): D1DatabaseSession {
+  return env.DB.withSession("first-primary");
+}
+
 // The most recent run's per-entity status, read BEFORE the current run
 // is inserted — same pattern as every prior module.
-async function getPreviousSslTlsStatuses(env: Env): Promise<Map<string, SslTlsStatus>> {
-  const { results: rows } = await env.DB.prepare(
+async function getPreviousSslTlsStatuses(
+  reader: D1DatabaseSession,
+): Promise<Map<string, SslTlsStatus>> {
+  const { results: rows } = await reader.prepare(
     `SELECT zone_id, status FROM ssl_tls_findings
      WHERE run_id = (SELECT run_id FROM ssl_tls_findings ORDER BY evaluated_at DESC LIMIT 1)`,
   ).all<{ zone_id: string; status: SslTlsStatus }>();
   return new Map(rows.map((r) => [r.zone_id, r.status]));
 }
 
-async function getPreviousDnssecStatuses(env: Env): Promise<Map<string, ProtectionStatus>> {
-  const { results: rows } = await env.DB.prepare(
+async function getPreviousDnssecStatuses(
+  reader: D1DatabaseSession,
+): Promise<Map<string, ProtectionStatus>> {
+  const { results: rows } = await reader.prepare(
     `SELECT zone_id, status FROM dnssec_findings
      WHERE run_id = (SELECT run_id FROM dnssec_findings ORDER BY evaluated_at DESC LIMIT 1)`,
   ).all<{ zone_id: string; status: ProtectionStatus }>();
   return new Map(rows.map((r) => [r.zone_id, r.status]));
 }
 
-async function getPreviousWafStatuses(env: Env): Promise<Map<string, ProtectionStatus>> {
-  const { results: rows } = await env.DB.prepare(
+async function getPreviousWafStatuses(
+  reader: D1DatabaseSession,
+): Promise<Map<string, ProtectionStatus>> {
+  const { results: rows } = await reader.prepare(
     `SELECT zone_id, status FROM waf_findings
      WHERE run_id = (SELECT run_id FROM waf_findings ORDER BY evaluated_at DESC LIMIT 1)`,
   ).all<{ zone_id: string; status: ProtectionStatus }>();
   return new Map(rows.map((r) => [r.zone_id, r.status]));
 }
 
-async function getPreviousRateLimitingStatuses(env: Env): Promise<Map<string, ProtectionStatus>> {
-  const { results: rows } = await env.DB.prepare(
+async function getPreviousRateLimitingStatuses(
+  reader: D1DatabaseSession,
+): Promise<Map<string, ProtectionStatus>> {
+  const { results: rows } = await reader.prepare(
     `SELECT zone_id, status FROM rate_limiting_findings
      WHERE run_id = (SELECT run_id FROM rate_limiting_findings ORDER BY evaluated_at DESC LIMIT 1)`,
   ).all<{ zone_id: string; status: ProtectionStatus }>();
   return new Map(rows.map((r) => [r.zone_id, r.status]));
 }
 
-async function getPreviousBotFightModeStatuses(env: Env): Promise<Map<string, SettingStatus>> {
-  const { results: rows } = await env.DB.prepare(
+async function getPreviousBotFightModeStatuses(
+  reader: D1DatabaseSession,
+): Promise<Map<string, SettingStatus>> {
+  const { results: rows } = await reader.prepare(
     `SELECT zone_id, status FROM bot_fight_mode_findings
      WHERE run_id = (SELECT run_id FROM bot_fight_mode_findings ORDER BY evaluated_at DESC LIMIT 1)`,
   ).all<{ zone_id: string; status: SettingStatus }>();
   return new Map(rows.map((r) => [r.zone_id, r.status]));
 }
 
-async function getPreviousAlwaysHttpsStatuses(env: Env): Promise<Map<string, SettingStatus>> {
-  const { results: rows } = await env.DB.prepare(
+async function getPreviousAlwaysHttpsStatuses(
+  reader: D1DatabaseSession,
+): Promise<Map<string, SettingStatus>> {
+  const { results: rows } = await reader.prepare(
     `SELECT zone_id, status FROM always_https_findings
      WHERE run_id = (SELECT run_id FROM always_https_findings ORDER BY evaluated_at DESC LIMIT 1)`,
   ).all<{ zone_id: string; status: SettingStatus }>();
   return new Map(rows.map((r) => [r.zone_id, r.status]));
 }
 
-async function getPreviousMinTlsStatuses(env: Env): Promise<Map<string, SettingStatus>> {
-  const { results: rows } = await env.DB.prepare(
+async function getPreviousMinTlsStatuses(
+  reader: D1DatabaseSession,
+): Promise<Map<string, SettingStatus>> {
+  const { results: rows } = await reader.prepare(
     `SELECT zone_id, status FROM min_tls_findings
      WHERE run_id = (SELECT run_id FROM min_tls_findings ORDER BY evaluated_at DESC LIMIT 1)`,
   ).all<{ zone_id: string; status: SettingStatus }>();
@@ -125,50 +156,50 @@ async function getPreviousMinTlsStatuses(env: Env): Promise<Map<string, SettingS
 // issue #481 — every alert still open (unacknowledged, unresolved), read
 // BEFORE the current run so resolveFor*Alerts (alerts.ts) can decide which
 // of them the run that's about to be inserted just resolved.
-async function getOpenSslTlsAlerts(env: Env): Promise<OpenAlert[]> {
-  const { results } = await env.DB.prepare(
+async function getOpenSslTlsAlerts(reader: D1DatabaseSession): Promise<OpenAlert[]> {
+  const { results } = await reader.prepare(
     `SELECT id, zone_id AS zoneId FROM ssl_tls_alerts WHERE acknowledged_at IS NULL AND resolved_at IS NULL`,
   ).all<OpenAlert>();
   return results;
 }
 
-async function getOpenDnssecAlerts(env: Env): Promise<OpenAlert[]> {
-  const { results } = await env.DB.prepare(
+async function getOpenDnssecAlerts(reader: D1DatabaseSession): Promise<OpenAlert[]> {
+  const { results } = await reader.prepare(
     `SELECT id, zone_id AS zoneId FROM dnssec_alerts WHERE acknowledged_at IS NULL AND resolved_at IS NULL`,
   ).all<OpenAlert>();
   return results;
 }
 
-async function getOpenWafAlerts(env: Env): Promise<OpenAlert[]> {
-  const { results } = await env.DB.prepare(
+async function getOpenWafAlerts(reader: D1DatabaseSession): Promise<OpenAlert[]> {
+  const { results } = await reader.prepare(
     `SELECT id, zone_id AS zoneId FROM waf_alerts WHERE acknowledged_at IS NULL AND resolved_at IS NULL`,
   ).all<OpenAlert>();
   return results;
 }
 
-async function getOpenRateLimitingAlerts(env: Env): Promise<OpenAlert[]> {
-  const { results } = await env.DB.prepare(
+async function getOpenRateLimitingAlerts(reader: D1DatabaseSession): Promise<OpenAlert[]> {
+  const { results } = await reader.prepare(
     `SELECT id, zone_id AS zoneId FROM rate_limiting_alerts WHERE acknowledged_at IS NULL AND resolved_at IS NULL`,
   ).all<OpenAlert>();
   return results;
 }
 
-async function getOpenBotFightModeAlerts(env: Env): Promise<OpenAlert[]> {
-  const { results } = await env.DB.prepare(
+async function getOpenBotFightModeAlerts(reader: D1DatabaseSession): Promise<OpenAlert[]> {
+  const { results } = await reader.prepare(
     `SELECT id, zone_id AS zoneId FROM bot_fight_mode_alerts WHERE acknowledged_at IS NULL AND resolved_at IS NULL`,
   ).all<OpenAlert>();
   return results;
 }
 
-async function getOpenAlwaysHttpsAlerts(env: Env): Promise<OpenAlert[]> {
-  const { results } = await env.DB.prepare(
+async function getOpenAlwaysHttpsAlerts(reader: D1DatabaseSession): Promise<OpenAlert[]> {
+  const { results } = await reader.prepare(
     `SELECT id, zone_id AS zoneId FROM always_https_alerts WHERE acknowledged_at IS NULL AND resolved_at IS NULL`,
   ).all<OpenAlert>();
   return results;
 }
 
-async function getOpenMinTlsAlerts(env: Env): Promise<OpenAlert[]> {
-  const { results } = await env.DB.prepare(
+async function getOpenMinTlsAlerts(reader: D1DatabaseSession): Promise<OpenAlert[]> {
+  const { results } = await reader.prepare(
     `SELECT id, zone_id AS zoneId FROM min_tls_alerts WHERE acknowledged_at IS NULL AND resolved_at IS NULL`,
   ).all<OpenAlert>();
   return results;
@@ -195,6 +226,7 @@ export async function runSecurityEvaluation(
   }
 > {
   const creds = { accountId: env.CF_ACCOUNT_ID, apiToken: env.CF_API_TOKEN };
+  const reader = previousStatusReader(env);
   const [
     { zones },
     previousSslTlsStatuses,
@@ -213,20 +245,20 @@ export async function runSecurityEvaluation(
     openMinTlsAlerts,
   ] = await Promise.all([
     buildSecurityInventory(creds),
-    getPreviousSslTlsStatuses(env),
-    getPreviousDnssecStatuses(env),
-    getPreviousWafStatuses(env),
-    getPreviousRateLimitingStatuses(env),
-    getPreviousBotFightModeStatuses(env),
-    getPreviousAlwaysHttpsStatuses(env),
-    getPreviousMinTlsStatuses(env),
-    getOpenSslTlsAlerts(env),
-    getOpenDnssecAlerts(env),
-    getOpenWafAlerts(env),
-    getOpenRateLimitingAlerts(env),
-    getOpenBotFightModeAlerts(env),
-    getOpenAlwaysHttpsAlerts(env),
-    getOpenMinTlsAlerts(env),
+    getPreviousSslTlsStatuses(reader),
+    getPreviousDnssecStatuses(reader),
+    getPreviousWafStatuses(reader),
+    getPreviousRateLimitingStatuses(reader),
+    getPreviousBotFightModeStatuses(reader),
+    getPreviousAlwaysHttpsStatuses(reader),
+    getPreviousMinTlsStatuses(reader),
+    getOpenSslTlsAlerts(reader),
+    getOpenDnssecAlerts(reader),
+    getOpenWafAlerts(reader),
+    getOpenRateLimitingAlerts(reader),
+    getOpenBotFightModeAlerts(reader),
+    getOpenAlwaysHttpsAlerts(reader),
+    getOpenMinTlsAlerts(reader),
   ]);
 
   const sslTlsResults = evaluateSslTlsModes(zones);

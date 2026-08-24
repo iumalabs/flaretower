@@ -24,11 +24,30 @@ export const dnsRoutes = new Hono<{ Bindings: Env }>();
 // `records` array it returns, so callers just see `records: []`.
 const EMPTY_ZONE_RECORD_TYPE = "(empty)";
 
+// issue #470 (same class as #465, already fixed for storage/security) — D1
+// read queries can be served by a read replica that lags behind the
+// primary (Cloudflare's documented D1 replication behavior). The reads
+// below run in a fresh Worker invocation every time (the scheduled hourly
+// run, or a manual/account-wide RE-SCAN), so a stale replica means "the
+// most recent run"/"currently open alerts" silently isn't accurate — some
+// OTHER, still-more-recent invocation's write hasn't propagated to
+// whichever replica this read landed on yet. `env.DB.withSession("first-
+// primary")` forces this invocation's first query to hit the primary
+// (which always has every committed write), eliminating that lag for
+// exactly the reads that need it. The batched INSERT/UPDATE statements
+// later in this file are unaffected — D1 writes always go to the primary
+// regardless of session.
+export function previousStatusReader(env: Env): D1DatabaseSession {
+  return env.DB.withSession("first-primary");
+}
+
 // The most recent run's per-record status, read BEFORE the current run is
 // inserted — same pattern as Module 1's getPreviousStatuses, keyed by
 // dnsRecordKey (zone+name+type+content) per data-model.md's note.
-async function getPreviousDnsStatuses(env: Env): Promise<Map<string, DnsExposureStatus>> {
-  const { results: rows } = await env.DB.prepare(
+async function getPreviousDnsStatuses(
+  reader: D1DatabaseSession,
+): Promise<Map<string, DnsExposureStatus>> {
+  const { results: rows } = await reader.prepare(
     `SELECT zone_name, record_name, record_type, content, status FROM dns_findings
      WHERE run_id = (SELECT run_id FROM dns_findings ORDER BY evaluated_at DESC LIMIT 1)`,
   ).all<
@@ -50,8 +69,8 @@ async function getPreviousDnsStatuses(env: Env): Promise<Map<string, DnsExposure
 // unresolved), read BEFORE the current run so resolveForDnsAlerts
 // (alerts.ts) can decide which of them the run about to be inserted just
 // resolved.
-async function getOpenDnsAlerts(env: Env): Promise<OpenAlert[]> {
-  const { results } = await env.DB.prepare(
+async function getOpenDnsAlerts(reader: D1DatabaseSession): Promise<OpenAlert[]> {
+  const { results } = await reader.prepare(
     `SELECT id, zone_name AS zoneName, record_name AS recordName, record_type AS recordType
      FROM dns_alerts WHERE acknowledged_at IS NULL AND resolved_at IS NULL`,
   ).all<OpenAlert>();
@@ -73,11 +92,12 @@ export async function runDnsEvaluation(
   }
 > {
   const creds = { accountId: env.CF_ACCOUNT_ID, apiToken: env.CF_API_TOKEN };
+  const reader = previousStatusReader(env);
   const [zones, danglingInsights, previousStatuses, openAlerts] = await Promise.all([
     buildDnsInventory(creds),
     listDanglingInsights(creds),
-    getPreviousDnsStatuses(env),
-    getOpenDnsAlerts(env),
+    getPreviousDnsStatuses(reader),
+    getOpenDnsAlerts(reader),
   ]);
   const results = evaluateDnsInventory(zones, danglingInsights);
 

@@ -37,26 +37,49 @@ interface Env {
 
 export const pagesRoutes = new Hono<{ Bindings: Env }>();
 
+// issue #470 (same class as #465, already fixed for storage/security) — D1
+// read queries can be served by a read replica that lags behind the
+// primary (Cloudflare's documented D1 replication behavior). Every read
+// below runs in a fresh Worker invocation every time (the scheduled hourly
+// run, or a manual/account-wide RE-SCAN), so a stale replica means "the
+// most recent run"/"currently open alerts" silently isn't accurate — some
+// OTHER, still-more-recent invocation's write hasn't propagated to
+// whichever replica this read landed on yet. `env.DB.withSession("first-
+// primary")` forces this invocation's first query to hit the primary
+// (which always has every committed write), eliminating that lag for
+// exactly the reads that need it. The batched INSERT/UPDATE statements
+// later in this file are unaffected — D1 writes always go to the primary
+// regardless of session.
+export function previousStatusReader(env: Env): D1DatabaseSession {
+  return env.DB.withSession("first-primary");
+}
+
 // The most recent run's per-entity status, read BEFORE the current run is
 // inserted — same pattern as every prior module.
-async function getPreviousDomainStatuses(env: Env): Promise<Map<string, DomainStatus>> {
-  const { results: rows } = await env.DB.prepare(
+async function getPreviousDomainStatuses(
+  reader: D1DatabaseSession,
+): Promise<Map<string, DomainStatus>> {
+  const { results: rows } = await reader.prepare(
     `SELECT project_name, domain_name, status FROM pages_domain_findings
      WHERE run_id = (SELECT run_id FROM pages_domain_findings ORDER BY evaluated_at DESC LIMIT 1)`,
   ).all<{ project_name: string; domain_name: string; status: DomainStatus }>();
   return new Map(rows.map((r) => [domainKey(r.project_name, r.domain_name), r.status]));
 }
 
-async function getPreviousSubdomainStatuses(env: Env): Promise<Map<string, SubdomainStatus>> {
-  const { results: rows } = await env.DB.prepare(
+async function getPreviousSubdomainStatuses(
+  reader: D1DatabaseSession,
+): Promise<Map<string, SubdomainStatus>> {
+  const { results: rows } = await reader.prepare(
     `SELECT project_name, status FROM pages_subdomain_findings
      WHERE run_id = (SELECT run_id FROM pages_subdomain_findings ORDER BY evaluated_at DESC LIMIT 1)`,
   ).all<{ project_name: string; status: SubdomainStatus }>();
   return new Map(rows.map((r) => [r.project_name, r.status]));
 }
 
-async function getPreviousDeploymentStatuses(env: Env): Promise<Map<string, DeploymentStatus>> {
-  const { results: rows } = await env.DB.prepare(
+async function getPreviousDeploymentStatuses(
+  reader: D1DatabaseSession,
+): Promise<Map<string, DeploymentStatus>> {
+  const { results: rows } = await reader.prepare(
     `SELECT project_name, status FROM pages_deployment_findings
      WHERE run_id = (SELECT run_id FROM pages_deployment_findings ORDER BY evaluated_at DESC LIMIT 1)`,
   ).all<{ project_name: string; status: DeploymentStatus }>();
@@ -66,24 +89,24 @@ async function getPreviousDeploymentStatuses(env: Env): Promise<Map<string, Depl
 // issue #481 — every alert still open (unacknowledged, unresolved), read
 // BEFORE the current run so resolveFor*Alerts (alerts.ts) can decide which
 // of them the run that's about to be inserted just resolved.
-async function getOpenDomainAlerts(env: Env): Promise<DomainOpenAlert[]> {
-  const { results } = await env.DB.prepare(
+async function getOpenDomainAlerts(reader: D1DatabaseSession): Promise<DomainOpenAlert[]> {
+  const { results } = await reader.prepare(
     `SELECT id, project_name AS projectName, domain_name AS domainName FROM pages_domain_alerts
      WHERE acknowledged_at IS NULL AND resolved_at IS NULL`,
   ).all<DomainOpenAlert>();
   return results;
 }
 
-async function getOpenSubdomainAlerts(env: Env): Promise<OpenAlert[]> {
-  const { results } = await env.DB.prepare(
+async function getOpenSubdomainAlerts(reader: D1DatabaseSession): Promise<OpenAlert[]> {
+  const { results } = await reader.prepare(
     `SELECT id, project_name AS projectName FROM pages_subdomain_alerts
      WHERE acknowledged_at IS NULL AND resolved_at IS NULL`,
   ).all<OpenAlert>();
   return results;
 }
 
-async function getOpenDeploymentAlerts(env: Env): Promise<OpenAlert[]> {
-  const { results } = await env.DB.prepare(
+async function getOpenDeploymentAlerts(reader: D1DatabaseSession): Promise<OpenAlert[]> {
+  const { results } = await reader.prepare(
     `SELECT id, project_name AS projectName FROM pages_deployment_alerts
      WHERE acknowledged_at IS NULL AND resolved_at IS NULL`,
   ).all<OpenAlert>();
@@ -108,6 +131,7 @@ export async function runPagesEvaluation(
   }
 > {
   const creds = { accountId: env.CF_ACCOUNT_ID, apiToken: env.CF_API_TOKEN };
+  const reader = previousStatusReader(env);
   const [
     { projects, accessApplications },
     previousDomainStatuses,
@@ -118,12 +142,12 @@ export async function runPagesEvaluation(
     openDeploymentAlerts,
   ] = await Promise.all([
     buildPagesInventory(creds),
-    getPreviousDomainStatuses(env),
-    getPreviousSubdomainStatuses(env),
-    getPreviousDeploymentStatuses(env),
-    getOpenDomainAlerts(env),
-    getOpenSubdomainAlerts(env),
-    getOpenDeploymentAlerts(env),
+    getPreviousDomainStatuses(reader),
+    getPreviousSubdomainStatuses(reader),
+    getPreviousDeploymentStatuses(reader),
+    getOpenDomainAlerts(reader),
+    getOpenSubdomainAlerts(reader),
+    getOpenDeploymentAlerts(reader),
   ]);
 
   const domainResults = evaluateCustomDomains(projects);
