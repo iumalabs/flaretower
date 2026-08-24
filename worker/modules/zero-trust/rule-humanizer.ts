@@ -46,6 +46,12 @@ export function humanizeRule(
       return { verb, label: `IP address ${String(value.ip ?? "?")}` };
     case "ip_list":
       return { verb, label: `IP list · ${String(value.id ?? "?")}` };
+    case "geo":
+      return { verb, label: `country ${String(value.country_code ?? "?")}` };
+    case "email_list":
+      return { verb, label: `email list · ${String(value.id ?? "?")}` };
+    case "any_valid_service_token":
+      return { verb, label: "any valid service token" };
     case "group": {
       const id = String(value.id ?? "");
       const name = groupNames.get(id) ?? `unknown group (${id})`;

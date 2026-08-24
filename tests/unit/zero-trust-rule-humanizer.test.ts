@@ -81,6 +81,33 @@ Deno.test("humanizeRule - group with a known name", () => {
   );
 });
 
+// issue #482 — geo, email_list, and any_valid_service_token are standard
+// Cloudflare Access rule selector types, previously missing from
+// humanizeRule's switch and so falling through to the generic
+// "an unrecognized rule (type)" label — confirmed live on production
+// (Zero Trust Access Groups: "Kyrgyzstan Location Rule", "Privileged
+// Emails Rule", "Any Service Token Rule").
+Deno.test("humanizeRule - geo", () => {
+  assertEquals(
+    humanizeRule({ geo: { country_code: "KG" } }, "ALLOW", idp, groups),
+    { verb: "ALLOW", label: "country KG" },
+  );
+});
+
+Deno.test("humanizeRule - email_list", () => {
+  assertEquals(
+    humanizeRule({ email_list: { id: "privileged-emails" } }, "ALLOW", idp, groups),
+    { verb: "ALLOW", label: "email list · privileged-emails" },
+  );
+});
+
+Deno.test("humanizeRule - any_valid_service_token", () => {
+  assertEquals(
+    humanizeRule({ any_valid_service_token: {} }, "ALLOW", idp, groups),
+    { verb: "ALLOW", label: "any valid service token" },
+  );
+});
+
 Deno.test("humanizeRule - an unrecognized rule type falls back to a generic, honest label", () => {
   const result = humanizeRule({ some_future_rule_type: { x: 1 } }, "ALLOW", idp, groups);
   assertEquals(result.verb, "ALLOW");
