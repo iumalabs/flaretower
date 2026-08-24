@@ -133,10 +133,15 @@ const COLUMNS: FindingsTableColumn<FlatFinding>[] = [
     sortValue: (r) => r.record_name,
     render: (r) => (
       <span
+        title={r.record_name}
         style={{
           fontFamily: "var(--font-mono)",
           fontSize: "var(--text-code-size)",
           color: "var(--fg-secondary)",
+          whiteSpace: "nowrap",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          display: "block",
         }}
       >
         {r.record_name}
@@ -150,6 +155,7 @@ const COLUMNS: FindingsTableColumn<FlatFinding>[] = [
     render: (r) => (
       <span style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 0 }}>
         <span
+          title={r.content}
           style={{
             fontFamily: "var(--font-mono)",
             fontSize: "var(--text-code-size)",
