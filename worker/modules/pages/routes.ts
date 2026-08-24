@@ -13,6 +13,11 @@ import {
   diffForDomainAlerts,
   diffForSubdomainAlerts,
   domainKey,
+  type DomainOpenAlert,
+  type OpenAlert,
+  resolveForDeploymentAlerts,
+  resolveForDomainAlerts,
+  resolveForSubdomainAlerts,
 } from "./alerts.ts";
 import type {
   DeploymentEvaluation,
@@ -58,6 +63,33 @@ async function getPreviousDeploymentStatuses(env: Env): Promise<Map<string, Depl
   return new Map(rows.map((r) => [r.project_name, r.status]));
 }
 
+// issue #481 — every alert still open (unacknowledged, unresolved), read
+// BEFORE the current run so resolveFor*Alerts (alerts.ts) can decide which
+// of them the run that's about to be inserted just resolved.
+async function getOpenDomainAlerts(env: Env): Promise<DomainOpenAlert[]> {
+  const { results } = await env.DB.prepare(
+    `SELECT id, project_name AS projectName, domain_name AS domainName FROM pages_domain_alerts
+     WHERE acknowledged_at IS NULL AND resolved_at IS NULL`,
+  ).all<DomainOpenAlert>();
+  return results;
+}
+
+async function getOpenSubdomainAlerts(env: Env): Promise<OpenAlert[]> {
+  const { results } = await env.DB.prepare(
+    `SELECT id, project_name AS projectName FROM pages_subdomain_alerts
+     WHERE acknowledged_at IS NULL AND resolved_at IS NULL`,
+  ).all<OpenAlert>();
+  return results;
+}
+
+async function getOpenDeploymentAlerts(env: Env): Promise<OpenAlert[]> {
+  const { results } = await env.DB.prepare(
+    `SELECT id, project_name AS projectName FROM pages_deployment_alerts
+     WHERE acknowledged_at IS NULL AND resolved_at IS NULL`,
+  ).all<OpenAlert>();
+  return results;
+}
+
 // Shared by POST /evaluate (interactive) and the scheduled handler —
 // constitution Principle III.
 export async function runPagesEvaluation(
@@ -72,6 +104,7 @@ export async function runPagesEvaluation(
     subdomainResults: SubdomainEvaluation[];
     deploymentResults: DeploymentEvaluation[];
     newAlertCount: number;
+    resolvedAlertCount: number;
   }
 > {
   const creds = { accountId: env.CF_ACCOUNT_ID, apiToken: env.CF_API_TOKEN };
@@ -80,11 +113,17 @@ export async function runPagesEvaluation(
     previousDomainStatuses,
     previousSubdomainStatuses,
     previousDeploymentStatuses,
+    openDomainAlerts,
+    openSubdomainAlerts,
+    openDeploymentAlerts,
   ] = await Promise.all([
     buildPagesInventory(creds),
     getPreviousDomainStatuses(env),
     getPreviousSubdomainStatuses(env),
     getPreviousDeploymentStatuses(env),
+    getOpenDomainAlerts(env),
+    getOpenSubdomainAlerts(env),
+    getOpenDeploymentAlerts(env),
   ]);
 
   const domainResults = evaluateCustomDomains(projects);
@@ -171,6 +210,28 @@ export async function runPagesEvaluation(
     previousDeploymentStatuses,
   );
 
+  // issue #481 — the ids resolveFor*Alerts (alerts.ts) says just recovered
+  // to safe, turned into one UPDATE statement per id against its own
+  // alerts table.
+  function resolveStatements(table: string, ids: string[]): D1PreparedStatement[] {
+    return ids.map((id) =>
+      env.DB.prepare(`UPDATE ${table} SET resolved_at = ? WHERE id = ?`).bind(evaluatedAt, id)
+    );
+  }
+
+  const resolvedDomainAlertStatements = resolveStatements(
+    "pages_domain_alerts",
+    resolveForDomainAlerts(domainResults, openDomainAlerts),
+  );
+  const resolvedSubdomainAlertStatements = resolveStatements(
+    "pages_subdomain_alerts",
+    resolveForSubdomainAlerts(subdomainResults, openSubdomainAlerts),
+  );
+  const resolvedDeploymentAlertStatements = resolveStatements(
+    "pages_deployment_alerts",
+    resolveForDeploymentAlerts(deploymentResults, openDeploymentAlerts),
+  );
+
   const domainAlertStatements = newDomainAlerts.map((a) =>
     env.DB.prepare(
       `INSERT INTO pages_domain_alerts (id, project_name, domain_name, previous_status, new_status, run_id, detected_at)
@@ -220,6 +281,9 @@ export async function runPagesEvaluation(
     ...domainAlertStatements,
     ...subdomainAlertStatements,
     ...deploymentAlertStatements,
+    ...resolvedDomainAlertStatements,
+    ...resolvedSubdomainAlertStatements,
+    ...resolvedDeploymentAlertStatements,
   ];
   if (alertStatements.length > 0) {
     await env.DB.batch(alertStatements);
@@ -233,6 +297,8 @@ export async function runPagesEvaluation(
     subdomainResults,
     deploymentResults,
     newAlertCount: newDomainAlerts.length + newSubdomainAlerts.length + newDeploymentAlerts.length,
+    resolvedAlertCount: resolvedDomainAlertStatements.length +
+      resolvedSubdomainAlertStatements.length + resolvedDeploymentAlertStatements.length,
   };
 }
 
@@ -487,15 +553,15 @@ pagesRoutes.get("/alerts", async (c) => {
     await Promise.all([
       c.env.DB.prepare(
         `SELECT id, project_name, domain_name, previous_status, new_status, detected_at, acknowledged_at
-         FROM pages_domain_alerts WHERE acknowledged_at IS NULL ORDER BY detected_at DESC`,
+         FROM pages_domain_alerts WHERE acknowledged_at IS NULL AND resolved_at IS NULL ORDER BY detected_at DESC`,
       ).all<DomainAlertRow>(),
       c.env.DB.prepare(
         `SELECT id, project_name, subdomain, previous_status, new_status, detected_at, acknowledged_at
-         FROM pages_subdomain_alerts WHERE acknowledged_at IS NULL ORDER BY detected_at DESC`,
+         FROM pages_subdomain_alerts WHERE acknowledged_at IS NULL AND resolved_at IS NULL ORDER BY detected_at DESC`,
       ).all<SubdomainAlertRow>(),
       c.env.DB.prepare(
         `SELECT id, project_name, deployment_id, previous_status, new_status, detected_at, acknowledged_at
-         FROM pages_deployment_alerts WHERE acknowledged_at IS NULL ORDER BY detected_at DESC`,
+         FROM pages_deployment_alerts WHERE acknowledged_at IS NULL AND resolved_at IS NULL ORDER BY detected_at DESC`,
       ).all<DeploymentAlertRow>(),
     ]);
 

@@ -1,5 +1,12 @@
 import { assertEquals } from "@std/assert";
-import { diffForAppAlerts, diffForTokenAlerts } from "../../worker/modules/zero-trust/alerts.ts";
+import {
+  diffForAppAlerts,
+  diffForTokenAlerts,
+  type OpenAppAlert,
+  type OpenTokenAlert,
+  resolveForAppAlerts,
+  resolveForTokenAlerts,
+} from "../../worker/modules/zero-trust/alerts.ts";
 import type { AppEvaluation, TokenEvaluation } from "../../worker/modules/zero-trust/types.ts";
 
 function appResult(status: AppEvaluation["status"]): AppEvaluation[] {
@@ -80,4 +87,117 @@ Deno.test("diffForAppAlerts and diffForTokenAlerts operate on independent identi
   // not be mistaken for a match.
   assertEquals(appAlerts.length, 1);
   assertEquals(appAlerts[0].previousStatus, null);
+});
+
+// issue #481 — resolveForAppAlerts/resolveForTokenAlerts (the auto-resolve
+// counterpart to diffForAppAlerts/diffForTokenAlerts above): an open alert
+// whose app/token has recovered to "safe" in the run that just completed
+// should resolve; not_evaluated/still-open entities, and alerts for
+// entities outside this run, must not.
+function openAppAlert(id: string, appId: string): OpenAppAlert {
+  return { id, appId };
+}
+
+function openTokenAlert(id: string, tokenId: string): OpenTokenAlert {
+  return { id, tokenId };
+}
+
+Deno.test("resolveForAppAlerts - an app back to safe resolves its open alert", () => {
+  const resolved = resolveForAppAlerts(appResult("safe"), [openAppAlert("a1", "app-1")]);
+  assertEquals(resolved, ["a1"]);
+});
+
+Deno.test("resolveForAppAlerts - an app still in warning does not resolve", () => {
+  const resolved = resolveForAppAlerts(appResult("warning"), [openAppAlert("a1", "app-1")]);
+  assertEquals(resolved, []);
+});
+
+Deno.test("resolveForAppAlerts - not_evaluated does not resolve (never fabricate a clean state)", () => {
+  const resolved = resolveForAppAlerts(appResult("not_evaluated"), [openAppAlert("a1", "app-1")]);
+  assertEquals(resolved, []);
+});
+
+Deno.test("resolveForAppAlerts - an app absent from this run's results does not resolve", () => {
+  const resolved = resolveForAppAlerts([], [openAppAlert("a1", "app-1")]);
+  assertEquals(resolved, []);
+});
+
+Deno.test("resolveForAppAlerts - only the recovered app's alert resolves, others stay open", () => {
+  const results: AppEvaluation[] = [
+    {
+      appId: "app-1",
+      appName: "one",
+      appDomain: "one.example.com",
+      status: "safe",
+      reason: "test",
+      policyCount: 0,
+      coveredHostnameCount: 1,
+      identitySummary: "— none —",
+      sessionDuration: null,
+      policyRules: [],
+      referencedGroupIds: [],
+    },
+    {
+      appId: "app-2",
+      appName: "two",
+      appDomain: "two.example.com",
+      status: "warning",
+      reason: "test",
+      policyCount: 0,
+      coveredHostnameCount: 1,
+      identitySummary: "— none —",
+      sessionDuration: null,
+      policyRules: [],
+      referencedGroupIds: [],
+    },
+  ];
+  const resolved = resolveForAppAlerts(results, [
+    openAppAlert("a1", "app-1"),
+    openAppAlert("a2", "app-2"),
+  ]);
+  assertEquals(resolved, ["a1"]);
+});
+
+Deno.test("resolveForAppAlerts - no open alerts means nothing to resolve", () => {
+  const resolved = resolveForAppAlerts(appResult("safe"), []);
+  assertEquals(resolved, []);
+});
+
+Deno.test("resolveForTokenAlerts - a token back to safe resolves its open alert", () => {
+  const resolved = resolveForTokenAlerts(tokenResult("safe"), [openTokenAlert("t1", "tok-1")]);
+  assertEquals(resolved, ["t1"]);
+});
+
+Deno.test("resolveForTokenAlerts - a token still critical does not resolve", () => {
+  const resolved = resolveForTokenAlerts(tokenResult("critical"), [openTokenAlert("t1", "tok-1")]);
+  assertEquals(resolved, []);
+});
+
+Deno.test("resolveForTokenAlerts - not_evaluated does not resolve (never fabricate a clean state)", () => {
+  const resolved = resolveForTokenAlerts(tokenResult("not_evaluated"), [
+    openTokenAlert("t1", "tok-1"),
+  ]);
+  assertEquals(resolved, []);
+});
+
+Deno.test("resolveForTokenAlerts - a token absent from this run's results does not resolve", () => {
+  const resolved = resolveForTokenAlerts([], [openTokenAlert("t1", "tok-1")]);
+  assertEquals(resolved, []);
+});
+
+Deno.test("resolveForTokenAlerts - only the recovered token's alert resolves, others stay open", () => {
+  const results: TokenEvaluation[] = [
+    { tokenId: "tok-1", tokenName: "one", expiresAt: null, status: "safe", reason: "test" },
+    { tokenId: "tok-2", tokenName: "two", expiresAt: null, status: "critical", reason: "test" },
+  ];
+  const resolved = resolveForTokenAlerts(results, [
+    openTokenAlert("t1", "tok-1"),
+    openTokenAlert("t2", "tok-2"),
+  ]);
+  assertEquals(resolved, ["t1"]);
+});
+
+Deno.test("resolveForTokenAlerts - no open alerts means nothing to resolve", () => {
+  const resolved = resolveForTokenAlerts(tokenResult("safe"), []);
+  assertEquals(resolved, []);
 });

@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { requireRole } from "../../auth/access-jwt.ts";
 import { buildWorkerInventory, listAccessApplications } from "./inventory.ts";
 import { evaluateInventory } from "./evaluate.ts";
-import { diffForAlerts } from "./alerts.ts";
+import { diffForAlerts, type OpenAlert, resolveForAlerts } from "./alerts.ts";
 import type { ExposureStatus, WorkerEvaluation } from "./types.ts";
 
 interface Env {
@@ -43,6 +43,16 @@ async function getPreviousStatuses(env: Env): Promise<Map<string, ExposureStatus
   return new Map(rows.map((r) => [r.hostname, r.status]));
 }
 
+// issue #481 — every alert still open (unacknowledged, unresolved), read
+// BEFORE the current run so resolveForAlerts (alerts.ts) can decide which
+// of them the run that's about to be inserted just resolved.
+async function getOpenAlerts(env: Env): Promise<OpenAlert[]> {
+  const { results } = await env.DB.prepare(
+    `SELECT id, hostname FROM exposure_alerts WHERE acknowledged_at IS NULL AND resolved_at IS NULL`,
+  ).all<OpenAlert>();
+  return results;
+}
+
 // Shared by POST /evaluate (interactive) and the scheduled handler (T030) —
 // constitution Principle III: no divergent logic between the two entry
 // points, so this is the one place that runs an evaluation, persists
@@ -51,13 +61,20 @@ export async function runEvaluation(
   env: Env,
   trigger: "interactive" | "scheduled",
 ): Promise<
-  { runId: string; evaluatedAt: string; results: WorkerEvaluation[]; newAlertCount: number }
+  {
+    runId: string;
+    evaluatedAt: string;
+    results: WorkerEvaluation[];
+    newAlertCount: number;
+    resolvedAlertCount: number;
+  }
 > {
   const creds = { accountId: env.CF_ACCOUNT_ID, apiToken: env.CF_API_TOKEN };
-  const [inventory, apps, previousStatuses] = await Promise.all([
+  const [inventory, apps, previousStatuses, openAlerts] = await Promise.all([
     buildWorkerInventory(creds),
     listAccessApplications(creds),
     getPreviousStatuses(env),
+    getOpenAlerts(env),
   ]);
   const results = evaluateInventory(inventory, apps);
 
@@ -122,11 +139,27 @@ export async function runEvaluation(
     ).bind(crypto.randomUUID(), a.hostname, a.previousStatus, a.newStatus, runId, evaluatedAt)
   );
 
-  if (alertStatements.length > 0) {
-    await env.DB.batch(alertStatements);
+  // issue #481 — auto-resolve any open alert whose hostname recovered.
+  const resolvedIds = resolveForAlerts(results, openAlerts);
+  const resolveStatements = resolvedIds.map((id) =>
+    env.DB.prepare(`UPDATE exposure_alerts SET resolved_at = ? WHERE id = ?`).bind(
+      evaluatedAt,
+      id,
+    )
+  );
+
+  const allAlertStatements = [...alertStatements, ...resolveStatements];
+  if (allAlertStatements.length > 0) {
+    await env.DB.batch(allAlertStatements);
   }
 
-  return { runId, evaluatedAt, results, newAlertCount: newAlerts.length };
+  return {
+    runId,
+    evaluatedAt,
+    results,
+    newAlertCount: newAlerts.length,
+    resolvedAlertCount: resolvedIds.length,
+  };
 }
 
 exposureRoutes.post("/evaluate", async (c) => {
@@ -243,7 +276,7 @@ exposureRoutes.get("/alerts", async (c) => {
   const { results: rows } = await c.env.DB.prepare(
     `SELECT id, hostname, previous_status, new_status, detected_at, acknowledged_at
      FROM exposure_alerts
-     WHERE acknowledged_at IS NULL
+     WHERE acknowledged_at IS NULL AND resolved_at IS NULL
      ORDER BY detected_at DESC`,
   ).all<AlertRow>();
 

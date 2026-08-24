@@ -46,7 +46,7 @@ async function queryOneSource(db: D1Database, source: AuditSource): Promise<Unif
             a.previous_status, a.new_status, a.detected_at, a.acknowledged_at,
             ${reasonSubquery(source, "a")} AS reason
      FROM ${source.alertsTable} a
-     WHERE a.acknowledged_at IS NULL
+     WHERE a.acknowledged_at IS NULL AND a.resolved_at IS NULL
      ORDER BY a.detected_at DESC`,
   ).all<RawAlertRow>();
 

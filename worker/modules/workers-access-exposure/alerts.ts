@@ -34,3 +34,32 @@ export function diffForAlerts(
 
   return alerts;
 }
+
+// issue #481 — the auto-resolve counterpart to diffForAlerts above: an open
+// (unacknowledged, unresolved) alert whose hostname is back to "safe" in
+// the run that just completed no longer belongs in the Unified Alerts
+// Inbox/Overview. Deliberately checks `=== "safe"`, not `!== "warning"` (or
+// `!== "critical"`) — a hostname missing from `results` entirely, or
+// evaluated as "not_evaluated" (a transient per-check API failure), must
+// NOT auto-resolve: that would silently hide a still-open alert behind a
+// data gap rather than a genuine fix (mirrors this codebase's established
+// "never fabricate a clean state" rule — e.g. summary.ts's `hasData`).
+// Pure — no D1 access (constitution Principle III); routes.ts reads the
+// open alerts, calls this, and writes the resulting ids' resolved_at.
+export interface OpenAlert {
+  id: string;
+  hostname: string;
+}
+
+export function resolveForAlerts(
+  results: WorkerEvaluation[],
+  openAlerts: readonly OpenAlert[],
+): string[] {
+  const safeHostnames = new Set<string>();
+  for (const worker of results) {
+    for (const h of worker.hostnames) {
+      if (h.status === "safe") safeHostnames.add(h.hostname);
+    }
+  }
+  return openAlerts.filter((a) => safeHostnames.has(a.hostname)).map((a) => a.id);
+}

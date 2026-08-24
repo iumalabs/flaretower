@@ -55,9 +55,9 @@ export default {
     // waitUntil + catch) so a failure in one module's Cloudflare API calls
     // doesn't prevent another module's scheduled audit from running.
     ctx.waitUntil(
-      runEvaluation(env, "scheduled").then(({ runId, newAlertCount }) => {
+      runEvaluation(env, "scheduled").then(({ runId, newAlertCount, resolvedAlertCount }) => {
         console.log(
-          `exposure scheduled run ${runId} (cron ${controller.cron}): ${newAlertCount} new alert(s)`,
+          `exposure scheduled run ${runId} (cron ${controller.cron}): ${newAlertCount} new alert(s), ${resolvedAlertCount} resolved`,
         );
       }).catch((err: unknown) => {
         console.error(
@@ -67,9 +67,9 @@ export default {
     );
 
     ctx.waitUntil(
-      runDnsEvaluation(env, "scheduled").then(({ runId, newAlertCount }) => {
+      runDnsEvaluation(env, "scheduled").then(({ runId, newAlertCount, resolvedAlertCount }) => {
         console.log(
-          `dns scheduled run ${runId} (cron ${controller.cron}): ${newAlertCount} new alert(s)`,
+          `dns scheduled run ${runId} (cron ${controller.cron}): ${newAlertCount} new alert(s), ${resolvedAlertCount} resolved`,
         );
       }).catch((err: unknown) => {
         console.error(
@@ -79,11 +79,13 @@ export default {
     );
 
     ctx.waitUntil(
-      runZeroTrustEvaluation(env, "scheduled").then(({ runId, newAlertCount }) => {
-        console.log(
-          `zero-trust scheduled run ${runId} (cron ${controller.cron}): ${newAlertCount} new alert(s)`,
-        );
-      }).catch((err: unknown) => {
+      runZeroTrustEvaluation(env, "scheduled").then(
+        ({ runId, newAlertCount, resolvedAlertCount }) => {
+          console.log(
+            `zero-trust scheduled run ${runId} (cron ${controller.cron}): ${newAlertCount} new alert(s), ${resolvedAlertCount} resolved`,
+          );
+        },
+      ).catch((err: unknown) => {
         console.error(
           `zero-trust scheduled run failed: ${err instanceof Error ? err.message : String(err)}`,
         );
@@ -91,9 +93,9 @@ export default {
     );
 
     ctx.waitUntil(
-      runPagesEvaluation(env, "scheduled").then(({ runId, newAlertCount }) => {
+      runPagesEvaluation(env, "scheduled").then(({ runId, newAlertCount, resolvedAlertCount }) => {
         console.log(
-          `pages scheduled run ${runId} (cron ${controller.cron}): ${newAlertCount} new alert(s)`,
+          `pages scheduled run ${runId} (cron ${controller.cron}): ${newAlertCount} new alert(s), ${resolvedAlertCount} resolved`,
         );
       }).catch((err: unknown) => {
         console.error(
@@ -103,11 +105,13 @@ export default {
     );
 
     ctx.waitUntil(
-      runStorageEvaluation(env, "scheduled").then(({ runId, newAlertCount }) => {
-        console.log(
-          `storage scheduled run ${runId} (cron ${controller.cron}): ${newAlertCount} new alert(s)`,
-        );
-      }).catch((err: unknown) => {
+      runStorageEvaluation(env, "scheduled").then(
+        ({ runId, newAlertCount, resolvedAlertCount }) => {
+          console.log(
+            `storage scheduled run ${runId} (cron ${controller.cron}): ${newAlertCount} new alert(s), ${resolvedAlertCount} resolved`,
+          );
+        },
+      ).catch((err: unknown) => {
         console.error(
           `storage scheduled run failed: ${err instanceof Error ? err.message : String(err)}`,
         );
@@ -115,11 +119,13 @@ export default {
     );
 
     ctx.waitUntil(
-      runSecurityEvaluation(env, "scheduled").then(({ runId, newAlertCount }) => {
-        console.log(
-          `security scheduled run ${runId} (cron ${controller.cron}): ${newAlertCount} new alert(s)`,
-        );
-      }).catch((err: unknown) => {
+      runSecurityEvaluation(env, "scheduled").then(
+        ({ runId, newAlertCount, resolvedAlertCount }) => {
+          console.log(
+            `security scheduled run ${runId} (cron ${controller.cron}): ${newAlertCount} new alert(s), ${resolvedAlertCount} resolved`,
+          );
+        },
+      ).catch((err: unknown) => {
         console.error(
           `security scheduled run failed: ${err instanceof Error ? err.message : String(err)}`,
         );

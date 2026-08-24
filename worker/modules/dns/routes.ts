@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { requireRole } from "../../auth/access-jwt.ts";
 import { buildDnsInventory, listDanglingInsights } from "./inventory.ts";
 import { evaluateDnsInventory, isPlatformTargetDomain } from "./evaluate.ts";
-import { diffForDnsAlerts, dnsRecordKey } from "./alerts.ts";
+import { diffForDnsAlerts, dnsRecordKey, type OpenAlert, resolveForDnsAlerts } from "./alerts.ts";
 import { type PageQuery, paginateArray, PaginationParamError } from "../../pagination.ts";
 import type { DnsExposureStatus, ZoneEvaluation } from "./types.ts";
 
@@ -46,19 +46,38 @@ async function getPreviousDnsStatuses(env: Env): Promise<Map<string, DnsExposure
   );
 }
 
+// issue #481 — every dns_alerts row still open (unacknowledged,
+// unresolved), read BEFORE the current run so resolveForDnsAlerts
+// (alerts.ts) can decide which of them the run about to be inserted just
+// resolved.
+async function getOpenDnsAlerts(env: Env): Promise<OpenAlert[]> {
+  const { results } = await env.DB.prepare(
+    `SELECT id, zone_name AS zoneName, record_name AS recordName, record_type AS recordType
+     FROM dns_alerts WHERE acknowledged_at IS NULL AND resolved_at IS NULL`,
+  ).all<OpenAlert>();
+  return results;
+}
+
 // Shared by POST /evaluate (interactive) and the scheduled handler —
 // constitution Principle III.
 export async function runDnsEvaluation(
   env: Env,
   trigger: "interactive" | "scheduled",
 ): Promise<
-  { runId: string; evaluatedAt: string; results: ZoneEvaluation[]; newAlertCount: number }
+  {
+    runId: string;
+    evaluatedAt: string;
+    results: ZoneEvaluation[];
+    newAlertCount: number;
+    resolvedAlertCount: number;
+  }
 > {
   const creds = { accountId: env.CF_ACCOUNT_ID, apiToken: env.CF_API_TOKEN };
-  const [zones, danglingInsights, previousStatuses] = await Promise.all([
+  const [zones, danglingInsights, previousStatuses, openAlerts] = await Promise.all([
     buildDnsInventory(creds),
     listDanglingInsights(creds),
     getPreviousDnsStatuses(env),
+    getOpenDnsAlerts(env),
   ]);
   const results = evaluateDnsInventory(zones, danglingInsights);
 
@@ -138,11 +157,23 @@ export async function runDnsEvaluation(
     )
   );
 
-  if (alertStatements.length > 0) {
-    await env.DB.batch(alertStatements);
+  const resolvedIds = resolveForDnsAlerts(results, openAlerts);
+  const resolveStatements = resolvedIds.map((id) =>
+    env.DB.prepare(`UPDATE dns_alerts SET resolved_at = ? WHERE id = ?`).bind(evaluatedAt, id)
+  );
+
+  const allAlertStatements = [...alertStatements, ...resolveStatements];
+  if (allAlertStatements.length > 0) {
+    await env.DB.batch(allAlertStatements);
   }
 
-  return { runId, evaluatedAt, results, newAlertCount: newAlerts.length };
+  return {
+    runId,
+    evaluatedAt,
+    results,
+    newAlertCount: newAlerts.length,
+    resolvedAlertCount: resolvedIds.length,
+  };
 }
 
 dnsRoutes.post("/evaluate", async (c) => {
@@ -309,7 +340,7 @@ dnsRoutes.get("/alerts", async (c) => {
   const { results: rows } = await c.env.DB.prepare(
     `SELECT id, zone_name, record_name, record_type, previous_status, new_status, detected_at, acknowledged_at
      FROM dns_alerts
-     WHERE acknowledged_at IS NULL
+     WHERE acknowledged_at IS NULL AND resolved_at IS NULL
      ORDER BY detected_at DESC`,
   ).all<AlertRow>();
 

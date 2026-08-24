@@ -6,6 +6,10 @@ import {
   diffForBucketAlerts,
   diffForD1DatabaseAlerts,
   diffForKvNamespaceAlerts,
+  type OpenAlert,
+  resolveForBucketAlerts,
+  resolveForD1DatabaseAlerts,
+  resolveForKvNamespaceAlerts,
 } from "./alerts.ts";
 import { type PageQuery, paginateArray, PaginationParamError } from "../../pagination.ts";
 import type {
@@ -77,6 +81,35 @@ export async function getPreviousD1DatabaseStatuses(
   return new Map(rows.map((r) => [r.database_uuid, r.status]));
 }
 
+// issue #481 — every alert still open (unacknowledged, unresolved), read
+// BEFORE the current run so resolveFor*Alerts (alerts.ts) can decide which
+// of them the run that's about to be inserted just resolved. Same
+// withSession("first-primary") reader as getPrevious*Statuses above
+// (issue #465) — this is exactly the same class of stale-replica risk.
+export async function getOpenBucketAlerts(reader: D1DatabaseSession): Promise<OpenAlert[]> {
+  const { results } = await reader.prepare(
+    `SELECT id, bucket_name AS entityId FROM r2_bucket_alerts
+     WHERE acknowledged_at IS NULL AND resolved_at IS NULL`,
+  ).all<OpenAlert>();
+  return results;
+}
+
+export async function getOpenKvNamespaceAlerts(reader: D1DatabaseSession): Promise<OpenAlert[]> {
+  const { results } = await reader.prepare(
+    `SELECT id, namespace_id AS entityId FROM kv_namespace_alerts
+     WHERE acknowledged_at IS NULL AND resolved_at IS NULL`,
+  ).all<OpenAlert>();
+  return results;
+}
+
+export async function getOpenD1DatabaseAlerts(reader: D1DatabaseSession): Promise<OpenAlert[]> {
+  const { results } = await reader.prepare(
+    `SELECT id, database_uuid AS entityId FROM d1_database_alerts
+     WHERE acknowledged_at IS NULL AND resolved_at IS NULL`,
+  ).all<OpenAlert>();
+  return results;
+}
+
 // Shared by POST /evaluate (interactive) and the scheduled handler —
 // constitution Principle III.
 export async function runStorageEvaluation(
@@ -90,6 +123,7 @@ export async function runStorageEvaluation(
     kvResults: KvNamespaceEvaluation[];
     d1Results: D1DatabaseEvaluation[];
     newAlertCount: number;
+    resolvedAlertCount: number;
   }
 > {
   const creds = { accountId: env.CF_ACCOUNT_ID, apiToken: env.CF_API_TOKEN };
@@ -99,11 +133,17 @@ export async function runStorageEvaluation(
     previousBucketStatuses,
     previousKvNamespaceStatuses,
     previousD1DatabaseStatuses,
+    openBucketAlerts,
+    openKvNamespaceAlerts,
+    openD1DatabaseAlerts,
   ] = await Promise.all([
     buildStorageInventory(creds),
     getPreviousBucketStatuses(reader),
     getPreviousKvNamespaceStatuses(reader),
     getPreviousD1DatabaseStatuses(reader),
+    getOpenBucketAlerts(reader),
+    getOpenKvNamespaceAlerts(reader),
+    getOpenD1DatabaseAlerts(reader),
   ]);
 
   const bucketResults = evaluateBuckets(
@@ -189,6 +229,28 @@ export async function runStorageEvaluation(
   const newKvAlerts = diffForKvNamespaceAlerts(kvResults, previousKvNamespaceStatuses);
   const newD1Alerts = diffForD1DatabaseAlerts(d1Results, previousD1DatabaseStatuses);
 
+  // issue #481 — the ids resolveFor*Alerts (alerts.ts) says just recovered
+  // to safe, turned into one UPDATE statement per id against its own
+  // alerts table.
+  function resolveStatements(table: string, ids: string[]): D1PreparedStatement[] {
+    return ids.map((id) =>
+      env.DB.prepare(`UPDATE ${table} SET resolved_at = ? WHERE id = ?`).bind(evaluatedAt, id)
+    );
+  }
+
+  const resolvedBucketAlertStatements = resolveStatements(
+    "r2_bucket_alerts",
+    resolveForBucketAlerts(bucketResults, openBucketAlerts),
+  );
+  const resolvedKvAlertStatements = resolveStatements(
+    "kv_namespace_alerts",
+    resolveForKvNamespaceAlerts(kvResults, openKvNamespaceAlerts),
+  );
+  const resolvedD1AlertStatements = resolveStatements(
+    "d1_database_alerts",
+    resolveForD1DatabaseAlerts(d1Results, openD1DatabaseAlerts),
+  );
+
   const bucketAlertStatements = newBucketAlerts.map((a) =>
     env.DB.prepare(
       `INSERT INTO r2_bucket_alerts (id, bucket_name, previous_status, new_status, run_id, detected_at)
@@ -226,7 +288,14 @@ export async function runStorageEvaluation(
     )
   );
 
-  const alertStatements = [...bucketAlertStatements, ...kvAlertStatements, ...d1AlertStatements];
+  const alertStatements = [
+    ...bucketAlertStatements,
+    ...kvAlertStatements,
+    ...d1AlertStatements,
+    ...resolvedBucketAlertStatements,
+    ...resolvedKvAlertStatements,
+    ...resolvedD1AlertStatements,
+  ];
   if (alertStatements.length > 0) {
     await env.DB.batch(alertStatements);
   }
@@ -238,6 +307,8 @@ export async function runStorageEvaluation(
     kvResults,
     d1Results,
     newAlertCount: newBucketAlerts.length + newKvAlerts.length + newD1Alerts.length,
+    resolvedAlertCount: resolvedBucketAlertStatements.length + resolvedKvAlertStatements.length +
+      resolvedD1AlertStatements.length,
   };
 }
 
@@ -560,15 +631,15 @@ storageRoutes.get("/alerts", async (c) => {
   const [{ results: bucketRows }, { results: kvRows }, { results: d1Rows }] = await Promise.all([
     c.env.DB.prepare(
       `SELECT id, bucket_name, previous_status, new_status, detected_at, acknowledged_at
-       FROM r2_bucket_alerts WHERE acknowledged_at IS NULL ORDER BY detected_at DESC`,
+       FROM r2_bucket_alerts WHERE acknowledged_at IS NULL AND resolved_at IS NULL ORDER BY detected_at DESC`,
     ).all<BucketAlertRow>(),
     c.env.DB.prepare(
       `SELECT id, namespace_id, title, previous_status, new_status, detected_at, acknowledged_at
-       FROM kv_namespace_alerts WHERE acknowledged_at IS NULL ORDER BY detected_at DESC`,
+       FROM kv_namespace_alerts WHERE acknowledged_at IS NULL AND resolved_at IS NULL ORDER BY detected_at DESC`,
     ).all<KvAlertRow>(),
     c.env.DB.prepare(
       `SELECT id, database_uuid, name, previous_status, new_status, detected_at, acknowledged_at
-       FROM d1_database_alerts WHERE acknowledged_at IS NULL ORDER BY detected_at DESC`,
+       FROM d1_database_alerts WHERE acknowledged_at IS NULL AND resolved_at IS NULL ORDER BY detected_at DESC`,
     ).all<D1AlertRow>(),
   ]);
 

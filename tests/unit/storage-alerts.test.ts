@@ -3,6 +3,10 @@ import {
   diffForBucketAlerts,
   diffForD1DatabaseAlerts,
   diffForKvNamespaceAlerts,
+  type OpenAlert,
+  resolveForBucketAlerts,
+  resolveForD1DatabaseAlerts,
+  resolveForKvNamespaceAlerts,
 } from "../../worker/modules/storage/alerts.ts";
 import type {
   BucketEvaluation,
@@ -95,4 +99,83 @@ Deno.test("diffForD1DatabaseAlerts - unchanged warning does not repeat-alert", (
   const previous = new Map([["db-1", "warning" as const]]);
   const alerts = diffForD1DatabaseAlerts(d1Result("warning"), previous);
   assertEquals(alerts.length, 0);
+});
+
+// issue #481 — resolveFor*Alerts (the auto-resolve counterpart to
+// diffFor*Alerts above): an open alert whose entity has recovered to
+// "safe" in the run that just completed should resolve; not_evaluated or
+// an entity absent from this run must not (never fabricate a clean state).
+function openAlert(id: string, entityId: string): OpenAlert {
+  return { id, entityId };
+}
+
+Deno.test("resolveForBucketAlerts - a bucket back to safe resolves its open alert", () => {
+  const resolved = resolveForBucketAlerts(bucketResult("safe"), [openAlert("a1", "uploads")]);
+  assertEquals(resolved, ["a1"]);
+});
+
+Deno.test("resolveForBucketAlerts - a bucket still critical does not resolve", () => {
+  const resolved = resolveForBucketAlerts(bucketResult("critical"), [openAlert("a1", "uploads")]);
+  assertEquals(resolved, []);
+});
+
+Deno.test("resolveForBucketAlerts - not_evaluated does not resolve", () => {
+  const resolved = resolveForBucketAlerts(bucketResult("not_evaluated"), [
+    openAlert("a1", "uploads"),
+  ]);
+  assertEquals(resolved, []);
+});
+
+Deno.test("resolveForBucketAlerts - a bucket absent from this run's results does not resolve", () => {
+  const resolved = resolveForBucketAlerts([], [openAlert("a1", "uploads")]);
+  assertEquals(resolved, []);
+});
+
+Deno.test("resolveForBucketAlerts - only the recovered bucket's alert resolves, others stay open", () => {
+  const results: BucketEvaluation[] = [
+    {
+      bucketName: "uploads",
+      status: "safe",
+      reason: "test",
+      customDomain: null,
+      boundToWorkers: [],
+    },
+    {
+      bucketName: "backups",
+      status: "critical",
+      reason: "test",
+      customDomain: null,
+      boundToWorkers: [],
+    },
+  ];
+  const resolved = resolveForBucketAlerts(results, [
+    openAlert("a1", "uploads"),
+    openAlert("a2", "backups"),
+  ]);
+  assertEquals(resolved, ["a1"]);
+});
+
+Deno.test("resolveForBucketAlerts - no open alerts means nothing to resolve", () => {
+  const resolved = resolveForBucketAlerts(bucketResult("safe"), []);
+  assertEquals(resolved, []);
+});
+
+Deno.test("resolveForKvNamespaceAlerts - a namespace back to safe resolves its open alert", () => {
+  const resolved = resolveForKvNamespaceAlerts(kvResult("safe"), [openAlert("a1", "kv-1")]);
+  assertEquals(resolved, ["a1"]);
+});
+
+Deno.test("resolveForKvNamespaceAlerts - a namespace still warning does not resolve", () => {
+  const resolved = resolveForKvNamespaceAlerts(kvResult("warning"), [openAlert("a1", "kv-1")]);
+  assertEquals(resolved, []);
+});
+
+Deno.test("resolveForD1DatabaseAlerts - a database back to safe resolves its open alert", () => {
+  const resolved = resolveForD1DatabaseAlerts(d1Result("safe"), [openAlert("a1", "db-1")]);
+  assertEquals(resolved, ["a1"]);
+});
+
+Deno.test("resolveForD1DatabaseAlerts - a database still warning does not resolve", () => {
+  const resolved = resolveForD1DatabaseAlerts(d1Result("warning"), [openAlert("a1", "db-1")]);
+  assertEquals(resolved, []);
 });
