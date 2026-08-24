@@ -367,6 +367,45 @@ test("specs/013 US3 — a record pointing at a Cloudflare platform domain shows 
   await expect(platformRow.getByText("PROTECTED")).toBeVisible();
 });
 
+// issue #473 — a long Name value (common for DKIM CNAME records) used to
+// overflow its column unclipped, visually running into the Content column
+// with no gap. The Content column already had whiteSpace:nowrap +
+// overflow:hidden + textOverflow:ellipsis; Name was missing all three.
+test("issue #473 — a long record name truncates instead of overflowing into the Content column", async ({ page }) => {
+  await page.unroute("**/api/dns/inventory*");
+  const longName = "5pdippb4nh4v5pnbugjuptke26iywsmr._domainkey.yugai.net";
+  await routeDnsInventory(page, [...MOCK_ZONES, {
+    zone_name: "yugai.net",
+    records: [{
+      record_name: longName,
+      type: "CNAME",
+      content: "dkim.mailprovider.example.com",
+      proxy_capable: false,
+      proxied: null,
+      ttl: 3600,
+      is_platform_target: false,
+      status: "safe",
+      reason: "not proxy-capable",
+    }],
+  }]);
+  await page.goto("/");
+  await page.getByRole("button", { name: "DNS" }).click();
+  await page.getByRole("button", { name: "yugai.net" }).click();
+
+  const nameCell = row(page, "yugai.net", "CNAME", longName, "dkim.mailprovider.example.com")
+    .locator("[title]").first();
+  await expect(nameCell).toHaveAttribute("title", longName);
+  const style = await nameCell.evaluate((el) => getComputedStyle(el).textOverflow);
+  expect(style).toBe("ellipsis");
+  // The clipped element's rendered box is narrower than its full text would
+  // need — proof it's actually truncating, not just declaring the CSS.
+  const { scrollWidth, clientWidth } = await nameCell.evaluate((el) => ({
+    scrollWidth: el.scrollWidth,
+    clientWidth: el.clientWidth,
+  }));
+  expect(scrollWidth).toBeGreaterThan(clientWidth);
+});
+
 test("specs/013 US1 — a zone with zero records shows its own empty state when selected", async ({ page }) => {
   await page.unroute("**/api/dns/inventory*");
   await routeDnsInventory(page, [...MOCK_ZONES, { zone_name: "empty.example", records: [] }]);
