@@ -185,6 +185,43 @@ test("US1 — exactly one row per zone, not one row per underlying check", async
   await expect(page.getByText("login-widget")).toBeVisible();
 });
 
+// issue #483 — Turnstile widgets previously rendered as a bare, unstyled
+// bullet list, unlike its sibling tabs (Zones/Certificates/WAF Custom
+// Rules), which all use the app's consistent styled-table design (header
+// row, hairline row separators, a summary footer). Turnstile widgets have
+// no real pass/fail status (no check runs against them), so this only
+// verifies the table chrome and content, not a status column/badges —
+// those genuinely don't apply here.
+test("issue #483 — Turnstile widgets renders as a styled table, not a bare bullet list", async ({ page }) => {
+  await page.route("**/api/security/inventory*", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ...MOCK_SECURITY_INVENTORY,
+        turnstile_widgets: [
+          { sitekey: "0x123", name: "login-widget", domains: ["example.com"] },
+          { sitekey: "0x456", name: "signup-widget", domains: ["a.example.com", "b.example.com"] },
+        ],
+      }),
+    }));
+  await page.goto("/");
+  await page.getByRole("button", { name: "Security Posture" }).click();
+  await page.getByRole("tab", { name: "Turnstile widgets" }).click();
+
+  // A real table (not a <ul>): column headers, one row per widget, and a
+  // count in the footer, matching Certificates/WAF Custom Rules' own shape.
+  await expect(page.getByText("Name", { exact: true })).toBeVisible();
+  await expect(page.getByText("Domains", { exact: true })).toBeVisible();
+  await expect(page.getByTestId("turnstile-row-0x123")).toBeVisible();
+  await expect(page.getByTestId("turnstile-row-0x123").getByText("login-widget")).toBeVisible();
+  await expect(page.getByTestId("turnstile-row-0x123").getByText("example.com")).toBeVisible();
+  await expect(page.getByTestId("turnstile-row-0x456")).toBeVisible();
+  await expect(page.getByTestId("turnstile-row-0x456").getByText("a.example.com, b.example.com"))
+    .toBeVisible();
+  await expect(page.getByText("2 Turnstile widgets")).toBeVisible();
+});
+
 test("US1 — a zone's overall status is the worst of its checks: all-safe renders safe, one critical renders critical", async ({ page }) => {
   await expect(page.getByTestId("findings-row-zone-1").getByText("PROTECTED").first())
     .toBeVisible();

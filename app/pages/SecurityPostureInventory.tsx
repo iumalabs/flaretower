@@ -200,6 +200,97 @@ function formatExpiry(expiresOn: string | null): string {
   return `expires in ${days}d`;
 }
 
+const TABLE_HEADER_LABEL_STYLE = {
+  fontFamily: "var(--font-mono)",
+  fontSize: "var(--text-label-size)",
+  letterSpacing: "var(--text-label-ls)",
+  color: "var(--fg-faint)",
+  textTransform: "uppercase" as const,
+};
+
+// issue #483 — Turnstile widgets is a plain account inventory (no pass/fail
+// check is run against a widget, unlike Zones/Certificates/WAF Custom
+// Rules, which all classify a real status), so it can't reuse FindingsTable
+// as-is — that component's status column, filter chips, and per-status
+// footer totals all assume every row has an ExposureStatus, and fabricating
+// one here would misrepresent widgets as evaluated when they aren't. This
+// borrows FindingsTable's visual chrome (bordered container, uppercase mono
+// column headers on a raised header row, hairline row separators, a footer
+// summary bar) without the status semantics that don't apply.
+function TurnstileWidgetsTable({ widgets }: { widgets: TurnstileWidget[] }): JSX.Element {
+  return (
+    <div style={{ border: "1px solid var(--border)", background: "var(--bg-canvas)" }}>
+      <div style={{ overflowX: "auto" }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            borderTop: "1px solid var(--border)",
+            borderBottom: "1px solid var(--border)",
+            background: "var(--surface-1)",
+          }}
+        >
+          <div style={{ width: "35%", flex: "none", padding: "10px 8px" }}>
+            <span style={TABLE_HEADER_LABEL_STYLE}>Name</span>
+          </div>
+          <div style={{ flex: 1, padding: "10px 8px" }}>
+            <span style={TABLE_HEADER_LABEL_STYLE}>Domains</span>
+          </div>
+        </div>
+        <div>
+          {widgets.map((w) => (
+            <div
+              key={w.sitekey}
+              data-testid={`turnstile-row-${w.sitekey}`}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                borderBottom: "1px solid var(--rule-hairline)",
+              }}
+            >
+              <div
+                style={{
+                  width: "35%",
+                  flex: "none",
+                  padding: "8px",
+                  fontFamily: "var(--font-mono)",
+                  fontSize: "var(--text-code-size)",
+                  color: "var(--fg-secondary)",
+                }}
+              >
+                {w.name}
+              </div>
+              <div
+                style={{
+                  flex: 1,
+                  padding: "8px",
+                  fontFamily: "var(--font-mono)",
+                  fontSize: "var(--text-code-size)",
+                  color: "var(--fg-faint)",
+                }}
+              >
+                {w.domains.join(", ")}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div
+        style={{
+          padding: "10px 12px",
+          borderTop: "1px solid var(--border)",
+          background: "var(--surface-1)",
+          fontFamily: "var(--font-mono)",
+          fontSize: "var(--text-label-size)",
+          color: "var(--fg-faint)",
+        }}
+      >
+        {widgets.length} Turnstile widget{widgets.length === 1 ? "" : "s"}
+      </div>
+    </div>
+  );
+}
+
 const CERTIFICATE_COLUMNS: FindingsTableColumn<ZoneCertificate>[] = [
   {
     key: "zone",
@@ -611,19 +702,7 @@ export function SecurityPostureInventory(): JSX.Element {
               : data && data.turnstile_widgets !== null && data.turnstile_widgets.length === 0
               ? <p style={{ color: "var(--fg-muted)" }}>No Turnstile widgets configured.</p>
               : data
-              ? (
-                <ul style={{ margin: 0, paddingLeft: 20 }}>
-                  {data.turnstile_widgets!.map((w) => (
-                    <li
-                      key={w.sitekey}
-                      style={{ fontFamily: "var(--font-mono)", fontSize: "var(--text-code-size)" }}
-                    >
-                      {w.name}{" "}
-                      <span style={{ color: "var(--fg-faint)" }}>· {w.domains.join(", ")}</span>
-                    </li>
-                  ))}
-                </ul>
-              )
+              ? <TurnstileWidgetsTable widgets={data.turnstile_widgets!} />
               : null,
           },
         ]}
