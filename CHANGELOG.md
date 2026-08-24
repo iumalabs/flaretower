@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.15.3](https://github.com/iumalabs/flaretower/compare/v1.15.2...v1.15.3) (2026-08-24)
+
+
+### Bug Fixes
+
+* alerts auto-resolve when their entity recovers to safe ([#486](https://github.com/iumalabs/flaretower/issues/486)) ([536515c](https://github.com/iumalabs/flaretower/commit/536515c848cd70b1ff08b92b1d34b5b54f0d18bb))
+* deep-linking to a non-root route now renders that page, not Overview ([#484](https://github.com/iumalabs/flaretower/issues/484)) ([5d7afb9](https://github.com/iumalabs/flaretower/commit/5d7afb97e97909f9e2acc470427909111db0d745))
+* Turnstile Widgets renders as a styled table, not a bare bullet list ([#490](https://github.com/iumalabs/flaretower/issues/490)) ([fb20df7](https://github.com/iumalabs/flaretower/commit/fb20df7174477b39bd7ce86553a23d0862ee140f))
+* Zero Trust Access Groups humanize geo/email_list/any_valid_service_token ([#489](https://github.com/iumalabs/flaretower/issues/489)) ([4dfdf08](https://github.com/iumalabs/flaretower/commit/4dfdf08f185947bd7b58ebe71049d8f69fce2c3f))
+
 ## [1.15.2](https://github.com/iumalabs/flaretower/compare/v1.15.1...v1.15.2) (2026-08-23)
 
 
