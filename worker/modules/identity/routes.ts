@@ -10,6 +10,20 @@ export const identityRoutes = new Hono<
   { Bindings: Env; Variables: { identity: AccessIdentity } }
 >();
 
+// spec 028 (contracts/session-probe.md) — a thin read-through of the
+// identity accessAuth (mounted ahead of this router in worker/index.ts)
+// already resolved onto the request context. Registered BEFORE the
+// requireRole("admin") middleware below, deliberately: Hono composes
+// middleware/routes in registration order, so a route registered ahead of
+// a later `use("*", ...)` never reaches it — this is the one route in this
+// file every accessAuth'd caller can reach, not just admins. No new
+// validation logic; if accessAuth itself rejected the request, this
+// handler never runs at all (its 403 happens upstream, unchanged).
+identityRoutes.get("/session", (c) => {
+  const identity = c.get("identity");
+  return c.json({ email: identity.email, role: identity.role });
+});
+
 identityRoutes.use("*", requireRole("admin"));
 
 identityRoutes.get("/users", async (c) => {
