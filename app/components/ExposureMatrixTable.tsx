@@ -161,7 +161,7 @@ export function ExposureMatrixTable(
       ? (
         <EmptyState
           heading="No matches"
-          description="No Workers match the current search."
+          description="No Workers match the current search or filter."
         />
       )
       : (

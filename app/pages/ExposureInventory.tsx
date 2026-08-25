@@ -108,6 +108,12 @@ export function ExposureInventory(): JSX.Element {
   const [data, setData] = useState<InventoryResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+  // issue #507 — this used to only scroll the first matching row into view
+  // (data-testid="jump-to-row-*"), while the visually-identical pill on
+  // every other inventory page (DNS/Security Posture/R2-KV-D1/Pages, all
+  // via FindingsTable) actually filters the table. Unified to match: a real
+  // toggleable status filter, combined with the existing search query.
+  const [statusFilter, setStatusFilter] = useState<ExposureStatus | null>(null);
 
   function refetch() {
     fetchInventory()
@@ -129,10 +135,19 @@ export function ExposureInventory(): JSX.Element {
 
   const allRows = useMemo(() => (data ? buildMatrixRows(data) : null), [data]);
   const visibleRows = useMemo(
-    () => allRows ? allRows.filter((r) => matchesQuery(r, query)) : null,
-    [allRows, query],
+    () =>
+      allRows
+        ? allRows.filter((r) =>
+          matchesQuery(r, query) && (!statusFilter || r.overallStatus === statusFilter)
+        )
+        : null,
+    [allRows, query, statusFilter],
   );
 
+  // Counts always reflect the full, unfiltered set (not `visibleRows`) so a
+  // pill's own number never changes just because it — or the search box —
+  // is currently narrowing the table; same convention FindingsTable's
+  // chips use.
   const counts: Record<ExposureStatus, number> = {
     critical: 0,
     warning: 0,
@@ -140,15 +155,6 @@ export function ExposureInventory(): JSX.Element {
     not_evaluated: 0,
   };
   for (const r of allRows ?? []) counts[r.overallStatus]++;
-
-  function jumpTo(status: ExposureStatus) {
-    const target = (allRows ?? []).find((r) => r.overallStatus === status);
-    if (!target) return;
-    document.getElementById(`worker-row-${target.workerName}`)?.scrollIntoView({
-      behavior: "smooth",
-      block: "center",
-    });
-  }
 
   // The single most urgent finding, surfaced above the table (FR-013 in
   // specs/001, unchanged by this feature) — the design system's
@@ -219,34 +225,36 @@ export function ExposureInventory(): JSX.Element {
             minWidth: 180,
           }}
         />
-        {SEVERITY_ORDER.filter((s) => counts[s] > 0).map((s) => (
-          <button
-            key={s}
-            type="button"
-            onClick={() => jumpTo(s)}
-            data-testid={`jump-to-row-${s}`}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 6,
-              border: "1px solid var(--border)",
-              background: "transparent",
-              padding: "5px 9px",
-              cursor: "pointer",
-            }}
-          >
-            <ExposureStatusBadge status={s} />
-            <span
+        {SEVERITY_ORDER.filter((s) => counts[s] > 0).map((s) => {
+          const active = statusFilter === s;
+          return (
+            <button
+              key={s}
+              type="button"
+              onClick={() => setStatusFilter(active ? null : s)}
               style={{
-                fontFamily: "var(--font-mono)",
-                fontSize: "var(--text-label-size)",
-                color: "var(--fg-faint)",
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                border: `1px solid ${active ? "var(--brand-primary)" : "var(--border)"}`,
+                background: active ? "var(--brand-wash)" : "transparent",
+                padding: "5px 9px",
+                cursor: "pointer",
               }}
             >
-              {counts[s]}
-            </span>
-          </button>
-        ))}
+              <ExposureStatusBadge status={s} />
+              <span
+                style={{
+                  fontFamily: "var(--font-mono)",
+                  fontSize: "var(--text-label-size)",
+                  color: "var(--fg-faint)",
+                }}
+              >
+                {counts[s]}
+              </span>
+            </button>
+          );
+        })}
       </div>
 
       <ExposureMatrixTable rows={visibleRows} hasUnfilteredRows={(allRows?.length ?? 0) > 0} />
