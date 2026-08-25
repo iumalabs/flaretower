@@ -7,8 +7,14 @@
 // here — it's parameterized (needs a worker name, not just a key) so it's
 // handled separately by pathForWorkerDetail/workerNameFromPath below, not
 // by this flat key<->path mapping. pathForPage/pageForPath never return it.
+//
+// spec 028 — "landing" shares "/" with "overview" (App.tsx picks between
+// the two at render time based on session state, per research.md §1; this
+// pure function has no auth awareness and always resolves "/" to
+// "overview" — see pageForPath below). "docs" is an ordinary `/${key}` path
+// like any authenticated page key, just reachable without a session.
 export function pathForPage(key: string): string | null {
-  return key === "overview" ? "/" : `/${key}`;
+  return key === "overview" || key === "landing" ? "/" : `/${key}`;
 }
 
 export function pageForPath(pathname: string, validKeys: readonly string[]): string {
