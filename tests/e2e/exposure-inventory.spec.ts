@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./fixtures.ts";
 
 const MOCK_INVENTORY = {
   run_id: "run-1",

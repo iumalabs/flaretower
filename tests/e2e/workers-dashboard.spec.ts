@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./fixtures.ts";
 
 const MOCK_DASHBOARD = {
   generated_at: "2026-08-13T12:00:00Z",

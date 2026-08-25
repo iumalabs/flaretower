@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./fixtures.ts";
 
 async function mockShellEndpoints(page: import("@playwright/test").Page) {
   await page.route("**/api/audit/summary", (route) =>
