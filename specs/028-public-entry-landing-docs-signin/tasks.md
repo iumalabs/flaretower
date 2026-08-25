@@ -48,32 +48,32 @@ config file.
 experience or the existing authenticated dashboard at `/` — this blocks both US1 and US2,
 and the routing extension it lands alongside also carries US3's new `/docs` route.
 
-- [ ] T001 Add `GET /api/identity/session` to `worker/modules/identity/routes.ts` per
+- [x] T001 Add `GET /api/identity/session` to `worker/modules/identity/routes.ts` per
   contracts/session-probe.md — no role requirement (unlike the existing `/users` routes),
   returns `{ email, role }` for the identity `accessAuth` already resolved onto the request
   context; adds no new validation logic.
-- [ ] T002 [P] Unit test for the session-probe route in
+- [x] T002 [P] Unit test for the session-probe route in
   `tests/unit/identity-session-route.test.ts` — asserts the route returns 200 with the
   resolved identity when `accessAuth` succeeds, and that it adds no bypass of `accessAuth`'s
   existing fail-closed behavior.
-- [ ] T003 [P] Add `app/lib/session.ts` — a thin client for `GET /api/identity/session`
+- [x] T003 [P] Add `app/lib/session.ts` — a thin client for `GET /api/identity/session`
   that resolves to either the identity object (200) or `null` (any non-200 outcome:
   network error, non-JSON response, or a fetch that lands on Access's own login page) —
   per research.md §1, callers never need to distinguish *why* it failed, only that it did.
-- [ ] T004 [P] Unit test for `app/lib/session.ts` in `tests/unit/session.test.ts` —
+- [x] T004 [P] Unit test for `app/lib/session.ts` in `tests/unit/session.test.ts` —
   covers the 200 case and at least two distinct non-200 outcomes (403 JSON-less response,
   malformed/non-JSON body) both resolving to `null`.
-- [ ] T005 Extend `app/lib/page-routes.ts` with two new public path keys — `landing` (path
+- [x] T005 Extend `app/lib/page-routes.ts` with two new public path keys — `landing` (path
   `/`, but only relevant when no session is present — see T006) and `docs` (path `/docs`) —
   following the file's existing `pathForPage`/`pageForPath` pattern (see its own comment
   on `worker-detail` for the precedent of a key needing special-case handling).
-- [ ] T006 Update `app/App.tsx`'s boot sequence: call `app/lib/session.ts` once on mount
+- [x] T006 Update `app/App.tsx`'s boot sequence: call `app/lib/session.ts` once on mount
   before deciding what to render at `/`. A resolved identity renders the existing
   authenticated app (unchanged, current behavior). `null` renders the new `LandingPage`
   (T007) instead of the authenticated Overview — this is the one behavioral change this
   task makes to existing boot logic. `/docs` renders `DocumentationPage` (T012)
   unconditionally, regardless of session state (spec.md Edge Cases).
-- [ ] T007 [P] Unit test for the boot-time decision in `tests/unit/page-routes.test.ts`
+- [x] T007 [P] Unit test for the boot-time decision in `tests/unit/page-routes.test.ts`
   (extending the existing suite) — covers: no session + `/` → landing; session + `/` →
   dashboard; `/docs` renders regardless of session state.
 
@@ -92,21 +92,21 @@ with zero account data and zero authentication requirement anywhere on it.
 **Independent Test**: Per spec.md — load `/` with no session, confirm the landing page
 renders with no account-specific data and no request on load requires authentication.
 
-- [ ] T008 [US1] Create `app/pages/LandingPage.tsx` — header (logo, hostname, in-page
+- [x] T008 [US1] Create `app/pages/LandingPage.tsx` — header (logo, hostname, in-page
   anchor links, "Documentation" link to T012's route, "Sign in" button per US2), hero
   (badge, headline, subhead, primary CTA, micro-copy), reusing existing design tokens
   (`--bg-base`, `--brand-primary`, status colors — plan.md Constitution Check notes these
   must be reused, not reinvented) per spec.md User Story 1's exact copy.
-- [ ] T009 [P] [US1] Add the sample exposure-matrix teaser panel to `LandingPage.tsx` (or
+- [x] T009 [P] [US1] Add the sample exposure-matrix teaser panel to `LandingPage.tsx` (or
   a co-located `app/components/ExposureTeaserPanel.tsx` if the row markup is substantial
   enough to warrant its own file) — the 4 fixed sample rows from spec.md, styled like the
   real Exposure table, header clearly labeled "SAMPLE" / "READ-ONLY PREVIEW · NOT YOUR
   ACCOUNT". No API call backs this panel — the rows are hardcoded.
-- [ ] T010 [P] [US1] Add the 3-up feature card grid and the self-hosting section to
+- [x] T010 [P] [US1] Add the 3-up feature card grid and the self-hosting section to
   `LandingPage.tsx`, using the corrected self-hosting copy from research.md §4 (real
   `wrangler`-based deploy steps sourced from `README.md` — not the design mock's fictional
   CLI) and the footer bar.
-- [ ] T011 [US1] Playwright e2e spec `tests/e2e/landing-page.spec.ts` covering
+- [x] T011 [US1] Playwright e2e spec `tests/e2e/landing-page.spec.ts` covering
   quickstart.md Scenario 1 (unauthenticated visitor sees the landing page, sample data is
   clearly labeled, no request requires auth) and Scenario 2 (authenticated visitor sees the
   dashboard instead, never the landing page).
@@ -126,13 +126,13 @@ challenge — plain navigation, no OIDC UI of any kind rendered by this app.
 in" and confirm the browser navigates toward the Access-protected root (not a screen this
 app resolves on its own).
 
-- [ ] T012 [US2] Add the "Sign in" action to `LandingPage.tsx`'s three entry points (header
+- [x] T012 [US2] Add the "Sign in" action to `LandingPage.tsx`'s three entry points (header
   button, hero CTA, teaser-panel "SIGN IN TO SEE YOURS") — each navigates
   (`window.location.assign` or equivalent, not a client-side route change) to the app's own
   root, the path Cloudflare Access is configured to protect (research.md §1/§2). No
   intermediate screen is required by spec.md; if a brief "Redirecting to sign in…" state is
   added per research.md §3, it MUST show no issuer/scopes/callback/protocol-step detail.
-- [ ] T013 [US2] Playwright e2e spec `tests/e2e/sign-in-handoff.spec.ts` covering
+- [x] T013 [US2] Playwright e2e spec `tests/e2e/sign-in-handoff.spec.ts` covering
   quickstart.md Scenario 3 — asserts each of the three "Sign in" entry points triggers a
   real navigation toward the protected root, and (per spec.md Acceptance Scenario 3) that
   any transitional state rendered along the way contains no fabricated protocol detail.
@@ -153,40 +153,40 @@ limits — not the design mock's generic/fictional copy (research.md §4).
 to its section, and confirm deploy/permissions/sign-in content matches this project's real
 current behavior.
 
-- [ ] T014 [US3] Create `app/pages/DocumentationPage.tsx` — sticky header (logo→home,
+- [x] T014 [US3] Create `app/pages/DocumentationPage.tsx` — sticky header (logo→home,
   version, "← BACK" link, "Sign in" button reusing T012's navigation), sticky TOC sidebar,
   and the 9 numbered sections' structural layout (lead paragraph + optional bullets/
   key-value list/code block/callout note per section, per spec.md User Story 3).
-- [ ] T015 [P] [US3] Write the "What FlareTower is" and "How a scan works" sections'
+- [x] T015 [P] [US3] Write the "What FlareTower is" and "How a scan works" sections'
   content (spec.md sections 01 and 05 — accurate largely as transcribed, verify the
   "last scan result" storage claim against the real D1-backed implementation per
   research.md §4 before finalizing wording).
-- [ ] T016 [P] [US3] Write the "Deploy it" section's content, replacing the design mock's
+- [x] T016 [P] [US3] Write the "Deploy it" section's content, replacing the design mock's
   fictional CLI with the real `wrangler`-based steps sourced from `README.md` (spec.md
   section 02, research.md §4) — reuse the same corrected copy as T010's landing-page
   self-hosting section rather than authoring it twice.
-- [ ] T017 [P] [US3] Write the "Sign-in: Cloudflare Access only" section's content (spec.md
+- [x] T017 [P] [US3] Write the "Sign-in: Cloudflare Access only" section's content (spec.md
   section 03) — corrected per spec.md's User Story 2 model: no issuer/callback/scopes
   key-value list; describes Access injecting `Cf-Access-Jwt-Assertion`, validated per
   constitution Principle II.
-- [ ] T018 [P] [US3] Write the "Token scopes the scanner needs" section's content (spec.md
+- [x] T018 [P] [US3] Write the "Token scopes the scanner needs" section's content (spec.md
   section 04) — reconciled against this project's actual current required permissions per
   research.md §4 (including the Account Settings Read / Access: Groups Read / Access:
   Identity Providers Read gaps discovered after original launch), not the design mock's
   original incomplete list.
-- [ ] T019 [P] [US3] Write the "What each screen shows" section's content (spec.md section
+- [x] T019 [P] [US3] Write the "What each screen shows" section's content (spec.md section
   06) — sourced directly from `app/nav-items.ts`'s current `NAV_ITEMS` labels and tooltip
   descriptions (research.md §4), covering all 10 current nav entries including Token Tools.
-- [ ] T020 [P] [US3] Write the "Status vocabulary" section's content (spec.md section 07) —
+- [x] T020 [P] [US3] Write the "Status vocabulary" section's content (spec.md section 07) —
   wording reconciled against the actual badge labels used in the implemented UI.
-- [ ] T021 [US3] Verify whether Security Posture (`worker/modules/security/`) has a
+- [x] T021 [US3] Verify whether Security Posture (`worker/modules/security/`) has a
   user-editable baseline file matching the design mock's description; write "The baseline
   file" section's content (spec.md section 08) to describe whatever mechanism actually
   exists, rewriting it from scratch if no such file exists (research.md §4).
-- [ ] T022 [P] [US3] Write the "Limits and retention" section's content (spec.md section
+- [x] T022 [P] [US3] Write the "Limits and retention" section's content (spec.md section
   09) — real retention window and re-scan cadence per specs 007/019/024, dropping the
   design mock's placeholder numbers and the fictional CLI flag reference.
-- [ ] T023 [US3] Playwright e2e spec `tests/e2e/documentation-page.spec.ts` covering
+- [x] T023 [US3] Playwright e2e spec `tests/e2e/documentation-page.spec.ts` covering
   quickstart.md Scenarios 4 and 5 — TOC navigation, public reachability with no session,
   and the landing↔docs round trip via header/footer links.
 
@@ -197,10 +197,10 @@ final polish.
 
 ## Phase 6: Polish & Cross-Cutting Concerns
 
-- [ ] T024 Update `README.md` with the required Cloudflare Access Application path-scoping
+- [x] T024 Update `README.md` with the required Cloudflare Access Application path-scoping
   step (research.md §2) — documented the same way Principle VII's existing Preview-URLs
   step already is: prominent, required, manual, not automatable via Wrangler config.
-- [ ] T025 Run `deno fmt`, `deno lint`, `deno test`, and the full Playwright suite
+- [x] T025 Run `deno fmt`, `deno lint`, `deno test`, and the full Playwright suite
   end-to-end (per this project's "always run the complete suite before every push"
   convention) before opening the PR.
 - [ ] T026 Manually verify quickstart.md's five scenarios against a deployed preview or
