@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.15.5](https://github.com/iumalabs/flaretower/compare/v1.15.4...v1.15.5) (2026-08-25)
+
+
+### Bug Fixes
+
+* CRITICAL — Overview's finding action button no longer silently acknowledges ([#499](https://github.com/iumalabs/flaretower/issues/499)) ([510b876](https://github.com/iumalabs/flaretower/commit/510b876f4bff883cfa76be99ae4a0d2549ef897a))
+* dnsRecordKey() uses a plain space separator, not literal NUL bytes ([#494](https://github.com/iumalabs/flaretower/issues/494)) ([d536d8a](https://github.com/iumalabs/flaretower/commit/d536d8a7890fde6bd663d1a3bf1a6f353356e6ef))
+
 ## [1.15.4](https://github.com/iumalabs/flaretower/compare/v1.15.3...v1.15.4) (2026-08-24)
 
 
