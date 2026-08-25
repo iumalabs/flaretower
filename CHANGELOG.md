@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.15.4](https://github.com/iumalabs/flaretower/compare/v1.15.3...v1.15.4) (2026-08-24)
+
+
+### Bug Fixes
+
+* DNS records — long record names truncate instead of overflowing ([#491](https://github.com/iumalabs/flaretower/issues/491)) ([d9ace67](https://github.com/iumalabs/flaretower/commit/d9ace670b0fc97bc81d89a272347fdd76f84d4be))
+* route previous-status/open-alert reads through a first-primary D1 session ([#492](https://github.com/iumalabs/flaretower/issues/492)) ([8719f4b](https://github.com/iumalabs/flaretower/commit/8719f4bb7cea2c931ebecdd8177ed9a63ad7a8ab))
+
 ## [1.15.3](https://github.com/iumalabs/flaretower/compare/v1.15.2...v1.15.3) (2026-08-24)
 
 
