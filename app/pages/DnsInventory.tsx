@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { JSX } from "react";
-import { type ExposureStatus } from "../components/ExposureStatusBadge.tsx";
+import { type ExposureStatus, ExposureStatusBadge } from "../components/ExposureStatusBadge.tsx";
 import {
   FindingsTable,
   type FindingsTableColumn,
@@ -44,9 +44,16 @@ interface DnsInventoryResponse {
   zone_summaries: ZoneSummary[];
   selected_zone: string | null;
   critical_finding: { record_name: string; reason: string } | null;
+  // issue #504 — summed across the whole selected zone (worker/modules/
+  // dns/routes.ts), not just the current page, so it stays accurate once a
+  // zone paginates and FindingsTable's own page-local chip counts would be
+  // wrong.
+  status_counts: Record<ExposureStatus, number>;
   records: DnsRecordFinding[];
   records_pagination: PaginationEnvelope;
 }
+
+const STATUS_ORDER: ExposureStatus[] = ["critical", "warning", "safe", "not_evaluated"];
 
 interface FlatFinding {
   zone_name: string;
@@ -431,6 +438,45 @@ export function DnsInventory(): JSX.Element {
               </button>
             );
           })}
+        </div>
+      )}
+
+      {
+        /* issue #504 — FindingsTable hides its own (interactive, page-local)
+          status chips once the zone paginates, since their counts would
+          only reflect the current page. This is a read-only stand-in for
+          that same visual slot, sourced from the whole-zone status_counts
+          the backend now computes — restores the at-a-glance counts without
+          claiming to filter across pages, which isn't supported. */
+      }
+      {data && data.records_pagination.total_pages > 1 && (
+        <div style={{ display: "flex", gap: 8, padding: "10px 0", flexWrap: "wrap" }}>
+          {STATUS_ORDER.filter((s) =>
+            data.status_counts[s] > 0
+          ).map((s) => (
+            <div
+              key={s}
+              data-testid={`zone-status-count-${s}`}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                border: "1px solid var(--border)",
+                padding: "5px 9px",
+              }}
+            >
+              <ExposureStatusBadge status={s} />
+              <span
+                style={{
+                  fontFamily: "var(--font-mono)",
+                  fontSize: "var(--text-label-size)",
+                  color: "var(--fg-faint)",
+                }}
+              >
+                {data.status_counts[s]}
+              </span>
+            </div>
+          ))}
         </div>
       )}
 
