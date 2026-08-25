@@ -206,9 +206,17 @@ function formatPct(n: number | null): string {
 }
 
 function RecentChangesPanel(
-  { changes, unavailableReason }: {
+  { changes, unavailableReason, highlighted }: {
     changes: RecentChange[] | null;
     unavailableReason: string | null;
+    // issue #496 — the header's RECENT ACTIVITY control's only effect used
+    // to be scrollIntoView(), which is a no-op with nothing to see when
+    // this panel is already inside the viewport (true on most real desktop
+    // screens, since the page doesn't scroll much) — indistinguishable
+    // from a dead button. A brief border flash, independent of whether any
+    // scrolling actually happened, gives the click a visible effect every
+    // time.
+    highlighted: boolean;
   },
 ): JSX.Element {
   return (
@@ -217,10 +225,11 @@ function RecentChangesPanel(
       style={{
         width: 300,
         flex: "none",
-        border: "1px solid var(--border)",
+        border: `1px solid ${highlighted ? "var(--brand-primary)" : "var(--border)"}`,
         background: "var(--bg-canvas)",
         display: "flex",
         flexDirection: "column",
+        transition: "border-color 0.2s ease-out",
       }}
     >
       <div
@@ -301,6 +310,17 @@ export function WorkersDashboardPage(
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [envFilter, setEnvFilter] = useState<EnvFilter>("all");
+  // issue #496 — see RecentChangesPanel's `highlighted` prop.
+  const [highlightRecentChanges, setHighlightRecentChanges] = useState(false);
+
+  function handleRecentActivityClick() {
+    document.getElementById("recent-changes-panel")?.scrollIntoView({
+      behavior: "smooth",
+      block: "center",
+    });
+    setHighlightRecentChanges(true);
+    setTimeout(() => setHighlightRecentChanges(false), 900);
+  }
 
   useEffect(() => {
     fetchDashboard({ page, sortKey, sortDir })
@@ -433,11 +453,7 @@ export function WorkersDashboardPage(
           </select>
           <button
             type="button"
-            onClick={() =>
-              document.getElementById("recent-changes-panel")?.scrollIntoView({
-                behavior: "smooth",
-                block: "center",
-              })}
+            onClick={handleRecentActivityClick}
             style={{
               fontFamily: "var(--font-mono)",
               fontSize: "var(--text-code-size)",
@@ -518,6 +534,7 @@ export function WorkersDashboardPage(
           changes={data ? data.recent_changes : null}
           unavailableReason={data?.unavailable.find((u) => u.source === "audit_log")?.error ??
             null}
+          highlighted={highlightRecentChanges}
         />
       </div>
     </div>

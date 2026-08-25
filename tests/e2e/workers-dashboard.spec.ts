@@ -585,6 +585,31 @@ test("US2 — the recent-activity control brings the Recent changes panel into v
   await expect(page.locator("#recent-changes-panel")).toBeInViewport();
 });
 
+// issue #496 — scrollIntoView() alone is a no-op with nothing to see when
+// the panel is already inside the viewport, which is true on most real
+// desktop screens (confirmed live: reported as a dead/unwired button).
+// This asserts the click always has a visible effect, independent of
+// whether any scrolling actually happened.
+test("issue #496 — the recent-activity control flashes the panel's border, a visible effect even when nothing needs to scroll", async ({ page }) => {
+  await page.route("**/api/workers/dashboard*", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(MOCK_DASHBOARD),
+    }));
+  await page.goto("/");
+  await page.getByRole("button", { name: "Workers" }).click();
+
+  const panel = page.locator("#recent-changes-panel");
+  const restingBorderColor = await panel.evaluate((el) => getComputedStyle(el).borderColor);
+
+  await page.getByRole("button", { name: "RECENT ACTIVITY" }).click();
+  await expect(panel).not.toHaveCSS("border-color", restingBorderColor);
+
+  // And it's genuinely temporary, not a stuck-on state.
+  await expect(panel).toHaveCSS("border-color", restingBorderColor, { timeout: 2000 });
+});
+
 // Regression (issue #432): panel headings are body text at weight 600, not
 // the small mono/uppercase label style meant for table column headers.
 test("US2 — the Recent changes panel heading uses plain Sans text, not mono/uppercase", async ({ page }) => {
