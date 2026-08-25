@@ -271,9 +271,30 @@ test("US2 — action controls reflect the row's actual finding; the only real ac
 
 // ---- User Story 3 — navigation, search, re-scan ----
 
-test("US3 — clicking a severity count scrolls the matching row into view", async ({ page }) => {
-  await page.getByTestId("jump-to-row-critical").click();
-  await expect(row(page, "billing-api")).toBeInViewport();
+// issue #507 — this pill used to only scroll the first matching row into
+// view; every other inventory page's identical-looking pill actually
+// filters. Unified to match: toggling it narrows the table, clicking again
+// restores every row.
+test("issue #507 — clicking a severity count filters the table to that status, toggling off restores it", async ({ page }) => {
+  await page.getByRole("button", { name: /CRITICAL 1/ }).click();
+  await expect(row(page, "billing-api")).toBeVisible();
+  await expect(row(page, "status-page")).toHaveCount(0);
+  await expect(row(page, "docs-site")).toHaveCount(0);
+  await expect(row(page, "queue-worker")).toHaveCount(0);
+
+  await page.getByRole("button", { name: /CRITICAL 1/ }).click();
+  await expect(row(page, "status-page")).toBeVisible();
+  await expect(row(page, "docs-site")).toBeVisible();
+  await expect(row(page, "queue-worker")).toBeVisible();
+});
+
+test("issue #507 — a status filter combines with the search query, not replaces it", async ({ page }) => {
+  await page.getByPlaceholder("filter workers…").fill("docs");
+  await page.getByRole("button", { name: /PROTECTED 1/ }).click();
+  await expect(row(page, "docs-site")).toBeVisible();
+
+  await page.getByPlaceholder("filter workers…").fill("billing");
+  await expect(page.getByText("No matches")).toBeVisible();
 });
 
 test("US3 — the search box narrows the table to matching Workers, no reload", async ({ page }) => {
