@@ -19,6 +19,7 @@ interface FindingRecord {
   content: string;
   proxy_capable: number;
   proxied: number | null;
+  ttl: number | null;
   status: string;
   reason: string;
   evaluated_at: string;
@@ -43,6 +44,7 @@ function createMockD1(): D1Database {
             content,
             proxy_capable,
             proxied,
+            ttl,
             status,
             reason,
             evaluated_at,
@@ -55,6 +57,7 @@ function createMockD1(): D1Database {
             string,
             string,
             number,
+            number | null,
             number | null,
             string,
             string,
@@ -69,6 +72,7 @@ function createMockD1(): D1Database {
             content,
             proxy_capable,
             proxied,
+            ttl,
             status,
             reason,
             evaluated_at,
@@ -324,6 +328,65 @@ Deno.test("GET /inventory - the zone query param selects which zone's records ar
   assertEquals(body.records.length, 1);
   assertEquals(body.records[0].record_name, "a.full.example.com");
   assertEquals(body.records_pagination, { page: 1, page_size: 1, total: 2, total_pages: 2 });
+});
+
+Deno.test("GET /inventory - issue #504: status_counts reflects the whole zone, not just the current page", async () => {
+  const db = createMockD1();
+  const env = { DB: db, CF_ACCOUNT_ID: "acct-1", CF_API_TOKEN: "fake-token" };
+
+  await withMockFetch(
+    [
+      ["/zones", () =>
+        jsonResponse({
+          success: true,
+          result: [{ id: "zone-1", name: "full.example.com" }],
+          errors: [],
+        })],
+      ["/zones/zone-1/dns_records", () =>
+        jsonResponse({
+          success: true,
+          result: [
+            {
+              name: "safe.full.example.com",
+              type: "A",
+              content: "1.1.1.1",
+              proxiable: true,
+              proxied: true,
+            },
+            {
+              name: "warning.full.example.com",
+              type: "A",
+              content: "2.2.2.2",
+              proxiable: true,
+              proxied: false,
+            },
+          ],
+          errors: [],
+        })],
+      [
+        "/security-center/insights",
+        () => jsonResponse({ success: true, result: { issues: [] }, errors: [] }),
+      ],
+    ],
+    () => runDnsEvaluation(env, "interactive"),
+  );
+
+  const app = new Hono<{ Bindings: { DB: D1Database } }>();
+  app.route("/", dnsRoutes);
+  // page_size=1 forces pagination — `records` on this page is just 1 row,
+  // but status_counts must still reflect both of the zone's real records.
+  const res = await app.request("/inventory?zone=full.example.com&sort_key=name&page_size=1", {}, {
+    DB: db,
+  });
+
+  assertEquals(res.status, 200);
+  const body = await res.json() as {
+    records: unknown[];
+    status_counts: Record<string, number>;
+  };
+
+  assertEquals(body.records.length, 1);
+  assertEquals(body.status_counts, { critical: 0, warning: 1, safe: 1, not_evaluated: 0 });
 });
 
 Deno.test("GET /inventory - an invalid page_size returns 400, not a silent fallback", async () => {

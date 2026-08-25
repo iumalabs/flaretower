@@ -148,6 +148,15 @@ function mockDnsResponse(zones: MockZone[], url: URL) {
 
   const critical = zoneRecords.find((r) => r.status === "critical") ?? null;
 
+  // issue #504 — summed across the whole selected zone (matches worker/
+  // modules/dns/routes.ts's real buildDnsInventoryResponse), not just
+  // `pageRecords` — the frontend relies on this staying accurate once a
+  // zone paginates.
+  const statusCounts = { critical: 0, warning: 0, safe: 0, not_evaluated: 0 };
+  for (const r of zoneRecords) {
+    statusCounts[r.status as keyof typeof statusCounts]++;
+  }
+
   return {
     run_id: "run-1",
     evaluated_at: "2026-08-07T12:00:00Z",
@@ -158,6 +167,7 @@ function mockDnsResponse(zones: MockZone[], url: URL) {
     critical_finding: critical
       ? { record_name: critical.record_name, reason: critical.reason }
       : null,
+    status_counts: statusCounts,
     records: pageRecords,
     records_pagination: {
       page,
@@ -460,6 +470,64 @@ test("specs/020 US2 — a zone's records paginate: page footer, next/prev, bound
   await page.getByTestId("pagination-next").click();
   await expect(row(page, "big.example", "A", "r2.big.example", "10.0.0.2")).toBeVisible();
   await expect(page.getByTestId("pagination-status")).toHaveText("5 total · page 2 of 3");
+});
+
+test("issue #504 — a paginated zone still shows accurate status counts, summed across the whole zone", async ({ page }) => {
+  const bigZone: MockZone = {
+    zone_name: "big.example",
+    records: [
+      ...Array.from({ length: 3 }, (_, i) => ({
+        record_name: `warn${i}.big.example`,
+        type: "A",
+        content: `10.0.0.${i}`,
+        proxy_capable: true,
+        proxied: false,
+        ttl: 300,
+        is_platform_target: false,
+        status: "warning" as const,
+        reason: "DNS-only — bypasses Cloudflare protection",
+      })),
+      {
+        record_name: "safe.big.example",
+        type: "A",
+        content: "10.0.0.9",
+        proxy_capable: true,
+        proxied: true,
+        ttl: 300,
+        is_platform_target: false,
+        status: "safe" as const,
+        reason: "proxied through Cloudflare",
+      },
+    ],
+  };
+  await page.unroute("**/api/dns/inventory*");
+  await page.route("**/api/dns/inventory*", (route) => {
+    const url = new URL(route.request().url());
+    const body = mockDnsResponse([bigZone], url);
+    // Force pagination with a page size smaller than the fixture's own
+    // 4 records, without a real backend page_size round-trip in this test.
+    const pageSize = 2;
+    const page_ = Number(url.searchParams.get("page") ?? "1");
+    const start = (page_ - 1) * pageSize;
+    body.records = bigZone.records.slice(start, start + pageSize) as typeof body.records;
+    body.records_pagination = {
+      page: page_,
+      page_size: pageSize,
+      total: bigZone.records.length,
+      total_pages: Math.ceil(bigZone.records.length / pageSize),
+    };
+    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: "DNS" }).click();
+
+  // Only 2 of the 4 records are on this page (1 warning + 1 safe), but the
+  // badge row must reflect the whole zone (3 warning + 1 safe) — the whole
+  // point of sourcing it from the backend's whole-zone status_counts
+  // instead of FindingsTable's own (hidden-under-pagination) page-local
+  // chips.
+  await expect(page.getByTestId("zone-status-count-warning")).toHaveText("WARNING3");
+  await expect(page.getByTestId("zone-status-count-safe")).toHaveText("PROTECTED1");
 });
 
 test("specs/020 US2 — switching zones resets to page 1", async ({ page }) => {
