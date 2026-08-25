@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.15.7](https://github.com/iumalabs/flaretower/compare/v1.15.6...v1.15.7) (2026-08-25)
+
+
+### Bug Fixes
+
+* Exposure status pills actually filter, matching every other page ([#509](https://github.com/iumalabs/flaretower/issues/509)) ([29ed688](https://github.com/iumalabs/flaretower/commit/29ed68810977b3ab2b9744faff2fcc9b8d700c98))
+* move version/self-hosted text under the logo, out of the footer ([#505](https://github.com/iumalabs/flaretower/issues/505)) ([7285012](https://github.com/iumalabs/flaretower/commit/7285012a67411da78e5fae553384e81a9a0f66a0))
+
 ## [1.15.6](https://github.com/iumalabs/flaretower/compare/v1.15.5...v1.15.6) (2026-08-25)
 
 
