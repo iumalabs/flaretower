@@ -12,12 +12,16 @@ interface SidebarProps {
   activeKey: string;
   onSelect: (key: string) => void;
   badges?: readonly SidebarBadge[];
+  // `version` renders under the logo in the header, not the footer — moved
+  // there so it's visible without scrolling on a tall nav list. `account`
+  // still renders in the footer block at the bottom.
   footer?: { account?: string; version?: string };
 }
 
 // The 214px left sidebar (docs/design.zip's reference screens 05/06/07 all
-// share this exact pattern) — logo header, nav items with active-state
-// edge bar + background tint, optional numeric badges, and a footer block.
+// share this exact pattern) — logo header (+ version), nav items with
+// active-state edge bar + background tint, optional numeric badges, and an
+// optional account footer block.
 export function Sidebar(
   { items, activeKey, onSelect, badges = [], footer }: SidebarProps,
 ): JSX.Element {
@@ -53,13 +57,24 @@ export function Sidebar(
       <div
         style={{
           display: "flex",
-          alignItems: "center",
-          gap: 10,
+          flexDirection: "column",
+          gap: 6,
           padding: "18px",
           borderBottom: "1px solid var(--border)",
         }}
       >
         <Logo variant="lockup" theme="dark" size={24} />
+        {footer?.version && (
+          <div
+            style={{
+              fontFamily: "var(--font-mono)",
+              fontSize: "var(--text-meta-size)",
+              color: "var(--fg-faint)",
+            }}
+          >
+            {footer.version}
+          </div>
+        )}
       </div>
 
       <nav style={{ padding: "14px 10px", display: "flex", flexDirection: "column", gap: 2 }}>
@@ -207,39 +222,23 @@ export function Sidebar(
         })}
       </nav>
 
-      {(footer?.account || footer?.version) && (
+      {footer?.account && (
         <div
           style={{
             marginTop: "auto",
             padding: 14,
             borderTop: "1px solid var(--border)",
-            display: "flex",
-            flexDirection: "column",
-            gap: 6,
           }}
         >
-          {footer.account && (
-            <div
-              style={{
-                fontFamily: "var(--font-mono)",
-                fontSize: "var(--text-meta-size)",
-                color: "var(--fg-faint)",
-              }}
-            >
-              {footer.account}
-            </div>
-          )}
-          {footer.version && (
-            <div
-              style={{
-                fontFamily: "var(--font-mono)",
-                fontSize: "var(--text-meta-size)",
-                color: "var(--fg-faint)",
-              }}
-            >
-              {footer.version}
-            </div>
-          )}
+          <div
+            style={{
+              fontFamily: "var(--font-mono)",
+              fontSize: "var(--text-meta-size)",
+              color: "var(--fg-faint)",
+            }}
+          >
+            {footer.account}
+          </div>
         </div>
       )}
     </div>
