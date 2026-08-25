@@ -285,6 +285,38 @@ After the first deploy:
 Skipping this step leaves preview builds of FlareTower itself — a tool that holds a credential
 capable of reading (and eventually writing) the entire Cloudflare account — publicly reachable.
 
+## ⚠️ Required manual step (spec 028): exclude the public pages from Access
+
+Since [`specs/028-public-entry-landing-docs-signin/`](specs/028-public-entry-landing-docs-signin/),
+FlareTower has a public landing page and documentation page (`/` for a signed-out visitor, `/docs`
+unconditionally) that must be reachable **without** an Access session — that's the whole point of a
+public entry point. A Cloudflare Access Application protects or excludes a path entirely; there is
+no per-request "protect this path except for these two" mode, so this narrowing has to be done by
+hand, the same way
+[restricting Preview URLs](#-required-manual-post-deploy-step-restrict-preview-urls) above does.
+Wrangler cannot automate this step either.
+
+After the first deploy with this feature:
+
+1. Cloudflare dashboard → **Zero Trust** → **Access** → **Applications** → the application
+   protecting FlareTower's own hostname → **Edit**.
+2. Under its path rules, add **Exclude** entries for:
+   - `/` (exact — do **not** exclude a wildcard like `/*`, or every authenticated route stops being
+     protected)
+   - `/docs`
+   - any static asset paths the public pages themselves load (fonts, the favicon, the bundled JS/CSS
+     — check the Network tab on a signed-out load of `/` for anything still returning a Cloudflare
+     Access challenge page instead of its real content)
+3. Leave every other path (`/workers`, `/exposure`, `/dns`, `/api/*`, etc.) under the application's
+   existing coverage, unchanged — those still need to challenge a signed-out visitor, and
+   `/api/identity/session` specifically still needs to resolve to a real identity for an
+   already-signed-in visitor for the landing/dashboard split to work at all (see
+   [`specs/028-public-entry-landing-docs-signin/contracts/session-probe.md`](specs/028-public-entry-landing-docs-signin/contracts/session-probe.md)).
+
+Skipping this step doesn't break anything for an already-authenticated operator, but it means a
+signed-out visitor hits Access's own challenge page at `/` instead of ever seeing FlareTower's
+landing page — the feature this spec adds simply won't be reachable.
+
 ## Deployment
 
 Native Cloudflare ↔ GitHub integration (Workers Builds). No custom CI pipeline for deploys; GitHub
