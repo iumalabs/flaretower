@@ -11,8 +11,11 @@ import { AuditInventory } from "./pages/AuditInventory.tsx";
 import { OverviewPage } from "./pages/OverviewPage.tsx";
 import { TokenToolsPage } from "./pages/TokenToolsPage.tsx";
 import { WorkerDetailPage } from "./pages/WorkerDetailPage.tsx";
+import { LandingPage } from "./pages/LandingPage.tsx";
+import { DocumentationPage } from "./pages/DocumentationPage.tsx";
 import { Sidebar } from "./components/Sidebar.tsx";
 import { PageErrorBoundary } from "./components/PageErrorBoundary.tsx";
+import { Logo } from "./components/Logo.tsx";
 import { NAV_ITEMS } from "./nav-items.ts";
 import {
   type AuditSummaryModuleEntry,
@@ -24,6 +27,7 @@ import {
   pathForWorkerDetail,
   workerNameFromPath,
 } from "./lib/page-routes.ts";
+import { fetchSession, type SessionIdentity } from "./lib/session.ts";
 
 const PAGES = [
   // onNavigateToAudit/onNavigateToModule are no-ops here — this entry's
@@ -69,25 +73,57 @@ const PAGES = [
 
 // "worker-detail" is deliberately not a PAGES entry (it has no sidebar nav
 // item and no render() to fall back to) — always reached via the explicit
-// special-case below, never via `active.render()`.
-type PageKey = typeof PAGES[number]["key"] | "worker-detail";
+// special-case below, never via `active.render()`. spec 028 — "docs" is the
+// same: no sidebar item, no render() placeholder, always reached via its
+// own top-level special-case in the return statement below (it doesn't
+// render inside the authenticated Sidebar+content shell at all). There's
+// no separate "landing" page key — the landing page and the authenticated
+// Overview dashboard are two different things page==="overview" can render,
+// picked by session state, not two different `page` values.
+type PageKey = typeof PAGES[number]["key"] | "worker-detail" | "docs";
 
 const NAV_KEYS = NAV_ITEMS.map((item) => item.key);
+
+// spec 028 — "docs" is a real, public page-routes.ts key (see its own
+// comment on "landing"/"docs"), included here so pageForPath()/popstate
+// resolve /docs correctly instead of falling back to overview. "landing"
+// is deliberately NOT in this list — it shares "/" with "overview" at the
+// path level, and which of the two actually renders is a session-state
+// decision made below, not a pathname-parsing one.
+const ROUTABLE_KEYS = [...NAV_KEYS, "docs"];
 
 // issue #495 — a full page load on /workers/<name> must land directly on
 // that worker's detail page (with the right worker selected), not fall
 // back to Overview the way a bare, unresolvable path already correctly
 // does since #480. Checked before the generic pageForPath() resolution
-// since /workers/<name> isn't one of NAV_KEYS' flat page keys.
+// since /workers/<name> isn't one of ROUTABLE_KEYS' flat page keys.
 function resolvePageFromLocation(): { page: PageKey; workerName: string | null } {
   const workerName = workerNameFromPath(globalThis.location.pathname);
   if (workerName) {
     return { page: "worker-detail", workerName };
   }
   return {
-    page: pageForPath(globalThis.location.pathname, NAV_KEYS) as PageKey,
+    page: pageForPath(globalThis.location.pathname, ROUTABLE_KEYS) as PageKey,
     workerName: null,
   };
+}
+
+// spec 028 (research.md §1/§2) — "/" itself becomes Access-public once
+// this feature ships (excluded from the Access Application's protected-
+// path coverage — see README.md's required manual deploy step), so it can
+// no longer be the path "Sign in" targets: Access never even sees a
+// request to an excluded path, authenticated or not, so nothing would
+// challenge a signed-out visitor who's carried back to "/" — they'd just
+// see the landing page again. "/workers" stays fully Access-protected
+// exactly as every other dashboard route does today (spec.md Assumptions),
+// making it a stable, always-real trigger for Access's actual challenge —
+// once that completes, the browser lands on /workers with a valid session,
+// and the SPA's own session probe + #480's deep-link resolution render the
+// Workers dashboard directly.
+const SIGN_IN_PATH = "/workers";
+
+function handleSignIn() {
+  globalThis.location.assign(SIGN_IN_PATH);
 }
 
 async function fetchModuleBadges(): Promise<AuditSummaryModuleEntry[]> {
@@ -125,6 +161,16 @@ export function App(): JSX.Element {
   const [page, setPage] = useState<PageKey>(() => resolvePageFromLocation().page);
   const [badges, setBadges] = useState<{ key: string; count: number }[]>([]);
   const active = PAGES.find((p) => p.key === page) ?? PAGES[0];
+
+  // spec 028 — undefined: the session probe hasn't resolved yet (the one
+  // window where "/" can't yet be shown as either the landing page or the
+  // authenticated dashboard without risking a flash of the wrong one).
+  // null: confirmed no session. An identity object: authenticated.
+  const [session, setSession] = useState<SessionIdentity | null | undefined>(undefined);
+
+  useEffect(() => {
+    fetchSession().then(setSession);
+  }, []);
 
   // Keeps the URL in sync with in-app navigation (sidebar clicks, the
   // Overview "N more" link) so a refresh/bookmark taken from that URL later
@@ -201,6 +247,12 @@ export function App(): JSX.Element {
   }
 
   useEffect(() => {
+    // spec 028 (SC-005) — these two badge fetches hit Access-protected
+    // /api/* endpoints; skip them entirely until the session probe has
+    // confirmed an actual identity, rather than firing them unconditionally
+    // on mount and letting them 403 for a signed-out landing-page visitor.
+    if (!session) return;
+
     // Both badge sources merge via functional updates (each replacing only
     // its own keys) rather than either setBadges() call overwriting the
     // other outright — the two fetches race, and a plain replacement would
@@ -229,7 +281,44 @@ export function App(): JSX.Element {
       // Same resilient-degradation convention as fetchModuleBadges above —
       // advisory, not load-bearing.
       .catch(() => {});
-  }, []);
+  }, [session]);
+
+  // spec 028 — the one new top-level fork: /docs is public and has no
+  // Sidebar/authenticated shell of its own, reachable regardless of
+  // session state (spec.md Edge Cases), so it's handled before anything
+  // shell-related below.
+  if (page === "docs") {
+    return (
+      <DocumentationPage
+        onSignIn={handleSignIn}
+        onBack={() => navigate("overview")}
+      />
+    );
+  }
+
+  if (page === "overview") {
+    // The one window where "/" can't yet be shown as either the landing
+    // page or the authenticated dashboard without risking a flash of the
+    // wrong one — session is still resolving.
+    if (session === undefined) {
+      return (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            minHeight: "100vh",
+            background: "var(--bg-base)",
+          }}
+        >
+          <Logo variant="mono" size={32} />
+        </div>
+      );
+    }
+    if (session === null) {
+      return <LandingPage onSignIn={handleSignIn} onNavigateToDocs={() => navigate("docs")} />;
+    }
+  }
 
   return (
     <div style={{ display: "flex" }}>

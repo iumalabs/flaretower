@@ -111,6 +111,33 @@ const ROWS: UserRow[] = [
   },
 ];
 
+// spec 028 — GET /session is the one identityRoutes route reachable by any
+// accessAuth'd caller, not just admins (contracts/session-probe.md).
+Deno.test("GET /session - returns the caller's own identity for a member (not just admin)", async () => {
+  const request = appAs(MEMBER, createMockD1(ROWS).db);
+  const res = await request("/session");
+
+  assertEquals(res.status, 200);
+  const body = await res.json();
+  assertEquals(body, { email: MEMBER.email, role: MEMBER.role });
+});
+
+Deno.test("GET /session - returns the caller's own identity for an admin", async () => {
+  const request = appAs(ADMIN, createMockD1(ROWS).db);
+  const res = await request("/session");
+
+  assertEquals(res.status, 200);
+  const body = await res.json();
+  assertEquals(body, { email: ADMIN.email, role: ADMIN.role });
+});
+
+Deno.test("GET /session - adds no bypass of requireRole('admin') for the other identity routes", async () => {
+  const request = appAs(MEMBER, createMockD1(ROWS).db);
+  const res = await request("/users");
+
+  assertEquals(res.status, 403);
+});
+
 Deno.test("GET /users - returns the roster for an admin caller", async () => {
   const request = appAs(ADMIN, createMockD1(ROWS).db);
   const res = await request("/users");

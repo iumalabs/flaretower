@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./fixtures.ts";
 
 // Issue #480 — a full page load on a non-root route (typed URL, bookmark,
 // refresh) must render that route's page, not silently fall back to

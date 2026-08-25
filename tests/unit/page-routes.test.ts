@@ -69,3 +69,20 @@ Deno.test("workerNameFromPath - round-trips with pathForWorkerDetail", () => {
   const path = pathForWorkerDetail("cf-deployments-cleaner");
   assertEquals(workerNameFromPath(path), "cf-deployments-cleaner");
 });
+
+// spec 028 — "landing" shares "/" with "overview"; App.tsx (not this pure
+// module) decides which of the two actually renders, based on session
+// state resolved asynchronously after mount (verified by
+// tests/e2e/landing-page.spec.ts, not here — this module has no auth
+// awareness to unit-test).
+Deno.test("pathForPage - landing also maps to root, same as overview", () => {
+  assertEquals(pathForPage("landing"), "/");
+});
+
+Deno.test("pathForPage - docs maps to /docs like any other page key", () => {
+  assertEquals(pathForPage("docs"), "/docs");
+});
+
+Deno.test("pageForPath - /docs resolves to the docs key when it's a valid key", () => {
+  assertEquals(pageForPath("/docs", [...VALID_KEYS, "docs"]), "docs");
+});

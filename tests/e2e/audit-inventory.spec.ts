@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./fixtures.ts";
 
 const MOCK_AUDIT_LOG = {
   since: "2026-08-06T12:00:00Z",

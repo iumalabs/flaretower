@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./fixtures.ts";
 
 // Acknowledging an alert is the one in-app mutating action in the product
 // today, and the unified inbox (Audit & Drift) is the only screen that ever
