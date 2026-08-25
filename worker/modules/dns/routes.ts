@@ -297,6 +297,17 @@ export function buildDnsInventoryResponse(
   // record that's simply on a different page).
   const criticalFinding = outRecords.find((r) => r.status === "critical") ?? null;
 
+  // issue #504 — the frontend's own status-count badge row (FindingsTable's
+  // chips) only ever sums the current page's rows, so it's deliberately
+  // hidden once a zone is paginated (a chip reading "12 critical" would be
+  // wrong the moment there's a second page). Computed here across the whole
+  // selected zone instead, the same way criticalFinding already is, so the
+  // frontend has an accurate count to show even when paginated.
+  const statusCounts = { critical: 0, warning: 0, safe: 0, not_evaluated: 0 };
+  for (const r of outRecords) {
+    statusCounts[r.status as keyof typeof statusCounts]++;
+  }
+
   return {
     run_id: runId,
     evaluated_at: evaluatedAt,
@@ -307,6 +318,7 @@ export function buildDnsInventoryResponse(
     critical_finding: criticalFinding
       ? { record_name: criticalFinding.record_name, reason: criticalFinding.reason }
       : null,
+    status_counts: statusCounts,
     records,
     records_pagination: pagination,
   };
