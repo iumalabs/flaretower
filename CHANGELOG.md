@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.15.6](https://github.com/iumalabs/flaretower/compare/v1.15.5...v1.15.6) (2026-08-25)
+
+
+### Bug Fixes
+
+* RECENT ACTIVITY control gives visible feedback even when nothing scrolls ([#501](https://github.com/iumalabs/flaretower/issues/501)) ([817532a](https://github.com/iumalabs/flaretower/commit/817532a0883472e50fb18b688edf48c5fba81c1a))
+* worker detail deep-links to /workers/&lt;name&gt;, not a bare /worker-detail ([#500](https://github.com/iumalabs/flaretower/issues/500)) ([f2b0a88](https://github.com/iumalabs/flaretower/commit/f2b0a8893ec2ce6cb45739a24bbfc635ed1f9e64))
+
 ## [1.15.5](https://github.com/iumalabs/flaretower/compare/v1.15.4...v1.15.5) (2026-08-25)
 
 
