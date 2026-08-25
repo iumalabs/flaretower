@@ -494,20 +494,45 @@ test("US2 — each finding row shows its real plain-language reason, not a slug"
   await expect(page.getByText("Access application policy includes Everyone")).toBeVisible();
 });
 
-// issue #429 — the design reference shows one button per row, not a
-// decorative contextual label alongside a separate real Acknowledge
-// control; merged into a single button whose text is the contextual
-// label and whose click performs the real acknowledge action.
-test("US2 — the row's single button is labeled contextually and performs the real acknowledge action", async ({ page }) => {
+// issue #497 — #429 merged the contextual label onto the Acknowledge
+// button, making a click on "Review exposure" perform the real acknowledge
+// mutation. That's exactly the bug: a production operator clicking what
+// reads as an investigate/navigate action instead silently and
+// irreversibly dismissed a still-broken CRITICAL finding. Restored as two
+// distinct controls (spec 027 FR-006/FR-008): the contextual label now only
+// navigates, never mutates; a separate, secondary "Acknowledge" control
+// performs the real mutation.
+test("US2 — the row's contextual action navigates to that finding's module, without acknowledging it", async ({ page }) => {
+  let acknowledgeCalled = false;
   await page.route(
     "**/api/audit/alerts/exposure/hostname/a1/acknowledge",
-    (route) => route.fulfill({ status: 200, contentType: "application/json", body: "{}" }),
+    (route) => {
+      acknowledgeCalled = true;
+      return route.fulfill({ status: 200, contentType: "application/json", body: "{}" });
+    },
   );
 
   await expect(page.getByText("api-gateway.acct.workers.dev").first()).toBeVisible();
   const button = page.getByRole("button", { name: "Review exposure" }).first();
   await expect(button).toBeVisible();
   await button.click();
+
+  await expect(page).toHaveURL(/\/exposure$/);
+  await expect(page.getByRole("button", { name: "Exposure" })).toHaveAttribute(
+    "aria-current",
+    "page",
+  );
+  expect(acknowledgeCalled).toBe(false);
+});
+
+test("US2 — the row's separate Acknowledge control performs the real acknowledge action", async ({ page }) => {
+  await page.route(
+    "**/api/audit/alerts/exposure/hostname/a1/acknowledge",
+    (route) => route.fulfill({ status: 200, contentType: "application/json", body: "{}" }),
+  );
+
+  await expect(page.getByText("api-gateway.acct.workers.dev").first()).toBeVisible();
+  await page.getByTestId("finding-row-a1").getByRole("button", { name: "Acknowledge" }).click();
   await expect(page.getByText("no Access application covers this hostname")).toHaveCount(0);
 });
 
