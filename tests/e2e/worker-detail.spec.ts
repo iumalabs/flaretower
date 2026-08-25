@@ -122,6 +122,54 @@ test("US1 — clicking a Worker row opens its detail page with per-route status"
   );
 });
 
+// issue #495 — clicking into a Worker's detail must update the URL to
+// /workers/<name> (not leave it at /workers, or nowhere at all), and a
+// fresh load of that URL must land directly on that worker's detail page —
+// the same deep-link guarantee issue #480 already established for the
+// flat top-level pages, extended to this one parameterized route.
+test("issue #495 — worker detail updates the URL, and a fresh load of it renders that worker directly", async ({ page }) => {
+  await page.route(
+    "**/api/workers/dashboard*",
+    (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(MOCK_DASHBOARD),
+      }),
+  );
+  await page.route(
+    "**/api/workers/api-gateway/detail",
+    (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(MOCK_DETAIL),
+      }),
+  );
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "Workers" }).click();
+  await page.getByTestId("findings-row-api-gateway").click();
+  await expect(page.getByRole("heading", { name: "api-gateway" })).toBeVisible();
+  await expect(page).toHaveURL(/\/workers\/api-gateway$/);
+
+  // A bare page.reload() would hit this suite's dev server directly, which
+  // (unlike production's Cloudflare Workers Assets) has no SPA fallback for
+  // a non-root path — see deep-link-routes.spec.ts's mockDeepLinkShell for
+  // the full explanation. Stand in for it the same way: fulfill the
+  // navigation with the already-loaded shell HTML.
+  const shell = await (await page.request.get("/")).text();
+  await page.route(
+    "**/workers/api-gateway",
+    (route) => route.fulfill({ status: 200, contentType: "text/html", body: shell }),
+  );
+  await page.reload();
+
+  await expect(page.getByRole("heading", { name: "api-gateway" })).toBeVisible();
+  await expect(page.getByText("api.acme.dev")).toBeVisible();
+  await expect(page).toHaveURL(/\/workers\/api-gateway$/);
+});
+
 // issue #431 — a real breadcrumb, and visual-only action buttons derived
 // from this Worker's own routes (workers.dev is critical here -> "Disable
 // workers.dev"; the custom domain is safe, not critical -> no "Attach

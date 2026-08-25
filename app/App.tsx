@@ -18,7 +18,12 @@ import {
   type AuditSummaryModuleEntry,
   computeModuleBadgeCounts,
 } from "./lib/module-badge-counts.ts";
-import { pageForPath, pathForPage } from "./lib/page-routes.ts";
+import {
+  pageForPath,
+  pathForPage,
+  pathForWorkerDetail,
+  workerNameFromPath,
+} from "./lib/page-routes.ts";
 
 const PAGES = [
   // onNavigateToAudit/onNavigateToModule are no-ops here — this entry's
@@ -69,6 +74,22 @@ type PageKey = typeof PAGES[number]["key"] | "worker-detail";
 
 const NAV_KEYS = NAV_ITEMS.map((item) => item.key);
 
+// issue #495 — a full page load on /workers/<name> must land directly on
+// that worker's detail page (with the right worker selected), not fall
+// back to Overview the way a bare, unresolvable path already correctly
+// does since #480. Checked before the generic pageForPath() resolution
+// since /workers/<name> isn't one of NAV_KEYS' flat page keys.
+function resolvePageFromLocation(): { page: PageKey; workerName: string | null } {
+  const workerName = workerNameFromPath(globalThis.location.pathname);
+  if (workerName) {
+    return { page: "worker-detail", workerName };
+  }
+  return {
+    page: pageForPath(globalThis.location.pathname, NAV_KEYS) as PageKey,
+    workerName: null,
+  };
+}
+
 async function fetchModuleBadges(): Promise<AuditSummaryModuleEntry[]> {
   const res = await fetch("/api/audit/summary");
   if (!res.ok) {
@@ -101,21 +122,32 @@ export function App(): JSX.Element {
   // "is anything wrong right now" answered before navigating anywhere — but
   // a full page load on any other route (bookmark, refresh, shared link)
   // must land on THAT page, not silently fall back to it (issue #480).
-  const [page, setPage] = useState<PageKey>(
-    () => pageForPath(globalThis.location.pathname, NAV_KEYS) as PageKey,
-  );
+  const [page, setPage] = useState<PageKey>(() => resolvePageFromLocation().page);
   const [badges, setBadges] = useState<{ key: string; count: number }[]>([]);
   const active = PAGES.find((p) => p.key === page) ?? PAGES[0];
 
   // Keeps the URL in sync with in-app navigation (sidebar clicks, the
   // Overview "N more" link) so a refresh/bookmark taken from that URL later
   // lands back on the same page (issue #480) — history.pushState only, no
-  // reload. "worker-detail" has no bookmarkable path (see page-routes.ts),
-  // so it's a no-op push there and the URL stays whatever it already was.
+  // reload. "worker-detail" is reached through navigateToWorker() below
+  // instead (its path needs a worker name pathForPage() doesn't take), so
+  // this is a no-op push for it and the URL stays whatever it already was.
   function navigate(key: PageKey) {
     setPage(key);
     const path = pathForPage(key);
     if (path && globalThis.location.pathname !== path) {
+      globalThis.history.pushState(null, "", path);
+    }
+  }
+
+  // issue #495 — same URL-sync purpose as navigate() above, but for the
+  // parameterized worker-detail route (/workers/<name>) that plain
+  // pathForPage(key) can't express.
+  function navigateToWorker(workerName: string) {
+    setSelectedWorker(workerName);
+    setPage("worker-detail");
+    const path = pathForWorkerDetail(workerName);
+    if (globalThis.location.pathname !== path) {
       globalThis.history.pushState(null, "", path);
     }
   }
@@ -126,7 +158,9 @@ export function App(): JSX.Element {
   // would fight the browser's own history navigation).
   useEffect(() => {
     function onPopState() {
-      setPage(pageForPath(globalThis.location.pathname, NAV_KEYS) as PageKey);
+      const resolved = resolvePageFromLocation();
+      setPage(resolved.page);
+      setSelectedWorker(resolved.workerName);
     }
     globalThis.addEventListener("popstate", onPopState);
     return () => globalThis.removeEventListener("popstate", onPopState);
@@ -139,7 +173,13 @@ export function App(): JSX.Element {
   const [workersPage, setWorkersPage] = useState(1);
   const [workersSortKey, setWorkersSortKey] = useState<string | null>(null);
   const [workersSortDir, setWorkersSortDir] = useState<1 | -1>(1);
-  const [selectedWorker, setSelectedWorker] = useState<string | null>(null);
+  // issue #495 — initialized from the URL too (resolvePageFromLocation),
+  // not always null, so a full page load on /workers/<name> renders that
+  // worker's detail directly instead of falling back to Overview with no
+  // worker selected.
+  const [selectedWorker, setSelectedWorker] = useState<string | null>(
+    () => resolvePageFromLocation().workerName,
+  );
 
   function handleWorkersSortChange(key: string) {
     if (workersSortKey === key) {
@@ -152,8 +192,7 @@ export function App(): JSX.Element {
   }
 
   function handleSelectWorker(workerName: string) {
-    setSelectedWorker(workerName);
-    navigate("worker-detail");
+    navigateToWorker(workerName);
   }
 
   function handleBackFromWorkerDetail() {
