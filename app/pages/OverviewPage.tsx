@@ -178,16 +178,25 @@ function MetricCard({ status, label, value }: MetricCardProps): JSX.Element {
   );
 }
 
-// issue #429 — this label is the single button's text; the click itself
-// still only ever performs the one real mutation this page has
-// (acknowledge). specs/027's original FR-008 kept this label on a
-// separate, purely decorative control next to a plain "Acknowledge"
-// button — the design reference shows one button per row, not two, so
-// the two were merged here rather than left duplicated. Deliberately a
-// small module-level default rather than one label per finding kind: the
-// inbox spans all seventeen source kinds, far more varied than any single
-// module page's own action set, so a per-kind label would be unjustified
-// complexity for text that names an action but doesn't perform it.
+// issue #497 — #429 (a visual-only report: "the design reference shows one
+// button per row, we render two") merged this label onto the Acknowledge
+// button itself, making the *contextual* action perform Acknowledge's real
+// mutation. That directly violates spec 027's own FR-006/FR-008 ("a
+// contextual action label in ADDITION TO the existing Acknowledge control";
+// "no contextual action other than Acknowledge may perform any real
+// mutation") — and it bit a live production account: an operator clicking
+// "Review security setting" to go look at a still-broken CRITICAL finding
+// instead silently and irreversibly (acknowledged_at has no UI-level undo)
+// dismissed it from the Unified Alerts Inbox/Overview open-count, with the
+// real problem left unfixed and now invisible. Restored as two distinct
+// controls below: the primary one now genuinely navigates (onNavigateToModule)
+// and never mutates; Acknowledge is a smaller, secondary control so it
+// doesn't read as the equally-weighted "generic one-size button" #429
+// originally flagged. Deliberately a small module-level default rather than
+// one label per finding kind: the inbox spans all seventeen source kinds,
+// far more varied than any single module page's own action set, so a
+// per-kind label would be unjustified complexity for text that only ever
+// names a navigation target.
 const CONTEXTUAL_ACTION_LABEL: Record<string, string> = {
   exposure: "Review exposure",
   dns: "Review DNS record",
@@ -202,7 +211,11 @@ function contextualActionLabel(alert: UnifiedAlert): string {
 }
 
 function FindingRow(
-  { alert, onAcknowledged }: { alert: UnifiedAlert; onAcknowledged: (id: string) => void },
+  { alert, onAcknowledged, onNavigateToModule }: {
+    alert: UnifiedAlert;
+    onAcknowledged: (id: string) => void;
+    onNavigateToModule: (module: string) => void;
+  },
 ): JSX.Element {
   const [pending, setPending] = useState(false);
   const [ackError, setAckError] = useState<string | null>(null);
@@ -223,6 +236,7 @@ function FindingRow(
 
   return (
     <div
+      data-testid={`finding-row-${alert.id}`}
       style={{
         display: "flex",
         gap: 12,
@@ -271,8 +285,7 @@ function FindingRow(
       <div style={{ flex: "none", display: "flex", flexDirection: "column", gap: 6 }}>
         <button
           type="button"
-          onClick={handleAcknowledge}
-          disabled={pending}
+          onClick={() => onNavigateToModule(alert.module)}
           style={{
             fontFamily: "var(--font-mono)",
             fontSize: "var(--text-meta-size)",
@@ -283,11 +296,31 @@ function FindingRow(
             padding: "5px 10px",
             textAlign: "center",
             whiteSpace: "nowrap",
-            cursor: pending ? "default" : "pointer",
+            cursor: "pointer",
             font: "inherit",
           }}
         >
-          {pending ? "Acknowledging…" : contextualActionLabel(alert)}
+          {contextualActionLabel(alert)}
+        </button>
+        <button
+          type="button"
+          onClick={handleAcknowledge}
+          disabled={pending}
+          style={{
+            fontFamily: "var(--font-mono)",
+            fontSize: "var(--text-meta-size)",
+            background: "none",
+            border: "none",
+            color: "var(--fg-faint)",
+            padding: "2px 10px",
+            textAlign: "center",
+            whiteSpace: "nowrap",
+            cursor: pending ? "default" : "pointer",
+            textDecoration: "underline",
+            font: "inherit",
+          }}
+        >
+          {pending ? "Acknowledging…" : "Acknowledge"}
         </button>
         {ackError && (
           <div style={{ color: "var(--status-critical-fg)", fontSize: "var(--text-meta-size)" }}>
@@ -442,7 +475,10 @@ function UnavailableModulesNotice(
 }
 
 export function OverviewPage(
-  { onNavigateToAudit }: { onNavigateToAudit: () => void },
+  { onNavigateToAudit, onNavigateToModule }: {
+    onNavigateToAudit: () => void;
+    onNavigateToModule: (module: string) => void;
+  },
 ): JSX.Element {
   const [summary, setSummary] = useState<SummaryResponse | null>(null);
   const [summaryError, setSummaryError] = useState<string | null>(null);
@@ -709,7 +745,12 @@ export function OverviewPage(
               </p>
             )
             : sortedAlerts.map((a) => (
-              <FindingRow key={a.id} alert={a} onAcknowledged={handleAcknowledged} />
+              <FindingRow
+                key={a.id}
+                alert={a}
+                onAcknowledged={handleAcknowledged}
+                onNavigateToModule={onNavigateToModule}
+              />
             ))}
           {moreAlerts > 0 && (
             <button

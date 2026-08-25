@@ -21,14 +21,15 @@ import {
 import { pageForPath, pathForPage } from "./lib/page-routes.ts";
 
 const PAGES = [
-  // onNavigateToAudit is a no-op here — this entry's render() is never
-  // actually invoked (the JSX below special-cases "overview" so it gets
-  // the real setPage-backed callback instead); this placeholder only
-  // exists to satisfy OverviewPage's required prop for the type checker.
+  // onNavigateToAudit/onNavigateToModule are no-ops here — this entry's
+  // render() is never actually invoked (the JSX below special-cases
+  // "overview" so it gets the real navigate-backed callbacks instead);
+  // this placeholder only exists to satisfy OverviewPage's required props
+  // for the type checker.
   {
     key: "overview",
     label: "Overview",
-    render: () => <OverviewPage onNavigateToAudit={() => {}} />,
+    render: () => <OverviewPage onNavigateToAudit={() => {}} onNavigateToModule={() => {}} />,
   },
   // render() here is never actually invoked (specs/023-worker-detail-page) —
   // the JSX below special-cases "workers" the same way it already
@@ -206,9 +207,18 @@ export function App(): JSX.Element {
             // specs/022-audit-list-pagination — Overview's "N more" links need
             // to reach Audit & Drift; it's the only page needing a navigation
             // callback, so it's special-cased here rather than widening every
-            // PAGES entry's render() signature for one caller.
+            // PAGES entry's render() signature for one caller. issue #497 —
+            // onNavigateToModule lets each finding row's "Review X" action
+            // actually take the operator to that finding's module page,
+            // rather than the mutating (and misleadingly-labeled) acknowledge
+            // action it was collapsed into by #429.
             page === "overview"
-              ? <OverviewPage onNavigateToAudit={() => navigate("audit")} />
+              ? (
+                <OverviewPage
+                  onNavigateToAudit={() => navigate("audit")}
+                  onNavigateToModule={(module) => navigate(module as PageKey)}
+                />
+              )
               // specs/023-worker-detail-page — "workers" needs its
               // page/sort state lifted (FR-011) and an onSelectWorker
               // callback; "worker-detail" isn't a PAGES entry at all.
