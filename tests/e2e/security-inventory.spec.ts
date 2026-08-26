@@ -165,7 +165,7 @@ test.beforeEach(async ({ page }) => {
       contentType: "application/json",
       body: JSON.stringify({ modules: [], unavailable_sources: [] }),
     }));
-  await page.goto("/");
+  await page.goto("/app");
   await page.getByRole("button", { name: "Security Posture" }).click();
 });
 
@@ -205,7 +205,7 @@ test("issue #483 — Turnstile widgets renders as a styled table, not a bare bul
         ],
       }),
     }));
-  await page.goto("/");
+  await page.goto("/app");
   await page.getByRole("button", { name: "Security Posture" }).click();
   await page.getByRole("tab", { name: "Turnstile widgets" }).click();
 
@@ -303,7 +303,7 @@ test("a completed run against a zero-zone account renders confirmed-empty, not '
         turnstile_widgets: [],
       }),
     }));
-  await page.goto("/");
+  await page.goto("/app");
   await page.getByRole("button", { name: "Security Posture" }).click();
 
   await expect(page.getByText("No evaluation runs yet", { exact: false })).not.toBeVisible();
@@ -357,7 +357,7 @@ test("critical-alert banner describes the check that's actually critical, not al
         turnstile_widgets: [],
       }),
     }));
-  await page.goto("/");
+  await page.goto("/app");
   await page.getByRole("button", { name: "Security Posture" }).click();
 
   await expect(page.getByText("A zone has a critical security gap")).toBeVisible();
@@ -401,7 +401,7 @@ test("specs/020 US2 — the zones table paginates independently of the Certifica
       }),
     });
   });
-  await page.goto("/");
+  await page.goto("/app");
   await page.getByRole("button", { name: "Security Posture" }).click();
 
   await expect(page.getByTestId("findings-row-z0")).toBeVisible();
@@ -428,7 +428,7 @@ test("no evaluation run yet (run_id null) still renders the 'trigger one' messag
         turnstile_widgets: [],
       }),
     }));
-  await page.goto("/");
+  await page.goto("/app");
   await page.getByRole("button", { name: "Security Posture" }).click();
 
   await expect(page.getByText("No evaluation runs yet", { exact: false })).toBeVisible();
@@ -488,7 +488,7 @@ test("specs/021 US2 — switching tabs and back preserves the zones table's page
       }),
     });
   });
-  await page.goto("/");
+  await page.goto("/app");
   await page.getByRole("button", { name: "Security Posture" }).click();
 
   await page.getByTestId("pagination-next").click();
@@ -560,7 +560,7 @@ test("US2 — first-ever scan from the never-evaluated empty state (FR-006)", as
         turnstile_widgets: [],
       }),
     }));
-  await page.goto("/");
+  await page.goto("/app");
   await page.getByRole("button", { name: "Security Posture" }).click();
 
   await expect(page.getByText("No evaluation runs yet", { exact: false })).toBeVisible();

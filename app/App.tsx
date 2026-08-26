@@ -159,19 +159,18 @@ export function App(): JSX.Element | null {
   // "overview" is the default/initial *authenticated* page (tasks.md T033,
   // User Story 3) — "is anything wrong right now" answered before
   // navigating anywhere — reached at "/app" (issue #516), while a bare "/"
-  // resolves to "landing" (which the useEffect below immediately turns
-  // back into "overview" for an already-signed-in visitor). Either way, a
+  // always resolves to "landing", regardless of session state (an
+  // authenticated visitor stays there too — see the useEffect below). A
   // full page load on any other route (bookmark, refresh, shared link)
   // must land on THAT page, not silently fall back (issue #480).
   const [page, setPage] = useState<PageKey>(() => resolvePageFromLocation().page);
   const [badges, setBadges] = useState<{ key: string; count: number }[]>([]);
   const active = PAGES.find((p) => p.key === page) ?? PAGES[0];
 
-  // spec 028 — undefined: the session probe hasn't resolved yet (the one
-  // window where neither "landing" nor "overview" can safely render —
-  // resolving whether either is even the right page to be on right now
-  // depends on this). null: confirmed no session. An identity object:
-  // authenticated.
+  // spec 028 — undefined: the session probe hasn't resolved yet ("overview"
+  // can't safely render until this settles, per the useEffect below;
+  // "landing" doesn't care). null: confirmed no session. An identity
+  // object: authenticated.
   const [session, setSession] = useState<SessionIdentity | null | undefined>(undefined);
 
   useEffect(() => {
@@ -218,34 +217,33 @@ export function App(): JSX.Element | null {
     return () => globalThis.removeEventListener("popstate", onPopState);
   }, []);
 
-  // issue #516 — "landing" (`/`) and "overview" (`/app`) each independently
-  // verify the session actually matches where they are, the same
-  // defense-in-depth spirit as accessAuth's own re-validation of the JWT
-  // (constitution Principle II) — Access is *supposed* to already keep an
-  // unauthenticated visitor off `/app` and never touch `/`, but this must
-  // hold even if that's misconfigured (or, in local dev, simply absent):
-  //   - session resolves true while sitting on "landing" → this visitor is
-  //     actually signed in; bounce them into their real dashboard URL
-  //     instead of rendering landing content forever at "/".
-  //   - session resolves null while sitting on "overview" → this visitor
-  //     has no session at all; bounce back to the public root instead of
-  //     ever rendering dashboard shell at an unprotected-by-Access `/app`.
-  // A real navigation isn't needed either way — Access only ever needs to
-  // *challenge* on the way in, and by this point the session is already
-  // known one way or the other, so a client-side redirect is enough (and
-  // keeps the sign-in hand-off itself as the one place a real
-  // `location.assign` is used, per SIGN_IN_PATH's own comment above).
-  // Uses replaceState (not navigate()'s pushState) deliberately — this is
-  // an automatic bounce, not something the visitor actually did, so it
-  // shouldn't add its own entry to browser history; back from
-  // `/app/workers` should land on `/app`, not on this redirect's own
-  // momentary "/" or "/app" stop.
+  // "overview" (`/app`) independently verifies the session actually matches
+  // where it is, the same defense-in-depth spirit as accessAuth's own
+  // re-validation of the JWT (constitution Principle II) — Access is
+  // *supposed* to already keep an unauthenticated visitor off `/app`, but
+  // this must hold even if that's misconfigured (or, in local dev, simply
+  // absent): session resolves null while sitting on "overview" → this
+  // visitor has no session at all; bounce back to the public root instead of
+  // ever rendering dashboard shell at an unprotected-by-Access `/app`.
+  //
+  // "landing" (`/`) deliberately does NOT have the mirror check — it used to
+  // (issue #516) bounce an already-signed-in visitor straight into "overview",
+  // but that made it impossible for an authenticated operator to ever view
+  // the public landing page at all. `/` carries no Access-protected content
+  // either way, so there's nothing to defend there; an authenticated visitor
+  // is simply shown the same landing page as anyone else.
+  //
+  // A real navigation isn't needed for the remaining branch — Access only
+  // ever needs to *challenge* on the way in, and by this point the session
+  // is already known one way or the other, so a client-side redirect is
+  // enough (and keeps the sign-in hand-off itself as the one place a real
+  // `location.assign` is used, per SIGN_IN_PATH's own comment above). Uses
+  // replaceState (not navigate()'s pushState) deliberately — this is an
+  // automatic bounce, not something the visitor actually did, so it
+  // shouldn't add its own entry to browser history.
   useEffect(() => {
     if (session === undefined) return;
-    if (page === "landing" && session) {
-      setPage("overview");
-      globalThis.history.replaceState(null, "", "/app");
-    } else if (page === "overview" && session === null) {
+    if (page === "overview" && session === null) {
       setPage("landing");
       globalThis.history.replaceState(null, "", "/");
     }
@@ -333,20 +331,20 @@ export function App(): JSX.Element | null {
         // issue #516 — "home" from /docs is always the public landing page,
         // never directly "overview"/`/app`: an unauthenticated visitor must
         // never even momentarily hit the Access-protected `/app` URL on the
-        // way back (that useEffect above still recovers correctly either
-        // way, but landing is the honest, un-detoured target for this
-        // click). An already-authenticated visitor gets bounced from
-        // "landing" into "overview" by that same effect immediately after.
+        // way back. An already-authenticated visitor lands on "landing" too
+        // and simply sees it — no forced bounce into "overview" anymore.
         onBack={() => navigate("landing")}
       />
     );
   }
 
-  // issue #516 — the one place App.tsx still renders a loading state before
-  // either "landing" or "overview" can safely resolve to real content: the
-  // session probe hasn't come back yet, so neither knows if it's the right
-  // one to render (or should instead redirect, per the useEffect above).
-  if ((page === "landing" || page === "overview") && session === undefined) {
+  // "overview" is the one place App.tsx still renders a loading state before
+  // it can safely resolve to real content: the session probe hasn't come
+  // back yet, so it doesn't know if it's the right page to be on right now
+  // (or should instead redirect, per the useEffect above). "landing" no
+  // longer needs this — it renders the same content regardless of session
+  // state, so it doesn't wait on the probe at all.
+  if (page === "overview" && session === undefined) {
     return (
       <div
         style={{
@@ -362,15 +360,13 @@ export function App(): JSX.Element | null {
     );
   }
 
+  // Rendered regardless of session state — an authenticated visitor can open
+  // the public landing page too (see the useEffect comment above), not just
+  // a signed-out one. "Sign in" for an already-authenticated visitor still
+  // works correctly: it's a real navigation to SIGN_IN_PATH ("/app"), which
+  // just renders Overview directly since a session is already present.
   if (page === "landing") {
-    // session === null here (an authenticated "landing" is a one-render
-    // transient the useEffect above immediately navigates away from) —
-    // still checked explicitly rather than assumed, so a signed-in visitor
-    // is never even momentarily shown landing-page content.
-    if (session === null) {
-      return <LandingPage onSignIn={handleSignIn} onNavigateToDocs={() => navigate("docs")} />;
-    }
-    return null;
+    return <LandingPage onSignIn={handleSignIn} onNavigateToDocs={() => navigate("docs")} />;
   }
 
   if (page === "overview" && session === null) {

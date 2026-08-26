@@ -124,7 +124,7 @@ test.beforeEach(async ({ page }) => {
       contentType: "application/json",
       body: JSON.stringify(MOCK_TREND),
     }));
-  await page.goto("/");
+  await page.goto("/app");
 });
 
 test("US3/AC1 — aggregate per-severity counts render across all modules", async ({ page }) => {
@@ -191,7 +191,7 @@ test("US3/AC5 — an all-clear state renders when every module has zero findings
         pagination: { page: 1, page_size: 5, total: 0, total_pages: 1 },
       }),
     }));
-  await page.goto("/");
+  await page.goto("/app");
 
   await expect(page.getByText("Nothing needs attention right now")).toBeVisible();
 });
@@ -217,7 +217,7 @@ test("FR-018 — a module reported unavailable is shown as not-available, not fo
         account_scope: { zone_count: 1, worker_count: 3 },
       }),
     }));
-  await page.goto("/");
+  await page.goto("/app");
 
   await expect(page.getByText("dns/record could not be read", { exact: false })).toBeVisible();
 });
@@ -245,7 +245,7 @@ test("specs/022 US2 — more than 5 alerts shows a bounded top-5 with an accurat
         pagination: { page: 1, page_size: 5, total: manyAlerts.length, total_pages: 2 },
       }),
     }));
-  await page.goto("/");
+  await page.goto("/app");
 
   for (let i = 0; i < 5; i++) {
     await expect(page.getByText(`host-${i}.example.com`)).toBeVisible();
@@ -258,7 +258,7 @@ test("specs/022 US2 — more than 5 alerts shows a bounded top-5 with an accurat
 
 test("specs/022 US2 — 5 or fewer alerts shows no 'more' indicator", async ({ page }) => {
   // beforeEach's MOCK_ALERTS has 2 alerts, total: 2.
-  await page.goto("/");
+  await page.goto("/app");
   await expect(page.getByTestId("overview-alerts-more")).not.toBeVisible();
 });
 
@@ -339,7 +339,7 @@ test("specs/022 US2 — the 'more' indicator navigates to Audit & Drift's Unifie
       contentType: "application/json",
       body: JSON.stringify({ run_id: null, evaluated_at: null, zones: [], turnstile_widgets: [] }),
     }));
-  await page.goto("/");
+  await page.goto("/app");
 
   await page.getByTestId("overview-alerts-more").click();
 
@@ -384,7 +384,7 @@ test("US1 — a never-evaluated account shows an explicit 'never scanned' state"
         account_scope: { zone_count: 0, worker_count: 0 },
       }),
     }));
-  await page.goto("/");
+  await page.goto("/app");
 
   await expect(page.getByText("never scanned")).toBeVisible();
 });
@@ -463,7 +463,7 @@ test("US1 — a stale fetch-error banner clears once a later RE-SCAN succeeds", 
     "**/api/audit/summary",
     (route) => route.fulfill({ status: 500, contentType: "application/json", body: "{}" }),
   );
-  await page.goto("/");
+  await page.goto("/app");
   await expect(page.getByText("GET /api/audit/summary failed: 500")).toBeVisible();
 
   await page.route("**/api/audit/summary", (route) =>
@@ -565,7 +565,7 @@ test("US3 — a day before the account's evaluation history shows an explicit no
         unavailable_sources: [],
       }),
     }));
-  await page.goto("/");
+  await page.goto("/app");
 
   const noDataDay = page.getByTestId("trend-day-2026-08-16");
   await expect(noDataDay).toHaveAttribute("title", "2026-08-16: no data");
@@ -577,7 +577,7 @@ test("US3 — a trend-fetch failure degrades gracefully, without blocking the re
     (route) =>
       route.fulfill({ status: 500, contentType: "application/json", body: JSON.stringify({}) }),
   );
-  await page.goto("/");
+  await page.goto("/app");
 
   // The rest of the page (Findings panel) still works despite the trend
   // endpoint failing.

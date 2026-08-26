@@ -90,7 +90,7 @@ test("US1 — every deployed Worker appears once, with environment and rolled-up
       contentType: "application/json",
       body: JSON.stringify(MOCK_DASHBOARD),
     }));
-  await page.goto("/");
+  await page.goto("/app");
   await page.getByRole("button", { name: "Workers" }).click();
 
   const gatewayRow = page.getByTestId("findings-row-api-gateway");
@@ -113,7 +113,7 @@ test("US1 — the anchor column is labeled Exposure, not the generic Status", as
       contentType: "application/json",
       body: JSON.stringify(MOCK_DASHBOARD),
     }));
-  await page.goto("/");
+  await page.goto("/app");
   await page.getByRole("button", { name: "Workers" }).click();
 
   // The sidebar nav also has an "Exposure" item — the column header is the
@@ -134,7 +134,7 @@ test("issue #451 — the table doesn't overflow into the Recent changes panel at
       contentType: "application/json",
       body: JSON.stringify(MOCK_DASHBOARD),
     }));
-  await page.goto("/");
+  await page.goto("/app");
   await page.getByRole("button", { name: "Workers" }).click();
 
   // The full word, not "EXPOSURI" or any other clipped fragment.
@@ -165,7 +165,7 @@ test("US1 — sidebar shows Workers and Exposure as separate nav items with inde
       contentType: "application/json",
       body: JSON.stringify(MOCK_DASHBOARD),
     }));
-  await page.goto("/");
+  await page.goto("/app");
 
   await expect(page.getByRole("button", { name: "Workers" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Exposure" })).toBeVisible();
@@ -185,7 +185,7 @@ test("US1 — empty account renders an explicit empty state, not an empty table"
         workers_pagination: { page: 1, page_size: 50, total: 0, total_pages: 1 },
       }),
     }));
-  await page.goto("/");
+  await page.goto("/app");
   await page.getByRole("button", { name: "Workers" }).click();
 
   await expect(page.getByText("No Workers in this account")).toBeVisible();
@@ -198,7 +198,7 @@ test("US2 — metric cards show real figures including the day-over-day delta", 
       contentType: "application/json",
       body: JSON.stringify(MOCK_DASHBOARD),
     }));
-  await page.goto("/");
+  await page.goto("/app");
   await page.getByRole("button", { name: "Workers" }).click();
 
   await expect(page.getByText("+11.0% vs yesterday")).toBeVisible();
@@ -230,7 +230,7 @@ test("US2 — an unavailable analytics source degrades per-row metrics to 'not a
         unavailable: [{ source: "analytics", error: "mocked failure" }],
       }),
     }));
-  await page.goto("/");
+  await page.goto("/app");
   await page.getByRole("button", { name: "Workers" }).click();
 
   const gatewayRow = page.getByTestId("findings-row-api-gateway");
@@ -249,7 +249,7 @@ test("US3 — recent changes panel shows Workers-relevant entries", async ({ pag
       contentType: "application/json",
       body: JSON.stringify(MOCK_DASHBOARD),
     }));
-  await page.goto("/");
+  await page.goto("/app");
   await page.getByRole("button", { name: "Workers" }).click();
 
   await expect(page.getByText("Enabled workers.dev subdomain")).toBeVisible();
@@ -289,7 +289,7 @@ test("specs/020 US2 — the Workers table paginates: page footer, next/prev, and
       }),
     });
   });
-  await page.goto("/");
+  await page.goto("/app");
   await page.getByRole("button", { name: "Workers" }).click();
 
   await expect(page.getByTestId("findings-row-worker-0")).toBeVisible();
@@ -318,7 +318,7 @@ test("specs/020 US2 — a small result set (fits one page) shows no pagination c
       contentType: "application/json",
       body: JSON.stringify(MOCK_DASHBOARD),
     }));
-  await page.goto("/");
+  await page.goto("/app");
   await page.getByRole("button", { name: "Workers" }).click();
 
   await expect(page.getByTestId("findings-row-api-gateway")).toBeVisible();
@@ -334,7 +334,7 @@ test("US3 — recent changes panel shows an explicit empty state when there are 
       contentType: "application/json",
       body: JSON.stringify({ ...MOCK_DASHBOARD, recent_changes: [] }),
     }));
-  await page.goto("/");
+  await page.goto("/app");
   await page.getByRole("button", { name: "Workers" }).click();
 
   await expect(page.getByText("No recent Workers-related changes.")).toBeVisible();
@@ -357,7 +357,7 @@ test("US3 — recent changes panel distinguishes an unavailable audit log source
         }],
       }),
     }));
-  await page.goto("/");
+  await page.goto("/app");
   await page.getByRole("button", { name: "Workers" }).click();
 
   await expect(page.getByTestId("recent-changes-unavailable")).toContainText(
@@ -415,7 +415,7 @@ test("specs/023 FR-011 — navigating to a Worker's detail page and back preserv
       }),
     }));
 
-  await page.goto("/");
+  await page.goto("/app");
   await page.getByRole("button", { name: "Workers" }).click();
   await page.getByTestId("pagination-next").click();
   await expect(page.getByTestId("pagination-status")).toHaveText("5 total · page 2 of 3");
@@ -440,7 +440,7 @@ test("US1 — the exposure/status column is last (rightmost), after every operat
       contentType: "application/json",
       body: JSON.stringify(MOCK_DASHBOARD),
     }));
-  await page.goto("/");
+  await page.goto("/app");
   await page.getByRole("button", { name: "Workers" }).click();
 
   const gatewayRow = page.getByTestId("findings-row-api-gateway");
@@ -506,7 +506,7 @@ test("regression — statusPosition's default (left) is unaffected on another Fi
         unavailable: [],
       }),
     }));
-  await page.goto("/");
+  await page.goto("/app");
   await page.getByRole("button", { name: "DNS" }).click();
 
   const row = page.getByTestId("findings-row-example.com:A:api.example.com:203.0.113.10");
@@ -525,7 +525,7 @@ test("US2 — the header shows a subtitle (deployed/routes/environments) and a d
       contentType: "application/json",
       body: JSON.stringify(MOCK_DASHBOARD),
     }));
-  await page.goto("/");
+  await page.goto("/app");
   await page.getByRole("button", { name: "Workers" }).click();
 
   await expect(page.getByText("2 deployed · 5 routes · 2 environments")).toBeVisible();
@@ -541,7 +541,7 @@ test("US2 — the search box narrows the table to matching Workers, no reload", 
       contentType: "application/json",
       body: JSON.stringify(MOCK_DASHBOARD),
     }));
-  await page.goto("/");
+  await page.goto("/app");
   await page.getByRole("button", { name: "Workers" }).click();
 
   await page.getByPlaceholder("filter…").fill("search");
@@ -559,7 +559,7 @@ test("US2 — the environment filter narrows the table, and combines with the se
       contentType: "application/json",
       body: JSON.stringify(MOCK_DASHBOARD),
     }));
-  await page.goto("/");
+  await page.goto("/app");
   await page.getByRole("button", { name: "Workers" }).click();
 
   await page.getByLabel("Filter by environment").selectOption("preview");
@@ -578,7 +578,7 @@ test("US2 — the recent-activity control brings the Recent changes panel into v
       contentType: "application/json",
       body: JSON.stringify(MOCK_DASHBOARD),
     }));
-  await page.goto("/");
+  await page.goto("/app");
   await page.getByRole("button", { name: "Workers" }).click();
 
   await page.getByRole("button", { name: "RECENT ACTIVITY" }).click();
@@ -597,7 +597,7 @@ test("issue #496 — the recent-activity control flashes the panel's border, a v
       contentType: "application/json",
       body: JSON.stringify(MOCK_DASHBOARD),
     }));
-  await page.goto("/");
+  await page.goto("/app");
   await page.getByRole("button", { name: "Workers" }).click();
 
   const panel = page.locator("#recent-changes-panel");
@@ -619,7 +619,7 @@ test("US2 — the Recent changes panel heading uses plain Sans text, not mono/up
       contentType: "application/json",
       body: JSON.stringify(MOCK_DASHBOARD),
     }));
-  await page.goto("/");
+  await page.goto("/app");
   await page.getByRole("button", { name: "Workers" }).click();
 
   const heading = page.getByText("Recent changes", { exact: true });
@@ -640,7 +640,7 @@ test("US3 — the CPU P99 tile shows a context line, like the other three tiles"
       contentType: "application/json",
       body: JSON.stringify(MOCK_DASHBOARD),
     }));
-  await page.goto("/");
+  await page.goto("/app");
   await page.getByRole("button", { name: "Workers" }).click();
 
   await expect(page.getByText("slowest 1% of requests")).toBeVisible();

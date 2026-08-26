@@ -60,7 +60,7 @@ test.beforeEach(async ({ page }) => {
 // item — a short uppercase category tag plus a one-sentence description,
 // shown to the right of the item.
 test("sidebar nav item shows a tooltip on hover with its tag and description", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("/app");
 
   const workersButton = page.getByRole("button", { name: "Workers" });
   await expect(page.getByTestId("nav-tooltip-workers")).not.toBeVisible();
@@ -78,7 +78,7 @@ test("sidebar nav item shows a tooltip on hover with its tag and description", a
 });
 
 test("sidebar nav item shows its tooltip on keyboard focus too", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("/app");
 
   await page.getByRole("button", { name: "Exposure" }).focus();
   const tooltip = page.getByTestId("nav-tooltip-exposure");

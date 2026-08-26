@@ -1,9 +1,11 @@
 import { expect, test } from "@playwright/test";
 
-// spec 028 (tasks.md T011, User Story 1) — an unauthenticated visitor to
-// "/" sees the public landing page, not the authenticated dashboard, and
-// nothing on that page requires a session (SC-005: zero requests that need
-// auth). An authenticated visitor sees the dashboard instead, unchanged.
+// spec 028 (tasks.md T011, User Story 1) — a visitor to "/" sees the public
+// landing page, not the authenticated dashboard, and nothing on that page
+// requires a session (SC-005: zero requests that need auth). This holds
+// regardless of session state (see App.tsx's comment on why the old
+// authenticated → /app auto-redirect was removed: it made it impossible for
+// a signed-in operator to ever view the public landing page).
 //
 // This file intentionally does NOT use the shared ./fixtures.ts session
 // mock (which defaults every other spec to "authenticated") — the whole
@@ -143,14 +145,34 @@ test.describe("authenticated visitor", () => {
       }));
   });
 
-  test("sees the authenticated dashboard at /, not the landing page", async ({ page }) => {
+  test("still sees the public landing page at /, not forced into the dashboard", async ({ page }) => {
     await page.goto("/");
 
+    await expect(page.getByRole("heading", { name: /every door into your cloudflare account/i }))
+      .toBeVisible();
+    await expect(page.getByRole("button", { name: "Overview" })).not.toBeVisible();
+  });
+
+  test("Sign in from / still reaches the dashboard directly, session already present", async ({ page }) => {
+    await page.goto("/");
+
+    // Same stand-in tests/e2e/sign-in-handoff.spec.ts's mockAppShell uses:
+    // the local vite dev server has no SPA fallback for a direct GET to a
+    // non-root path (production's Cloudflare Workers Assets does), so the
+    // real `location.assign("/app")` behind the SIGN IN click 404s locally
+    // without this.
+    const shell = await (await page.request.get("/")).text();
+    await page.route(
+      "**/app",
+      (route) => route.fulfill({ status: 200, contentType: "text/html", body: shell }),
+    );
+
+    await page.getByRole("button", { name: "SIGN IN" }).first().click();
+
+    await expect(page).toHaveURL(/\/app$/);
     await expect(page.getByRole("button", { name: "Overview" })).toHaveAttribute(
       "aria-current",
       "page",
     );
-    await expect(page.getByRole("heading", { name: /every door into your cloudflare account/i }))
-      .not.toBeVisible();
   });
 });
