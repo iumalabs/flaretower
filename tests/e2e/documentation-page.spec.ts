@@ -137,10 +137,9 @@ test("quickstart Scenario 5 — landing → docs → back, no sign-in prompt at 
 
 test("Sign in from the documentation page behaves the same as from the landing page", async ({ page }) => {
   const shell = await (await page.request.get("/")).text();
-  // "*" — issue #512's handleSignIn appends its own "?post-sign-in=1"
-  // marker, so the real navigation target is "/workers?post-sign-in=1".
+  // issue #516 — SIGN_IN_PATH is "/app" now, Overview's own real URL.
   await page.route(
-    "**/workers*",
+    "**/app",
     (route) => route.fulfill({ status: 200, contentType: "text/html", body: shell }),
   );
 
@@ -148,5 +147,5 @@ test("Sign in from the documentation page behaves the same as from the landing p
   await page.goto("/docs");
   await page.getByRole("button", { name: "SIGN IN" }).click();
 
-  await expect(page).toHaveURL(/\/workers\?post-sign-in=1$/);
+  await expect(page).toHaveURL(/\/app$/);
 });

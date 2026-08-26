@@ -5,25 +5,25 @@ import { expect, test } from "@playwright/test";
 // plain navigation to a real Access-protected route, never a fake in-app
 // OIDC modal (FR-006 — App.dc.html's design mock had exactly such a modal
 // with fabricated ISSUER/SCOPES/CALLBACK details; this feature deliberately
-// does not build it). App.tsx's SIGN_IN_PATH is "/workers" — "/" itself
-// becomes Access-public by this feature, so it can no longer be the target
-// Access actually challenges (see App.tsx's own comment on SIGN_IN_PATH).
+// does not build it). issue #516 — App.tsx's SIGN_IN_PATH is "/app": the
+// entire authenticated app (Overview included) now lives under that one
+// prefix, so it doubles as both a real Access-protected trigger and
+// Overview's own real URL — landing there after a challenge completes *is*
+// arriving at the dashboard, no separate redirect needed (issue #512's
+// old marker-and-bounce mechanism this replaced).
 
 // Same stand-in as deep-link-routes.spec.ts uses: the local vite dev server
 // has no SPA fallback for a bare GET to a non-root path (production's
-// Cloudflare Workers Assets does), so a real `location.assign("/workers")`
+// Cloudflare Workers Assets does), so a real `location.assign("/app")`
 // 404s locally. Fulfilling that one navigation request with the already-
 // working shell HTML isolates what's actually under test here — that
 // clicking "Sign in" performs plain navigation to a real path, not that
 // production's asset-serving layer works (that's out of scope for this
 // suite).
-async function mockWorkersShell(page: import("@playwright/test").Page) {
+async function mockAppShell(page: import("@playwright/test").Page) {
   const shell = await (await page.request.get("/")).text();
-  // "*" (not an exact "/workers" match) — handleSignIn now appends
-  // issue #512's own "?post-sign-in=1" marker, so the real navigation
-  // target is "/workers?post-sign-in=1", not a bare "/workers".
   await page.route(
-    "**/workers*",
+    "**/app",
     (route) => route.fulfill({ status: 200, contentType: "text/html", body: shell }),
   );
 }
@@ -42,15 +42,15 @@ for (
     { label: "sample-panel teaser CTA", locatorName: "SIGN IN TO SEE YOURS" },
   ]
 ) {
-  test(`${label} navigates to /workers, never an in-app sign-in modal`, async ({ page }) => {
+  test(`${label} navigates to /app, never an in-app sign-in modal`, async ({ page }) => {
     await page.goto("/");
     await expect(page.getByRole("heading", { name: /every door into your cloudflare account/i }))
       .toBeVisible();
 
-    await mockWorkersShell(page);
+    await mockAppShell(page);
     await page.getByRole("button", { name: locatorName }).first().click();
 
-    await expect(page).toHaveURL(/\/workers\?post-sign-in=1$/);
+    await expect(page).toHaveURL(/\/app$/);
     // FR-006 — no protocol detail (issuer/scope/callback) is ever rendered
     // client-side, before or after the click.
     for (const term of ["issuer", "scope", "callback", "oauth", "oidc"]) {
@@ -59,23 +59,17 @@ for (
   });
 }
 
-// issue #512 — landing on SIGN_IN_PATH is an implementation detail of how
-// the hand-off guarantees a real Access challenge (see App.tsx's own
-// comment); it must never be the operator's actual resting place once
-// Access's challenge completes. This simulates that completed state
+// issue #512/#516 — once Access's challenge completes and the browser lands
+// back on /app with a real session, that must actually render Overview,
+// not some intermediate or stuck state. This simulates the completed state
 // directly (identity/session now resolves to a real identity, exactly as
 // it would once Access has redirected back with a valid session) rather
 // than driving a real Access challenge, which this suite has no way to do.
-test("once Access's challenge completes, the operator lands on Overview, not stranded on Workers", async ({ page }) => {
-  const shell = await (await page.request.get("/")).text();
-  await page.route(
-    "**/workers*",
-    (route) => route.fulfill({ status: 200, contentType: "text/html", body: shell }),
-  );
-
+test("once Access's challenge completes, /app renders Overview directly", async ({ page }) => {
+  await mockAppShell(page);
   await page.goto("/");
   await page.getByRole("button", { name: "SIGN IN" }).first().click();
-  await expect(page).toHaveURL(/\/workers\?post-sign-in=1$/);
+  await expect(page).toHaveURL(/\/app$/);
 
   // From here on, the browser is "back from Access" with a real session —
   // re-route the session probe (and everything Overview needs) to reflect
@@ -163,7 +157,7 @@ test("once Access's challenge completes, the operator lands on Overview, not str
 
   await page.reload();
 
-  await expect(page).toHaveURL(/\/$/);
+  await expect(page).toHaveURL(/\/app$/);
   await expect(page.getByRole("button", { name: "Overview" })).toHaveAttribute(
     "aria-current",
     "page",
