@@ -89,7 +89,7 @@ test.beforeEach(async ({ page }) => {
         pagination: { page: 1, page_size: 5, total: 0, total_pages: 1 },
       }),
     }));
-  await page.goto("/");
+  await page.goto("/app");
 });
 
 test("US1/AC1 — favicon link is present", async ({ page }) => {
@@ -155,7 +155,7 @@ test("specs/012 — the Workers nav badge is a deployed count, rendered in a neu
         }),
       }),
   );
-  await page.goto("/");
+  await page.goto("/app");
 
   const workersButton = page.getByRole("button", { name: "Workers" });
   const exposureButton = page.getByRole("button", { name: "Exposure" });

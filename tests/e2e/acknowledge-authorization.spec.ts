@@ -100,7 +100,7 @@ test.beforeEach(async ({ page }) => {
       contentType: "application/json",
       body: JSON.stringify({ modules: [], unavailable_sources: [] }),
     }));
-  await page.goto("/");
+  await page.goto("/app");
   await page.getByRole("button", { name: "Audit & Drift" }).click();
   // specs/021-dashboard-panel-tabs: the unified alerts inbox is no longer
   // the default tab (Audit log is) — every test here needs it active.

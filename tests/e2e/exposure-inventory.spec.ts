@@ -130,7 +130,7 @@ test.beforeEach(async ({ page }) => {
     }));
   // "overview" is now the default page (tasks.md T033) — navigate into
   // Exposure explicitly, matching every other module's spec convention.
-  await page.goto("/");
+  await page.goto("/app");
   await page.getByRole("button", { name: "Exposure" }).click();
 });
 

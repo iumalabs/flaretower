@@ -174,7 +174,7 @@ test.beforeEach(async ({ page }) => {
       contentType: "application/json",
       body: JSON.stringify(MOCK_AUDIT_SUMMARY),
     }));
-  await page.goto("/");
+  await page.goto("/app");
   await page.getByRole("button", { name: "Audit & Drift" }).click();
 });
 
@@ -207,7 +207,7 @@ test("specs/018 US1 — a confirmed-empty window renders distinctly from an unav
         entries: [],
       }),
     }));
-  await page.goto("/");
+  await page.goto("/app");
   await page.getByRole("button", { name: "Audit & Drift" }).click();
 
   await expect(page.getByText("No account activity in the last 7 days.")).toBeVisible();
@@ -226,7 +226,7 @@ test("specs/018 US1 — an unavailable Audit Logs API shows an explicit unavaila
         entries: [],
       }),
     }));
-  await page.goto("/");
+  await page.goto("/app");
   await page.getByRole("button", { name: "Audit & Drift" }).click();
 
   await expect(page.getByText("Audit log could not be retrieved.")).toBeVisible();
@@ -251,7 +251,7 @@ test("specs/020 US1 — a capped result is clearly indicated, not shown as if co
         entries: MOCK_AUDIT_LOG.entries,
       }),
     }));
-  await page.goto("/");
+  await page.goto("/app");
   await page.getByRole("button", { name: "Audit & Drift" }).click();
 
   await expect(page.getByTestId("audit-log-total")).toHaveText("1000 events");
@@ -416,7 +416,7 @@ test("specs/022 US1 — the Unified alerts inbox tab paginates: page footer, nex
       }),
     });
   });
-  await page.goto("/");
+  await page.goto("/app");
   await page.getByRole("button", { name: "Audit & Drift" }).click();
   await page.getByRole("tab", { name: "Unified alerts inbox" }).click();
 
@@ -460,7 +460,7 @@ test("specs/022 US1 — the What changed tab paginates: page footer, next/prev",
       }),
     });
   });
-  await page.goto("/");
+  await page.goto("/app");
   await page.getByRole("button", { name: "Audit & Drift" }).click();
   await page.getByRole("tab", { name: "What changed" }).click();
 
@@ -486,7 +486,7 @@ test("specs/022 — critical_alert still shows the banner when the critical aler
         pagination: { page: 1, page_size: 1, total: 2, total_pages: 2 },
       }),
     }));
-  await page.goto("/");
+  await page.goto("/app");
   await page.getByRole("button", { name: "Audit & Drift" }).click();
 
   await expect(page.getByText("An outstanding critical alert needs attention")).toBeVisible();

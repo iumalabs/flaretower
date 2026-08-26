@@ -131,7 +131,7 @@ test.beforeEach(async ({ page }) => {
       contentType: "application/json",
       body: JSON.stringify({ modules: [], unavailable_sources: [] }),
     }));
-  await page.goto("/");
+  await page.goto("/app");
   await page.getByRole("button", { name: "R2 / KV / D1" }).click();
 });
 
@@ -252,7 +252,7 @@ test("specs/020 US2 — each of the 3 tables paginates independently", async ({ 
       }),
     });
   });
-  await page.goto("/");
+  await page.goto("/app");
   await page.getByRole("button", { name: "R2 / KV / D1" }).click();
 
   await expect(page.getByTestId("findings-row-public-uploads")).toBeVisible();
@@ -322,7 +322,7 @@ test("specs/021 US2 — switching tabs and back preserves a table's page and sor
       }),
     });
   });
-  await page.goto("/");
+  await page.goto("/app");
   await page.getByRole("button", { name: "R2 / KV / D1" }).click();
 
   await page.getByTestId("pagination-next").click();

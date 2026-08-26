@@ -105,7 +105,7 @@ test.beforeEach(async ({ page }) => {
       contentType: "application/json",
       body: JSON.stringify({ modules: [], unavailable_sources: [] }),
     }));
-  await page.goto("/");
+  await page.goto("/app");
   await page.getByRole("button", { name: "Pages" }).click();
 });
 
@@ -170,7 +170,7 @@ test("issue #435 — a warning-tier subdomain-exposure status also renders OPEN,
         projects_pagination: { page: 1, page_size: 50, total: 1, total_pages: 1 },
       }),
     }));
-  await page.goto("/");
+  await page.goto("/app");
   await page.getByRole("button", { name: "Pages" }).click();
 
   await expect(page.getByTestId("findings-row-marketing-site").getByText("OPEN")).toBeVisible();
@@ -221,7 +221,7 @@ test("issue #457 — the Access column shows the covering app's name, WEAK POLIC
         projects_pagination: { page: 1, page_size: 50, total: 4, total_pages: 1 },
       }),
     }));
-  await page.goto("/");
+  await page.goto("/app");
   await page.getByRole("button", { name: "Pages" }).click();
 
   await expect(page.getByTestId("findings-row-protected-site").getByText("access-app"))
@@ -259,7 +259,7 @@ test("last build recency clamps a future timestamp to '0s ago', never negative",
       contentType: "application/json",
       body: JSON.stringify(skewedInventory),
     }));
-  await page.goto("/");
+  await page.goto("/app");
   await page.getByRole("button", { name: "Pages" }).click();
 
   const row = page.getByTestId("findings-row-marketing-site");
@@ -292,7 +292,7 @@ test("specs/020 US2 — projects paginate: page footer, next/prev, boundary disa
       }),
     });
   });
-  await page.goto("/");
+  await page.goto("/app");
   await page.getByRole("button", { name: "Pages" }).click();
 
   await expect(page.getByTestId("findings-row-project-0")).toBeVisible();

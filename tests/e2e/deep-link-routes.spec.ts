@@ -183,7 +183,11 @@ test("issue #516 — a stale pre-move bookmark to an old unprefixed path falls b
 });
 
 test("clicking a sidebar destination updates the URL, and a refresh from it lands on the same page", async ({ page }) => {
-  await page.goto("/");
+  // "/" no longer auto-redirects an authenticated visitor into the
+  // dashboard (App.tsx's landing-page comment) — navigate straight to /app,
+  // Overview's own real URL, to exercise the sidebar-click behavior itself.
+  await mockDeepLinkShell(page, "/app");
+  await page.goto("/app");
   await expect(page).toHaveURL(/\/app$/);
   await page.getByRole("button", { name: "Workers" }).click();
   await expect(page).toHaveURL(/\/app\/workers$/);
@@ -199,7 +203,10 @@ test("clicking a sidebar destination updates the URL, and a refresh from it land
 });
 
 test("the browser back button restores the previous page after in-app navigation", async ({ page }) => {
-  await page.goto("/");
+  // Same as the sidebar test above — "/" no longer redirects, so this
+  // starts directly on /app to exercise sidebar-to-sidebar back navigation.
+  await mockDeepLinkShell(page, "/app");
+  await page.goto("/app");
   await expect(page).toHaveURL(/\/app$/);
   await page.getByRole("button", { name: "Workers" }).click();
   await expect(page.getByRole("button", { name: "Workers" })).toHaveAttribute(
@@ -209,10 +216,6 @@ test("the browser back button restores the previous page after in-app navigation
 
   await page.goBack();
 
-  // Not "/" — the landing-to-overview redirect uses replaceState, so it
-  // never occupies its own history entry; back from /app/workers lands
-  // directly on /app (Overview), the same as it would for any other
-  // sidebar-to-sidebar back navigation.
   await expect(page).toHaveURL(/\/app$/);
   await expect(page.getByRole("button", { name: "Overview" })).toHaveAttribute(
     "aria-current",

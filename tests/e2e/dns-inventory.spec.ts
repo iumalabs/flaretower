@@ -224,7 +224,7 @@ test.beforeEach(async ({ page }) => {
         unavailable: [],
       }),
     }));
-  await page.goto("/");
+  await page.goto("/app");
   await page.getByRole("button", { name: "DNS" }).click();
 });
 
@@ -398,7 +398,7 @@ test("issue #473 — a long record name truncates instead of overflowing into th
       reason: "not proxy-capable",
     }],
   }]);
-  await page.goto("/");
+  await page.goto("/app");
   await page.getByRole("button", { name: "DNS" }).click();
   await page.getByRole("button", { name: "yugai.net" }).click();
 
@@ -419,7 +419,7 @@ test("issue #473 — a long record name truncates instead of overflowing into th
 test("specs/013 US1 — a zone with zero records shows its own empty state when selected", async ({ page }) => {
   await page.unroute("**/api/dns/inventory*");
   await routeDnsInventory(page, [...MOCK_ZONES, { zone_name: "empty.example", records: [] }]);
-  await page.goto("/");
+  await page.goto("/app");
   await page.getByRole("button", { name: "DNS" }).click();
   await page.getByRole("button", { name: "empty.example" }).click();
 
@@ -459,7 +459,7 @@ test("specs/020 US2 — a zone's records paginate: page footer, next/prev, bound
     };
     route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
   });
-  await page.goto("/");
+  await page.goto("/app");
   await page.getByRole("button", { name: "DNS" }).click();
 
   await expect(row(page, "big.example", "A", "r0.big.example", "10.0.0.0")).toBeVisible();
@@ -518,7 +518,7 @@ test("issue #504 — a paginated zone still shows accurate status counts, summed
     };
     route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
   });
-  await page.goto("/");
+  await page.goto("/app");
   await page.getByRole("button", { name: "DNS" }).click();
 
   // Only 2 of the 4 records are on this page (1 warning + 1 safe), but the

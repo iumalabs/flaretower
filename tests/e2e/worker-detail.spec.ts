@@ -107,7 +107,7 @@ test("US1 — clicking a Worker row opens its detail page with per-route status"
       }),
   );
 
-  await page.goto("/");
+  await page.goto("/app");
   await page.getByRole("button", { name: "Workers" }).click();
   await page.getByTestId("findings-row-api-gateway").click();
 
@@ -149,7 +149,7 @@ test("issue #495 — worker detail updates the URL, and a fresh load of it rende
       }),
   );
 
-  await page.goto("/");
+  await page.goto("/app");
   await page.getByRole("button", { name: "Workers" }).click();
   await page.getByTestId("findings-row-api-gateway").click();
   await expect(page.getByRole("heading", { name: "api-gateway" })).toBeVisible();
@@ -197,7 +197,7 @@ test("issue #431 — breadcrumb navigates back, and action buttons reflect this 
       }),
   );
 
-  await page.goto("/");
+  await page.goto("/app");
   await page.getByRole("button", { name: "Workers" }).click();
   await page.getByTestId("findings-row-api-gateway").click();
 
@@ -249,7 +249,7 @@ test("issue #431 — a critical custom domain derives Attach Access application;
       }),
     }));
 
-  await page.goto("/");
+  await page.goto("/app");
   await page.getByRole("button", { name: "Workers" }).click();
   await page.getByTestId("findings-row-api-gateway").click();
 
@@ -275,7 +275,7 @@ test("US1 — a Worker not in the latest evaluation run shows an explicit not-fo
       body: JSON.stringify({ error: "worker not found in latest evaluation run" }),
     }));
 
-  await page.goto("/");
+  await page.goto("/app");
   await page.getByRole("button", { name: "Workers" }).click();
   await page.getByTestId("findings-row-api-gateway").click();
 
@@ -322,7 +322,7 @@ test("US2 — a covered route shows its Access policy in plain language; an unco
       }),
     }));
 
-  await page.goto("/");
+  await page.goto("/app");
   await page.getByRole("button", { name: "Workers" }).click();
   await page.getByTestId("findings-row-api-gateway").click();
 
@@ -366,7 +366,7 @@ test("issue #416 — a safe route with an unresolved policy shows a non-contradi
       }),
     }));
 
-  await page.goto("/");
+  await page.goto("/app");
   await page.getByRole("button", { name: "Workers" }).click();
   await page.getByTestId("findings-row-api-gateway").click();
 
@@ -405,7 +405,7 @@ test("US3 — recent changes are scoped to this Worker, with an explicit empty s
       }),
     }));
 
-  await page.goto("/");
+  await page.goto("/app");
   await page.getByRole("button", { name: "Workers" }).click();
   await page.getByTestId("findings-row-api-gateway").click();
 
@@ -443,7 +443,7 @@ test("US3 — a Worker with no recent changes shows an explicit empty state, dis
       body: JSON.stringify({ ...MOCK_DETAIL, recent_changes: [] }),
     }));
 
-  await page.goto("/");
+  await page.goto("/app");
   await page.getByRole("button", { name: "Workers" }).click();
   await page.getByTestId("findings-row-api-gateway").click();
 
@@ -474,7 +474,7 @@ test("US3 — an audit log fetch failure shows an explicit unavailable state, no
       }),
     }));
 
-  await page.goto("/");
+  await page.goto("/app");
   await page.getByRole("button", { name: "Workers" }).click();
   await page.getByTestId("findings-row-api-gateway").click();
 
@@ -501,7 +501,7 @@ test("US1/FR-007 — a Worker with zero HTTP routes shows an explicit 'exposure 
       body: JSON.stringify({ ...MOCK_DETAIL, routes: [] }),
     }));
 
-  await page.goto("/");
+  await page.goto("/app");
   await page.getByRole("button", { name: "Workers" }).click();
   await page.getByTestId("findings-row-api-gateway").click();
 

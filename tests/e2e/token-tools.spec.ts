@@ -67,7 +67,7 @@ test.beforeEach(async ({ page }) => {
       contentType: "application/json",
       body: JSON.stringify(MOCK_SUMMARY),
     }));
-  await page.goto("/");
+  await page.goto("/app");
   await page.getByRole("button", { name: "Token Tools" }).click();
 });
 

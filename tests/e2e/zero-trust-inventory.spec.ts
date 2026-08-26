@@ -133,7 +133,7 @@ test.beforeEach(async ({ page }) => {
       contentType: "application/json",
       body: JSON.stringify({ modules: [], unavailable_sources: [] }),
     }));
-  await page.goto("/");
+  await page.goto("/app");
   await page.getByRole("button", { name: "Zero Trust" }).click();
 });
 
@@ -212,7 +212,7 @@ test("issue #434 — an app secured only by identity with no extra layer renders
         ],
       }),
     }));
-  await page.goto("/");
+  await page.goto("/app");
   await page.getByRole("button", { name: "Zero Trust" }).click();
 
   const identityOnlyRow = page.getByTestId("findings-row-app-identity-only");
@@ -290,12 +290,13 @@ test("specs/014 US3 — a Groups-fetch failure shows an explicit 'not available'
       contentType: "application/json",
       body: JSON.stringify({ ...MOCK_ZT_INVENTORY, access_groups: null }),
     }));
-  // Reset to "/" first: the beforeEach's own nav click already pushed the
-  // URL to "/zero-trust" (issue #480 — App.tsx now syncs the URL with the
-  // active page), and this suite's dev server (`vite dev`, unlike prod's
-  // Cloudflare Workers Assets) has no SPA fallback for a bare reload at a
-  // non-root path — it 404s instead of re-serving the app shell.
-  await page.evaluate(() => history.replaceState(null, "", "/"));
+  // Reset to "/app" first: the beforeEach's own nav click already pushed
+  // the URL to "/app/zero-trust" (issue #480 — App.tsx now syncs the URL
+  // with the active page), and this suite's dev server (`vite dev`, unlike
+  // prod's Cloudflare Workers Assets) has no SPA fallback for a bare reload
+  // at a non-root path — it 404s instead of re-serving the app shell (the
+  // fixtures.ts autouse mock handles "/app" specifically, not every path).
+  await page.evaluate(() => history.replaceState(null, "", "/app"));
   await page.reload();
   await page.getByRole("button", { name: "Zero Trust" }).click();
 
@@ -325,12 +326,13 @@ test("T026 — a completed run with zero apps and zero tokens shows a distinct m
         access_groups: [],
       }),
     }));
-  // Reset to "/" first: the beforeEach's own nav click already pushed the
-  // URL to "/zero-trust" (issue #480 — App.tsx now syncs the URL with the
-  // active page), and this suite's dev server (`vite dev`, unlike prod's
-  // Cloudflare Workers Assets) has no SPA fallback for a bare reload at a
-  // non-root path — it 404s instead of re-serving the app shell.
-  await page.evaluate(() => history.replaceState(null, "", "/"));
+  // Reset to "/app" first: the beforeEach's own nav click already pushed
+  // the URL to "/app/zero-trust" (issue #480 — App.tsx now syncs the URL
+  // with the active page), and this suite's dev server (`vite dev`, unlike
+  // prod's Cloudflare Workers Assets) has no SPA fallback for a bare reload
+  // at a non-root path — it 404s instead of re-serving the app shell (the
+  // fixtures.ts autouse mock handles "/app" specifically, not every path).
+  await page.evaluate(() => history.replaceState(null, "", "/app"));
   await page.reload();
   await page.getByRole("button", { name: "Zero Trust" }).click();
 
@@ -357,12 +359,13 @@ test("T026 — a run_id of null renders the 'never evaluated' message, not the e
         access_groups: [],
       }),
     }));
-  // Reset to "/" first: the beforeEach's own nav click already pushed the
-  // URL to "/zero-trust" (issue #480 — App.tsx now syncs the URL with the
-  // active page), and this suite's dev server (`vite dev`, unlike prod's
-  // Cloudflare Workers Assets) has no SPA fallback for a bare reload at a
-  // non-root path — it 404s instead of re-serving the app shell.
-  await page.evaluate(() => history.replaceState(null, "", "/"));
+  // Reset to "/app" first: the beforeEach's own nav click already pushed
+  // the URL to "/app/zero-trust" (issue #480 — App.tsx now syncs the URL
+  // with the active page), and this suite's dev server (`vite dev`, unlike
+  // prod's Cloudflare Workers Assets) has no SPA fallback for a bare reload
+  // at a non-root path — it 404s instead of re-serving the app shell (the
+  // fixtures.ts autouse mock handles "/app" specifically, not every path).
+  await page.evaluate(() => history.replaceState(null, "", "/app"));
   await page.reload();
   await page.getByRole("button", { name: "Zero Trust" }).click();
 
@@ -391,7 +394,7 @@ test("specs/020 US2 — Access applications paginate independently of Service to
       }),
     });
   });
-  await page.goto("/");
+  await page.goto("/app");
   await page.getByRole("button", { name: "Zero Trust" }).click();
 
   await expect(page.getByTestId("findings-row-app-open")).toBeVisible();
@@ -459,7 +462,7 @@ test("specs/021 US2 — switching tabs and back preserves Access applications' p
       }),
     });
   });
-  await page.goto("/");
+  await page.goto("/app");
   await page.getByRole("button", { name: "Zero Trust" }).click();
 
   // Sort by policies (0, 1, 1, 2 → app-no-policies first ascending), page
@@ -538,7 +541,7 @@ test("US2 — first-ever scan from the never-evaluated empty state (FR-006)", as
         service_tokens: [],
       }),
     }));
-  await page.goto("/");
+  await page.goto("/app");
   await page.getByRole("button", { name: "Zero Trust" }).click();
 
   await expect(page.getByText("No evaluation runs yet.")).toBeVisible();
