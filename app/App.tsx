@@ -116,14 +116,21 @@ function resolvePageFromLocation(): { page: PageKey; workerName: string | null }
 // challenge a signed-out visitor who's carried back to "/" — they'd just
 // see the landing page again. "/workers" stays fully Access-protected
 // exactly as every other dashboard route does today (spec.md Assumptions),
-// making it a stable, always-real trigger for Access's actual challenge —
-// once that completes, the browser lands on /workers with a valid session,
-// and the SPA's own session probe + #480's deep-link resolution render the
-// Workers dashboard directly.
+// making it a stable, always-real trigger for Access's actual challenge.
 const SIGN_IN_PATH = "/workers";
 
+// issue #512 — once Access's challenge completes and the browser lands back
+// on SIGN_IN_PATH with a valid session, that's an arbitrary first screen for
+// a brand-new operator (or a jarring detour for an already-authenticated one
+// who just clicked "Sign in" from /docs). This marker distinguishes "landed
+// here via the sign-in hand-off" from an ordinary bookmark/sidebar visit to
+// /workers, so the boot effect below can bounce straight to "/" (Overview)
+// once the session probe confirms a real identity, without touching
+// /workers' normal, marker-less behavior at all.
+const SIGN_IN_QUERY_PARAM = "post-sign-in";
+
 function handleSignIn() {
-  globalThis.location.assign(SIGN_IN_PATH);
+  globalThis.location.assign(`${SIGN_IN_PATH}?${SIGN_IN_QUERY_PARAM}=1`);
 }
 
 async function fetchModuleBadges(): Promise<AuditSummaryModuleEntry[]> {
@@ -169,7 +176,20 @@ export function App(): JSX.Element {
   const [session, setSession] = useState<SessionIdentity | null | undefined>(undefined);
 
   useEffect(() => {
-    fetchSession().then(setSession);
+    fetchSession().then((identity) => {
+      setSession(identity);
+      // issue #512 — the sign-in hand-off's own marker (see SIGN_IN_PATH's
+      // comment): a confirmed identity plus this query param means Access's
+      // challenge just completed (or was already satisfied) for a "Sign in"
+      // click, not an ordinary visit to /workers — replace the URL (not
+      // push, so back doesn't return to the marker) and switch straight to
+      // Overview instead of leaving the operator on the arbitrary page
+      // Access happened to redirect back to.
+      if (identity && new URLSearchParams(globalThis.location.search).has(SIGN_IN_QUERY_PARAM)) {
+        globalThis.history.replaceState(null, "", "/");
+        setPage("overview");
+      }
+    });
   }, []);
 
   // Keeps the URL in sync with in-app navigation (sidebar clicks, the
