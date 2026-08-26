@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.15.10](https://github.com/iumalabs/flaretower/compare/v1.15.9...v1.15.10) (2026-08-26)
+
+
+### Bug Fixes
+
+* production build outDir nesting — 404 on everything except /api/* ([#521](https://github.com/iumalabs/flaretower/issues/521)) ([8150475](https://github.com/iumalabs/flaretower/commit/8150475c2068c7d69248703ed3aad0f6e676ce87))
+
 ## [1.15.9](https://github.com/iumalabs/flaretower/compare/v1.15.8...v1.15.9) (2026-08-26)
 
 
