@@ -16,8 +16,37 @@ Read [`.specify/memory/constitution.md`](.specify/memory/constitution.md) first;
 authoritative source for the project's principles, architecture, and security requirements. This
 README covers day-to-day setup and operation only.
 
+## Screenshots
+
+All screenshots below use fictional sample data (the same "Acme Corp" theme the public landing
+page's own sample panel uses) — not a real Cloudflare account.
+
+|                                               |                                                   |
+| --------------------------------------------- | ------------------------------------------------- |
+| **Public landing page** — no sign-in required | **Overview** — the authenticated dashboard's home |
+| ![Landing page](docs/screenshots/landing.png) | ![Overview](docs/screenshots/overview.png)        |
+
+<details>
+<summary>Screenshots of every module</summary>
+
+|                                                    |                                                          |
+| -------------------------------------------------- | -------------------------------------------------------- |
+| **Workers**                                        | **Exposure matrix**                                      |
+| ![Workers](docs/screenshots/workers.png)           | ![Exposure matrix](docs/screenshots/exposure.png)        |
+| **DNS records**                                    | **Zero Trust inventory**                                 |
+| ![DNS records](docs/screenshots/dns.png)           | ![Zero Trust inventory](docs/screenshots/zero-trust.png) |
+| **Pages projects**                                 | **R2 / KV / D1 storage**                                 |
+| ![Pages projects](docs/screenshots/pages.png)      | ![Storage](docs/screenshots/storage.png)                 |
+| **Security posture**                               | **Audit & Drift**                                        |
+| ![Security posture](docs/screenshots/security.png) | ![Audit & Drift](docs/screenshots/audit.png)             |
+| **Token Tools**                                    |                                                          |
+| ![Token Tools](docs/screenshots/token-tools.png)   |                                                          |
+
+</details>
+
 ## Contents
 
+- [Screenshots](#screenshots)
 - [Status](#status)
 - [Prerequisites](#prerequisites)
 - [Setup](#setup)
