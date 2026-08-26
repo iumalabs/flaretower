@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.15.9](https://github.com/iumalabs/flaretower/compare/v1.15.8...v1.15.9) (2026-08-26)
+
+
+### Bug Fixes
+
+* dev server now actually routes /api/* through worker/index.ts ([#517](https://github.com/iumalabs/flaretower/issues/517)) ([7a41347](https://github.com/iumalabs/flaretower/commit/7a41347590d906d9e95e62cbc7e09a8eb60f1796))
+
 ## [1.15.8](https://github.com/iumalabs/flaretower/compare/v1.15.7...v1.15.8) (2026-08-26)
 
 
