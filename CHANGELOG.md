@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.16.0](https://github.com/iumalabs/flaretower/compare/v1.15.11...v1.16.0) (2026-08-26)
+
+
+### Features
+
+* add a public /changelog page and a real GitHub link ([#532](https://github.com/iumalabs/flaretower/issues/532)) ([3bf3622](https://github.com/iumalabs/flaretower/commit/3bf3622dce92200e9d0e3bdf34fb652c37d8f300))
+
 ## [1.15.11](https://github.com/iumalabs/flaretower/compare/v1.15.10...v1.15.11) (2026-08-26)
 
 
