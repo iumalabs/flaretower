@@ -27,7 +27,7 @@ README covers day-to-day setup and operation only.
 - [Required API token scopes](#required-api-token-scopes)
 - ⚠️ Required manual steps:
   [restrict Preview URLs](#-required-manual-post-deploy-step-restrict-preview-urls),
-  [exclude the public pages from Access](#-required-manual-step-spec-028-exclude-the-public-pages-from-access)
+  [scope Access to `/app/*` and `/api/*`](#-required-manual-step-scope-access-to-the-app-and-api-paths)
 - [Deployment](#deployment)
 - [Releases](#releases)
 
@@ -61,26 +61,26 @@ scope, not a remaining item from the original roadmap.
 
 None of these add a new Cloudflare API token scope unless noted.
 
-| Spec                                                                            | What it did                                                                                                                                                                                                              |
-| ------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| [011 Clone API Token Permissions](specs/011-clone-token-permissions/)           | Local-only "Token Tools" page — diff/generate token permission payloads without ever calling the Cloudflare API                                                                                                          |
-| [012 Workers Dashboard](specs/012-workers-dashboard/)                           | Bespoke Workers page with real per-Worker/account metrics and a recent-changes panel. **+`Account Analytics Read`, `Account Settings Read`**                                                                             |
-| [013 DNS Dashboard](specs/013-dns-dashboard/)                                   | Zone tabs, Proxy/TTL columns, an ineffective-DMARC-policy warning                                                                                                                                                        |
-| [014 Access Dashboard](specs/014-access-dashboard/)                             | Zero Trust Applications columns upgrade + an Access Groups panel. **+`Access: Groups Read`, `Access: Identity Providers Read`**                                                                                          |
-| [015 Pages Dashboard](specs/015-pages-dashboard/)                               | One row per project instead of one row per underlying check                                                                                                                                                              |
-| [016 Storage Dashboard](specs/016-storage-dashboard/)                           | "Bound to", Custom domain, and Tables/Size columns for R2/KV/D1                                                                                                                                                          |
-| [017 Security Dashboard](specs/017-security-dashboard/)                         | One row per zone, 3 new checks, live Certificates/WAF Custom Rules panels. **+`Zone Settings Read`**                                                                                                                     |
-| [018 Audit Dashboard](specs/018-audit-dashboard/)                               | Real Cloudflare account activity feed, filterable and exportable as JSONL                                                                                                                                                |
-| [019 Audit Operator Role Changes](specs/019-audit-role-changes/)                | Every `member`/`admin` role change now writes an `audit_log` entry                                                                                                                                                       |
-| [020 List Pagination](specs/020-list-pagination/)                               | Server-side pagination for the Audit log and the 6 module dashboard tables                                                                                                                                               |
-| [021 Dashboard Panel Tabs](specs/021-dashboard-panel-tabs/)                     | Tabbed navigation instead of long stacked panels, applied as a general pattern                                                                                                                                           |
-| [022 Audit List Pagination](specs/022-audit-list-pagination/)                   | Pagination for the two lists 020 left out: the alerts inbox and the "what changed" feed                                                                                                                                  |
-| [023 Worker Detail Page](specs/023-worker-detail-page/)                         | Per-Worker drill-down: routes, effective Access policy, recent changes                                                                                                                                                   |
-| [024 Manual Re-scan Trigger](specs/024-manual-rescan-trigger/)                  | An on-demand "Re-scan" button on every module with server-side evaluation state                                                                                                                                          |
-| [025 Exposure Matrix](specs/025-exposure-matrix/)                               | Rebuilt Exposure as one row per Worker × entry-point, with severity filters and search                                                                                                                                   |
-| [026 Workers Inventory Layout](specs/026-workers-inventory-layout/)             | Header toolbar (search, environment filter) and a repositioned status column                                                                                                                                             |
-| [027 Overview Dashboard Redesign](specs/027-overview-dashboard-redesign/)       | Header context row, plain-language finding reasons, a 14-day exposure trend chart                                                                                                                                        |
-| [028 Public Entry, Docs & Sign-In](specs/028-public-entry-landing-docs-signin/) | A public landing page and documentation page at `/`/`/docs`, plus a "Sign in" hand-off to Cloudflare Access — see the [required manual step](#-required-manual-step-spec-028-exclude-the-public-pages-from-access) below |
+| Spec                                                                            | What it did                                                                                                                                                                                                                                                                                                                                                                          |
+| ------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| [011 Clone API Token Permissions](specs/011-clone-token-permissions/)           | Local-only "Token Tools" page — diff/generate token permission payloads without ever calling the Cloudflare API                                                                                                                                                                                                                                                                      |
+| [012 Workers Dashboard](specs/012-workers-dashboard/)                           | Bespoke Workers page with real per-Worker/account metrics and a recent-changes panel. **+`Account Analytics Read`, `Account Settings Read`**                                                                                                                                                                                                                                         |
+| [013 DNS Dashboard](specs/013-dns-dashboard/)                                   | Zone tabs, Proxy/TTL columns, an ineffective-DMARC-policy warning                                                                                                                                                                                                                                                                                                                    |
+| [014 Access Dashboard](specs/014-access-dashboard/)                             | Zero Trust Applications columns upgrade + an Access Groups panel. **+`Access: Groups Read`, `Access: Identity Providers Read`**                                                                                                                                                                                                                                                      |
+| [015 Pages Dashboard](specs/015-pages-dashboard/)                               | One row per project instead of one row per underlying check                                                                                                                                                                                                                                                                                                                          |
+| [016 Storage Dashboard](specs/016-storage-dashboard/)                           | "Bound to", Custom domain, and Tables/Size columns for R2/KV/D1                                                                                                                                                                                                                                                                                                                      |
+| [017 Security Dashboard](specs/017-security-dashboard/)                         | One row per zone, 3 new checks, live Certificates/WAF Custom Rules panels. **+`Zone Settings Read`**                                                                                                                                                                                                                                                                                 |
+| [018 Audit Dashboard](specs/018-audit-dashboard/)                               | Real Cloudflare account activity feed, filterable and exportable as JSONL                                                                                                                                                                                                                                                                                                            |
+| [019 Audit Operator Role Changes](specs/019-audit-role-changes/)                | Every `member`/`admin` role change now writes an `audit_log` entry                                                                                                                                                                                                                                                                                                                   |
+| [020 List Pagination](specs/020-list-pagination/)                               | Server-side pagination for the Audit log and the 6 module dashboard tables                                                                                                                                                                                                                                                                                                           |
+| [021 Dashboard Panel Tabs](specs/021-dashboard-panel-tabs/)                     | Tabbed navigation instead of long stacked panels, applied as a general pattern                                                                                                                                                                                                                                                                                                       |
+| [022 Audit List Pagination](specs/022-audit-list-pagination/)                   | Pagination for the two lists 020 left out: the alerts inbox and the "what changed" feed                                                                                                                                                                                                                                                                                              |
+| [023 Worker Detail Page](specs/023-worker-detail-page/)                         | Per-Worker drill-down: routes, effective Access policy, recent changes                                                                                                                                                                                                                                                                                                               |
+| [024 Manual Re-scan Trigger](specs/024-manual-rescan-trigger/)                  | An on-demand "Re-scan" button on every module with server-side evaluation state                                                                                                                                                                                                                                                                                                      |
+| [025 Exposure Matrix](specs/025-exposure-matrix/)                               | Rebuilt Exposure as one row per Worker × entry-point, with severity filters and search                                                                                                                                                                                                                                                                                               |
+| [026 Workers Inventory Layout](specs/026-workers-inventory-layout/)             | Header toolbar (search, environment filter) and a repositioned status column                                                                                                                                                                                                                                                                                                         |
+| [027 Overview Dashboard Redesign](specs/027-overview-dashboard-redesign/)       | Header context row, plain-language finding reasons, a 14-day exposure trend chart                                                                                                                                                                                                                                                                                                    |
+| [028 Public Entry, Docs & Sign-In](specs/028-public-entry-landing-docs-signin/) | A public landing page and documentation page at `/`/`/docs`, plus a "Sign in" hand-off to Cloudflare Access. The authenticated app (Overview included) moved under `/app` (issue #516) shortly after, so Access protects one simple path pattern instead of an exclusion policy — see the [required manual step](#-required-manual-step-scope-access-to-the-app-and-api-paths) below |
 
 ## Prerequisites
 
@@ -243,37 +243,34 @@ After the first deploy:
 Skipping this step leaves preview builds of FlareTower itself — a tool that holds a credential
 capable of reading (and eventually writing) the entire Cloudflare account — publicly reachable.
 
-## ⚠️ Required manual step (spec 028): exclude the public pages from Access
+## ⚠️ Required manual step: scope Access to the app and API paths
 
-Since [`specs/028-public-entry-landing-docs-signin/`](specs/028-public-entry-landing-docs-signin/),
-FlareTower has a public landing page and documentation page (`/` for a signed-out visitor, `/docs`
-unconditionally) that must be reachable **without** an Access session — that's the whole point of a
-public entry point. A Cloudflare Access Application protects or excludes a path entirely; there is
-no per-request "protect this path except for these two" mode, so this narrowing has to be done by
-hand, the same way
-[restricting Preview URLs](#-required-manual-post-deploy-step-restrict-preview-urls) above does.
-Wrangler cannot automate this step either.
+FlareTower's public pages (`/` for a signed-out visitor, `/docs` unconditionally) must be reachable
+**without** an Access session — that's the whole point of a public entry point (spec
+[`028-public-entry-landing-docs-signin/`](specs/028-public-entry-landing-docs-signin/)) — while
+everything else needs a real session. Rather than excluding the public paths from an
+"protect-everything" policy (fragile — a missed path is silently exposed instead of silently
+over-protected), the entire authenticated app lives under one path prefix,
+[`/app`](specs/028-public-entry-landing-docs-signin/) (issue #516), so the Access Application's path
+pattern is a single, unambiguous **allow-list**: protect `/app/*` and `/api/*`, nothing else needs
+naming. `/` and `/docs` need zero Access configuration to be public — they're simply outside that
+pattern.
 
-After the first deploy with this feature:
+After the first deploy:
 
 1. Cloudflare dashboard → **Zero Trust** → **Access** → **Applications** → the application
    protecting FlareTower's own hostname → **Edit**.
-2. Under its path rules, add **Exclude** entries for:
-   - `/` (exact — do **not** exclude a wildcard like `/*`, or every authenticated route stops being
-     protected)
-   - `/docs`
-   - any static asset paths the public pages themselves load (fonts, the favicon, the bundled JS/CSS
-     — check the Network tab on a signed-out load of `/` for anything still returning a Cloudflare
-     Access challenge page instead of its real content)
-3. Leave every other path (`/workers`, `/exposure`, `/dns`, `/api/*`, etc.) under the application's
-   existing coverage, unchanged — those still need to challenge a signed-out visitor, and
-   `/api/identity/session` specifically still needs to resolve to a real identity for an
-   already-signed-in visitor for the landing/dashboard split to work at all (see
-   [`specs/028-public-entry-landing-docs-signin/contracts/session-probe.md`](specs/028-public-entry-landing-docs-signin/contracts/session-probe.md)).
+2. Set its path rules to cover exactly:
+   - `/app/*`
+   - `/api/*` (also independently JWT-validated per-request regardless of Access's own edge-level
+     coverage — constitution Principle II's defense-in-depth — but still needs its own real Access
+     challenge as the primary layer, the same as `/app/*`)
+3. Remove any broader "protect everything" rule this application previously had. `/` and `/docs`
+   need no rule of their own — they're public by not being named, not by an exclusion.
 
-Skipping this step doesn't break anything for an already-authenticated operator, but it means a
-signed-out visitor hits Access's own challenge page at `/` instead of ever seeing FlareTower's
-landing page — the feature this spec adds simply won't be reachable.
+Skipping this step (or leaving the old "protect everything" policy in place) doesn't break anything
+for an already-authenticated operator, but it means a signed-out visitor hits Access's own challenge
+page at `/` instead of ever seeing FlareTower's landing page.
 
 ## Deployment
 
