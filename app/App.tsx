@@ -76,27 +76,28 @@ const PAGES = [
 // special-case below, never via `active.render()`. spec 028 — "docs" is the
 // same: no sidebar item, no render() placeholder, always reached via its
 // own top-level special-case in the return statement below (it doesn't
-// render inside the authenticated Sidebar+content shell at all). There's
-// no separate "landing" page key — the landing page and the authenticated
-// Overview dashboard are two different things page==="overview" can render,
-// picked by session state, not two different `page` values.
-type PageKey = typeof PAGES[number]["key"] | "worker-detail" | "docs";
+// render inside the authenticated Sidebar+content shell at all). issue
+// #516 — "landing" (`/`) and "overview" (`/app`) are genuinely different
+// paths now, not one path branching on session state, so they're two
+// distinct PageKey values.
+type PageKey = typeof PAGES[number]["key"] | "worker-detail" | "docs" | "landing";
 
 const NAV_KEYS = NAV_ITEMS.map((item) => item.key);
 
-// spec 028 — "docs" is a real, public page-routes.ts key (see its own
-// comment on "landing"/"docs"), included here so pageForPath()/popstate
-// resolve /docs correctly instead of falling back to overview. "landing"
-// is deliberately NOT in this list — it shares "/" with "overview" at the
-// path level, and which of the two actually renders is a session-state
-// decision made below, not a pathname-parsing one.
+// spec 028 — "docs" is a real, public page-routes.ts key, included here so
+// pageForPath()/popstate resolve /docs correctly instead of falling back
+// to the landing page. "landing" is deliberately NOT in this list — it has
+// no `/app/<key>` shape for pageForPath's generic branch to match against
+// (see page-routes.ts's own comment on why bare "/" resolves to "landing"
+// directly, before this list is even consulted).
 const ROUTABLE_KEYS = [...NAV_KEYS, "docs"];
 
-// issue #495 — a full page load on /workers/<name> must land directly on
-// that worker's detail page (with the right worker selected), not fall
-// back to Overview the way a bare, unresolvable path already correctly
-// does since #480. Checked before the generic pageForPath() resolution
-// since /workers/<name> isn't one of ROUTABLE_KEYS' flat page keys.
+// issue #495 — a full page load on /app/workers/<name> must land directly
+// on that worker's detail page (with the right worker selected), not fall
+// back to the landing page the way a bare, unresolvable path already
+// correctly does since #480. Checked before the generic pageForPath()
+// resolution since /app/workers/<name> isn't one of ROUTABLE_KEYS' flat
+// page keys.
 function resolvePageFromLocation(): { page: PageKey; workerName: string | null } {
   const workerName = workerNameFromPath(globalThis.location.pathname);
   if (workerName) {
@@ -108,29 +109,23 @@ function resolvePageFromLocation(): { page: PageKey; workerName: string | null }
   };
 }
 
-// spec 028 (research.md §1/§2) — "/" itself becomes Access-public once
-// this feature ships (excluded from the Access Application's protected-
-// path coverage — see README.md's required manual deploy step), so it can
-// no longer be the path "Sign in" targets: Access never even sees a
-// request to an excluded path, authenticated or not, so nothing would
-// challenge a signed-out visitor who's carried back to "/" — they'd just
-// see the landing page again. "/workers" stays fully Access-protected
-// exactly as every other dashboard route does today (spec.md Assumptions),
-// making it a stable, always-real trigger for Access's actual challenge.
-const SIGN_IN_PATH = "/workers";
-
-// issue #512 — once Access's challenge completes and the browser lands back
-// on SIGN_IN_PATH with a valid session, that's an arbitrary first screen for
-// a brand-new operator (or a jarring detour for an already-authenticated one
-// who just clicked "Sign in" from /docs). This marker distinguishes "landed
-// here via the sign-in hand-off" from an ordinary bookmark/sidebar visit to
-// /workers, so the boot effect below can bounce straight to "/" (Overview)
-// once the session probe confirms a real identity, without touching
-// /workers' normal, marker-less behavior at all.
-const SIGN_IN_QUERY_PARAM = "post-sign-in";
+// spec 028 (research.md §1/§2) / issue #516 — "/" is Access-public (outside
+// the Access Application's `/app/*` path pattern entirely, structurally —
+// see README's required manual step), so it can't be the path "Sign in"
+// targets: Access never even sees a request to a path outside its own
+// pattern, authenticated or not, so nothing would challenge a signed-out
+// visitor carried back to "/" — they'd just see the landing page again.
+// "/app" itself (== the "overview" PageKey's own path, page-routes.ts)
+// stays fully Access-protected like every other dashboard route, and is
+// also exactly where an operator belongs once signed in — issue #512 used
+// to need a marker-and-redirect dance to bounce off an arbitrary
+// SIGN_IN_PATH into Overview after the fact; now that Overview has its own
+// real, protected URL, signing in and landing on the dashboard are the
+// same navigation.
+const SIGN_IN_PATH = "/app";
 
 function handleSignIn() {
-  globalThis.location.assign(`${SIGN_IN_PATH}?${SIGN_IN_QUERY_PARAM}=1`);
+  globalThis.location.assign(SIGN_IN_PATH);
 }
 
 async function fetchModuleBadges(): Promise<AuditSummaryModuleEntry[]> {
@@ -160,36 +155,27 @@ async function fetchWorkersDeployedCount(): Promise<number> {
 // specs/009-design-system-alignment: revisit once enough modules land
 // that a real router earns its keep; constitution Principle IV/V's
 // minimal-dependency spirit applies to the frontend too).
-export function App(): JSX.Element {
-  // "overview" is the default/initial page (tasks.md T033, User Story 3) —
-  // "is anything wrong right now" answered before navigating anywhere — but
-  // a full page load on any other route (bookmark, refresh, shared link)
-  // must land on THAT page, not silently fall back to it (issue #480).
+export function App(): JSX.Element | null {
+  // "overview" is the default/initial *authenticated* page (tasks.md T033,
+  // User Story 3) — "is anything wrong right now" answered before
+  // navigating anywhere — reached at "/app" (issue #516), while a bare "/"
+  // resolves to "landing" (which the useEffect below immediately turns
+  // back into "overview" for an already-signed-in visitor). Either way, a
+  // full page load on any other route (bookmark, refresh, shared link)
+  // must land on THAT page, not silently fall back (issue #480).
   const [page, setPage] = useState<PageKey>(() => resolvePageFromLocation().page);
   const [badges, setBadges] = useState<{ key: string; count: number }[]>([]);
   const active = PAGES.find((p) => p.key === page) ?? PAGES[0];
 
   // spec 028 — undefined: the session probe hasn't resolved yet (the one
-  // window where "/" can't yet be shown as either the landing page or the
-  // authenticated dashboard without risking a flash of the wrong one).
-  // null: confirmed no session. An identity object: authenticated.
+  // window where neither "landing" nor "overview" can safely render —
+  // resolving whether either is even the right page to be on right now
+  // depends on this). null: confirmed no session. An identity object:
+  // authenticated.
   const [session, setSession] = useState<SessionIdentity | null | undefined>(undefined);
 
   useEffect(() => {
-    fetchSession().then((identity) => {
-      setSession(identity);
-      // issue #512 — the sign-in hand-off's own marker (see SIGN_IN_PATH's
-      // comment): a confirmed identity plus this query param means Access's
-      // challenge just completed (or was already satisfied) for a "Sign in"
-      // click, not an ordinary visit to /workers — replace the URL (not
-      // push, so back doesn't return to the marker) and switch straight to
-      // Overview instead of leaving the operator on the arbitrary page
-      // Access happened to redirect back to.
-      if (identity && new URLSearchParams(globalThis.location.search).has(SIGN_IN_QUERY_PARAM)) {
-        globalThis.history.replaceState(null, "", "/");
-        setPage("overview");
-      }
-    });
+    fetchSession().then(setSession);
   }, []);
 
   // Keeps the URL in sync with in-app navigation (sidebar clicks, the
@@ -231,6 +217,39 @@ export function App(): JSX.Element {
     globalThis.addEventListener("popstate", onPopState);
     return () => globalThis.removeEventListener("popstate", onPopState);
   }, []);
+
+  // issue #516 — "landing" (`/`) and "overview" (`/app`) each independently
+  // verify the session actually matches where they are, the same
+  // defense-in-depth spirit as accessAuth's own re-validation of the JWT
+  // (constitution Principle II) — Access is *supposed* to already keep an
+  // unauthenticated visitor off `/app` and never touch `/`, but this must
+  // hold even if that's misconfigured (or, in local dev, simply absent):
+  //   - session resolves true while sitting on "landing" → this visitor is
+  //     actually signed in; bounce them into their real dashboard URL
+  //     instead of rendering landing content forever at "/".
+  //   - session resolves null while sitting on "overview" → this visitor
+  //     has no session at all; bounce back to the public root instead of
+  //     ever rendering dashboard shell at an unprotected-by-Access `/app`.
+  // A real navigation isn't needed either way — Access only ever needs to
+  // *challenge* on the way in, and by this point the session is already
+  // known one way or the other, so a client-side redirect is enough (and
+  // keeps the sign-in hand-off itself as the one place a real
+  // `location.assign` is used, per SIGN_IN_PATH's own comment above).
+  // Uses replaceState (not navigate()'s pushState) deliberately — this is
+  // an automatic bounce, not something the visitor actually did, so it
+  // shouldn't add its own entry to browser history; back from
+  // `/app/workers` should land on `/app`, not on this redirect's own
+  // momentary "/" or "/app" stop.
+  useEffect(() => {
+    if (session === undefined) return;
+    if (page === "landing" && session) {
+      setPage("overview");
+      globalThis.history.replaceState(null, "", "/app");
+    } else if (page === "overview" && session === null) {
+      setPage("landing");
+      globalThis.history.replaceState(null, "", "/");
+    }
+  }, [session, page]);
 
   // specs/023-worker-detail-page (FR-011, data-model.md's Frontend
   // navigation state) — lifted out of WorkersDashboardPage so navigating to
@@ -311,33 +330,54 @@ export function App(): JSX.Element {
     return (
       <DocumentationPage
         onSignIn={handleSignIn}
-        onBack={() => navigate("overview")}
+        // issue #516 — "home" from /docs is always the public landing page,
+        // never directly "overview"/`/app`: an unauthenticated visitor must
+        // never even momentarily hit the Access-protected `/app` URL on the
+        // way back (that useEffect above still recovers correctly either
+        // way, but landing is the honest, un-detoured target for this
+        // click). An already-authenticated visitor gets bounced from
+        // "landing" into "overview" by that same effect immediately after.
+        onBack={() => navigate("landing")}
       />
     );
   }
 
-  if (page === "overview") {
-    // The one window where "/" can't yet be shown as either the landing
-    // page or the authenticated dashboard without risking a flash of the
-    // wrong one — session is still resolving.
-    if (session === undefined) {
-      return (
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            minHeight: "100vh",
-            background: "var(--bg-base)",
-          }}
-        >
-          <Logo variant="mono" size={32} />
-        </div>
-      );
-    }
+  // issue #516 — the one place App.tsx still renders a loading state before
+  // either "landing" or "overview" can safely resolve to real content: the
+  // session probe hasn't come back yet, so neither knows if it's the right
+  // one to render (or should instead redirect, per the useEffect above).
+  if ((page === "landing" || page === "overview") && session === undefined) {
+    return (
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          minHeight: "100vh",
+          background: "var(--bg-base)",
+        }}
+      >
+        <Logo variant="mono" size={32} />
+      </div>
+    );
+  }
+
+  if (page === "landing") {
+    // session === null here (an authenticated "landing" is a one-render
+    // transient the useEffect above immediately navigates away from) —
+    // still checked explicitly rather than assumed, so a signed-in visitor
+    // is never even momentarily shown landing-page content.
     if (session === null) {
       return <LandingPage onSignIn={handleSignIn} onNavigateToDocs={() => navigate("docs")} />;
     }
+    return null;
+  }
+
+  if (page === "overview" && session === null) {
+    // Mirror of the above: an unauthenticated "overview" is a one-render
+    // transient the useEffect navigates away from — render nothing rather
+    // than a flash of dashboard shell with no data behind it.
+    return null;
   }
 
   return (
