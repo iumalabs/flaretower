@@ -16,104 +16,71 @@ Read [`.specify/memory/constitution.md`](.specify/memory/constitution.md) first;
 authoritative source for the project's principles, architecture, and security requirements. This
 README covers day-to-day setup and operation only.
 
+## Contents
+
+- [Status](#status)
+- [Prerequisites](#prerequisites)
+- [Setup](#setup)
+- [Local development](#local-development)
+- [Authentication](#authentication)
+- [Identity & Roles](#identity--roles)
+- [Required API token scopes](#required-api-token-scopes)
+- ⚠️ Required manual steps:
+  [restrict Preview URLs](#-required-manual-post-deploy-step-restrict-preview-urls),
+  [exclude the public pages from Access](#-required-manual-step-spec-028-exclude-the-public-pages-from-access)
+- [Deployment](#deployment)
+- [Releases](#releases)
+
 ## Status
 
-Module 1 (**Workers & Access exposure**), Module 2 (**DNS**), Module 3 (**Zero Trust / Access**),
-Module 4 (**Pages**), Module 5 (**R2 / KV / D1**), Module 6 (**Security Posture**), and Module 7
-(**Audit & Drift**) are implemented — see
-[`specs/001-workers-access-exposure/`](specs/001-workers-access-exposure/),
-[`specs/002-dns/`](specs/002-dns/), [`specs/003-zero-trust/`](specs/003-zero-trust/),
-[`specs/004-pages/`](specs/004-pages/), [`specs/005-r2-kv-d1/`](specs/005-r2-kv-d1/),
-[`specs/006-security-posture/`](specs/006-security-posture/), and
-[`specs/007-audit-drift/`](specs/007-audit-drift/) for their specs, plans, and tasks. This is every
-module in the constitution's product scope (§2) — Module 7 requests no new Cloudflare API token
-scopes: it's a pure read-only aggregation over the finding/alert tables Modules 1-6 already
-populate, with no new Cloudflare API calls of its own (see
-[`specs/007-audit-drift/research.md`](specs/007-audit-drift/research.md#4-no-new-d1-tables) §4).
+All 7 modules in the constitution's product scope (§2), plus 3 cross-cutting features, are
+implemented — that combination is FlareTower's **v1.0** milestone. Everything after v1.0 is new
+scope, not a remaining item from the original roadmap.
 
-Cross-cutting, alongside the 7 modules:
-[**Identity, Authorization & Audit Data Model**](specs/008-identity-authorization/) — wires the
-constitution-mandated `users`/`audit_log` baseline tables into behavior for the first time (operator
-recognition, FlareTower-native `member`/`admin` roles gating the in-app acknowledge action, and a
-write-capable `audit_log` mechanism ready for the first future Cloudflare-mutating module). See
-[Identity & Roles](#identity--roles) below. No new Cloudflare API token scopes.
+### v1.0 — the 7 core modules
 
-Also cross-cutting: [**Design System & App Shell Alignment**](specs/009-design-system-alignment/) —
-aligns the whole app shell (sidebar, typography, tokens, shared `FindingsTable`/`AlertBanner`
-components, a cross-module Overview page) to `docs/design.zip`'s visual language; and
-[**Semantic Versioning & Version-Gated Production Releases**](specs/010-semver-releases/) — the
-release process this milestone is named after (see [Releases](#releases) below). Both no new
-Cloudflare API token scopes.
+| # | Module                    | Spec                                                                                                                                       |
+| - | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| 1 | Workers & Access exposure | [`specs/001-workers-access-exposure/`](specs/001-workers-access-exposure/)                                                                 |
+| 2 | DNS                       | [`specs/002-dns/`](specs/002-dns/)                                                                                                         |
+| 3 | Zero Trust / Access       | [`specs/003-zero-trust/`](specs/003-zero-trust/)                                                                                           |
+| 4 | Pages                     | [`specs/004-pages/`](specs/004-pages/)                                                                                                     |
+| 5 | R2 / KV / D1              | [`specs/005-r2-kv-d1/`](specs/005-r2-kv-d1/)                                                                                               |
+| 6 | Security Posture          | [`specs/006-security-posture/`](specs/006-security-posture/)                                                                               |
+| 7 | Audit & Drift             | [`specs/007-audit-drift/`](specs/007-audit-drift/) — pure read-only aggregation over Modules 1-6's own tables, no new Cloudflare API calls |
 
-With Modules 1–7 plus both cross-cutting features above complete, this is FlareTower's v1.0
-milestone. Everything past this point is genuinely new scope, not a remaining item from the original
-roadmap.
+### v1.0 — cross-cutting
 
-Post-v1.0: [**Clone API Token Permissions**](specs/011-clone-token-permissions/) — a local-only
-"Token Tools" page: paste one Cloudflare API token's JSON permission payload in, get back either a
-human-readable checklist or a ready-to-paste JSON payload for creating the next token with matching
-scopes (e.g. keeping `preview`/`production` token permissions in sync), plus a diff between two
-pasted payloads. Solves issue #283 without FlareTower's own credential ever needing an
-`API Tokens
-Read`/`API Tokens Edit` scope — the Cloudflare API is never called. No new token scopes.
+| Spec                                                                          | What it did                                                                                   |
+| ----------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| [008 Identity, Authorization & Audit](specs/008-identity-authorization/)      | `users`/`audit_log` tables, `member`/`admin` roles — see [Identity & Roles](#identity--roles) |
+| [009 Design System & App Shell Alignment](specs/009-design-system-alignment/) | Aligned the whole app shell to `docs/design.zip`'s visual language                            |
+| [010 Semver & Version-Gated Releases](specs/010-semver-releases/)             | This project's release process — see [Releases](#releases)                                    |
 
-Also post-v1.0: [**Workers Dashboard**](specs/012-workers-dashboard/) — a dedicated, bespoke
-"Workers" page (separate from the existing Exposure page) with real per-Worker and account-wide
-operational metrics and a Workers-scoped recent-changes panel, following the design source's own
-expanded set of per-module dashboard mockups. Adds two new token scopes (`Account Analytics Read`,
-`Account Settings Read` — see below); the same design update adds equivalent bespoke dashboards for
-the other 6 modules, tracked as their own specs (013-018) in the same pattern.
-[**DNS Dashboard**](specs/013-dns-dashboard/) is the second of those — upgrades the existing DNS
-page in place (zone tabs, Proxy/TTL columns, an ineffective-DMARC-policy warning, a platform-domain
-informational label), no new token scope. [**Access Dashboard**](specs/014-access-dashboard/) is the
-third — upgrades the Applications half of the existing Zero Trust page in place (Covers/Policies/
-Identity/Session columns, a plain-language Policy detail panel, an Access Groups panel), reusing the
-existing Application health-status semantics unchanged; Service Tokens is untouched. Adds two new
-token scopes (`Access: Groups Read`, `Access: Identity Providers Read` — see below), missed from
-this README until a later audit caught the gap between what the code called and what was documented.
-[**Pages Dashboard**](specs/015-pages-dashboard/) is the fourth — upgrades the existing Pages page
-in place, one row per project (production domain, production branch, last build status + recency,
-unchanged exposure health) instead of the prior 3-or-more rows per project (one per underlying
-check), no new token scope. [**Storage Dashboard**](specs/016-storage-dashboard/) is the fifth —
-upgrades the existing R2/KV/D1 page in place, a "Bound to" column shared across all three grouped
-tables (which deployed Worker(s) actually reference each resource), a Custom domain column for R2
-buckets, and Tables/Size columns for D1 databases, reusing the existing exposure/usage status
-semantics unchanged; no new token scope. [**Security Dashboard**](specs/017-security-dashboard/) is
-the sixth — upgrades the existing Security Posture page in place, one row per zone (SSL/TLS, DNSSEC,
-WAF, Rate Limiting, plus 3 new checks: Bot Fight Mode, Always Use HTTPS, Minimum TLS Version)
-instead of the prior one-row-per-check flattening, plus live-fetched Certificates and WAF Custom
-Rules panels; Turnstile widgets is untouched. Adds one new token scope (`Zone Settings Read`, for
-the 3 new checks — see below); the Certificates and WAF Custom Rules panels are believed to already
-be covered by the existing SSL and WAF scopes, unchanged (see those two rows' own caveats below).
-Same later-audit gap as Access Dashboard above — this paragraph originally, incorrectly, claimed no
-new scope at all. [**Audit Dashboard**](specs/018-audit-dashboard/) is the seventh and last of this
-rollout — adds a real "Audit log" panel to the existing Audit & Drift page, a chronological feed of
-real Cloudflare account activity (who did what, when, what changed), filterable by source and
-exportable as JSONL, reusing spec 012's `fetchAccountAuditLog()` integration unmodified; no new
-token scope. The existing Unified alerts inbox / What changed / Account-wide posture summary
-sections are untouched. This completes the 7-spec per-module dashboard rollout (012-018).
+### Post-v1.0
 
-Also post-v1.0: [**Audit Operator Role Changes**](specs/019-audit-role-changes/) — closes a gap
-where changing another operator's `member`/`admin` role left no record of who made the change; every
-role change now writes a permanent `audit_log` entry (actor, target operator, previous role, new
-role, timestamp) atomically with the role change itself, through the same shared record-keeping
-mechanism every other mutating module already uses. No new Cloudflare API token scopes — this is
-FlareTower's own authorization state, not Cloudflare account state.
+None of these add a new Cloudflare API token scope unless noted.
 
-Also post-v1.0: [**List Pagination**](specs/020-list-pagination/) — the Audit log previously fetched
-a single 100-event Cloudflare API page and silently stopped, and the six module dashboard tables
-(Workers, DNS, Storage, Security, Zero Trust, Pages) each rendered their entire result set in one
-unbroken table with no page controls. The Audit log's backend now follows Cloudflare's own
-pagination cursor up to a defined safe cap (1000 events), surfacing a "capped" indicator rather than
-presenting a partial result as complete; the six module dashboards paginate server-side
-(`page`/`page_size`/`sort_key`/`sort_dir`), with cross-collection critical findings (an exposed
-bucket, an open Access application, a critical zone) computed across each entity's whole result set
-so pagination can never hide the single most urgent finding on a different page. No new Cloudflare
-API token scopes. Found and fixed one pre-existing, unrelated bug while restructuring the Security
-module's response: its Certificates and WAF Custom Rules panels were serialized in their internal
-camelCase shape instead of the snake_case shape the frontend has always expected, silently rendering
-blank in production — nothing in the existing mocked e2e suite exercised the real route's
-serialization closely enough to catch it.
+| Spec                                                                            | What it did                                                                                                                                                                                                              |
+| ------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| [011 Clone API Token Permissions](specs/011-clone-token-permissions/)           | Local-only "Token Tools" page — diff/generate token permission payloads without ever calling the Cloudflare API                                                                                                          |
+| [012 Workers Dashboard](specs/012-workers-dashboard/)                           | Bespoke Workers page with real per-Worker/account metrics and a recent-changes panel. **+`Account Analytics Read`, `Account Settings Read`**                                                                             |
+| [013 DNS Dashboard](specs/013-dns-dashboard/)                                   | Zone tabs, Proxy/TTL columns, an ineffective-DMARC-policy warning                                                                                                                                                        |
+| [014 Access Dashboard](specs/014-access-dashboard/)                             | Zero Trust Applications columns upgrade + an Access Groups panel. **+`Access: Groups Read`, `Access: Identity Providers Read`**                                                                                          |
+| [015 Pages Dashboard](specs/015-pages-dashboard/)                               | One row per project instead of one row per underlying check                                                                                                                                                              |
+| [016 Storage Dashboard](specs/016-storage-dashboard/)                           | "Bound to", Custom domain, and Tables/Size columns for R2/KV/D1                                                                                                                                                          |
+| [017 Security Dashboard](specs/017-security-dashboard/)                         | One row per zone, 3 new checks, live Certificates/WAF Custom Rules panels. **+`Zone Settings Read`**                                                                                                                     |
+| [018 Audit Dashboard](specs/018-audit-dashboard/)                               | Real Cloudflare account activity feed, filterable and exportable as JSONL                                                                                                                                                |
+| [019 Audit Operator Role Changes](specs/019-audit-role-changes/)                | Every `member`/`admin` role change now writes an `audit_log` entry                                                                                                                                                       |
+| [020 List Pagination](specs/020-list-pagination/)                               | Server-side pagination for the Audit log and the 6 module dashboard tables                                                                                                                                               |
+| [021 Dashboard Panel Tabs](specs/021-dashboard-panel-tabs/)                     | Tabbed navigation instead of long stacked panels, applied as a general pattern                                                                                                                                           |
+| [022 Audit List Pagination](specs/022-audit-list-pagination/)                   | Pagination for the two lists 020 left out: the alerts inbox and the "what changed" feed                                                                                                                                  |
+| [023 Worker Detail Page](specs/023-worker-detail-page/)                         | Per-Worker drill-down: routes, effective Access policy, recent changes                                                                                                                                                   |
+| [024 Manual Re-scan Trigger](specs/024-manual-rescan-trigger/)                  | An on-demand "Re-scan" button on every module with server-side evaluation state                                                                                                                                          |
+| [025 Exposure Matrix](specs/025-exposure-matrix/)                               | Rebuilt Exposure as one row per Worker × entry-point, with severity filters and search                                                                                                                                   |
+| [026 Workers Inventory Layout](specs/026-workers-inventory-layout/)             | Header toolbar (search, environment filter) and a repositioned status column                                                                                                                                             |
+| [027 Overview Dashboard Redesign](specs/027-overview-dashboard-redesign/)       | Header context row, plain-language finding reasons, a 14-day exposure trend chart                                                                                                                                        |
+| [028 Public Entry, Docs & Sign-In](specs/028-public-entry-landing-docs-signin/) | A public landing page and documentation page at `/`/`/docs`, plus a "Sign in" hand-off to Cloudflare Access — see the [required manual step](#-required-manual-step-spec-028-exclude-the-public-pages-from-access) below |
 
 ## Prerequisites
 
@@ -125,19 +92,16 @@ serialization closely enough to catch it.
 
 ## Setup
 
-FlareTower ships with two **explicit, symmetric** Wrangler environments — `env.production` and
-`env.preview` in `wrangler.jsonc` — each with its own D1 database, so a preview build's traffic can
-never touch production findings/alerts. Both resolve to the **same** Cloudflare Worker resource
-(`flaretower`) as different versions, not two separate resources — see [Deployment](#deployment) for
-why that's the right shape here. Neither environment is an implicit "top-level config"; every
-command below always names one explicitly via `--env`, which is also what Wrangler itself recommends
-the moment it detects named environments but an ambiguous command.
+FlareTower ships with two **explicit, symmetric** Wrangler environments — never an implicit
+top-level config, so every command below always names one via `--env`:
 
-- **production** — deployed via `deno task deploy` (`wrangler deploy --env production`); runs the
-  hourly scheduled drift audit.
-- **preview** — deployed via `deno task deploy:preview` (`wrangler versions upload --env preview`);
-  no scheduled drift audit (`triggers.crons` is empty), so it doesn't run duplicate hourly scans
-  against the same real Cloudflare account.
+- **`env.production`** — deployed via `deno task deploy`; runs the hourly scheduled drift audit.
+- **`env.preview`** — deployed via `deno task deploy:preview`; no scheduled audit (`triggers.crons`
+  is empty), so it can't duplicate-scan the same account.
+
+Each has its own D1 database, so preview traffic never touches production findings/alerts — but both
+resolve to the **same** Cloudflare Worker resource (`flaretower`) as different versions, not two
+separate resources (see [Deployment](#deployment) for why).
 
 ```sh
 # Install dependencies (creates a local, gitignored node_modules/ — see
@@ -160,24 +124,18 @@ cp .dev.vars.example .dev.vars   # local dev only, gitignored
 deno run -A npm:wrangler secret put CF_API_TOKEN
 ```
 
-**Set the secret with no `--env` flag** — `env.production` and `env.preview` are one shared Worker
-resource (`flaretower`), so the secret is shared across both versions too. Do **not** run
-`wrangler secret put CF_API_TOKEN --env production`: `wrangler secret`'s subcommands have a
-[known bug](https://github.com/cloudflare/workers-sdk/issues/12300) where `--env` always appends an
-env suffix to the resolved Worker name (unlike `deploy`/`versions upload`, which correctly respect a
-shared `name`) — running it that way silently targets/creates a _different_, wrongly-named Worker
-resource instead of setting the secret on `flaretower`.
-
-Fill in `wrangler.jsonc`'s `vars` block **in both `env.production` and `env.preview`**
-(`TEAM_DOMAIN`, `POLICY_AUD`, `CF_ACCOUNT_ID`) and `.dev.vars` (`TEAM_DOMAIN`, `POLICY_AUD` for
-local dev) with real values — see [Authentication](#authentication) for what they mean.
-
-Local dev (`deno task dev`, and Playwright's e2e webserver) targets the **preview** environment by
-default, via the committed `.env.development` file (`CLOUDFLARE_ENV=preview` — not a secret, just
-which Wrangler environment name to resolve; see
-[Cloudflare's own docs on this mechanism](https://developers.cloudflare.com/workers/vite-plugin/reference/cloudflare-environments/)).
-Override per-invocation with `CLOUDFLARE_ENV=production deno task dev` if you specifically need to
-run against production bindings locally.
+- **Set the secret with no `--env` flag.** `env.production`/`env.preview` share one Worker resource
+  (`flaretower`), so the secret is shared too. Do **not** run
+  `wrangler secret put CF_API_TOKEN --env production` — `wrangler secret`'s subcommands have a
+  [known bug](https://github.com/cloudflare/workers-sdk/issues/12300) where `--env` silently
+  targets/creates a _different_, wrongly-named Worker instead of setting the secret on `flaretower`
+  (unlike `deploy`/`versions upload`, which respect the shared `name` correctly).
+- **Fill in `wrangler.jsonc`'s `vars` block in both `env.production` and `env.preview`**
+  (`TEAM_DOMAIN`, `POLICY_AUD`, `CF_ACCOUNT_ID`) and `.dev.vars` (`TEAM_DOMAIN`, `POLICY_AUD` for
+  local dev) — see [Authentication](#authentication) for what they mean.
+- **Local dev targets `preview` by default** (`deno task dev`, and Playwright's e2e webserver), via
+  the committed `.env.development` file. Override per-invocation with
+  `CLOUDFLARE_ENV=production deno task dev` if you need production bindings locally.
 
 ## Local development
 
@@ -319,43 +277,35 @@ landing page — the feature this spec adds simply won't be reachable.
 
 ## Deployment
 
-Native Cloudflare ↔ GitHub integration (Workers Builds). No custom CI pipeline for deploys; GitHub
-Actions may run lint/test/typecheck as PR gates, but does not deploy.
+Native Cloudflare ↔ GitHub integration (Workers Builds) — no custom CI pipeline for deploys. GitHub
+Actions only runs lint/test/typecheck as PR gates.
 
 **`env.production` and `env.preview` are one Cloudflare Worker resource (`flaretower`), not two** —
-both environments share the same `name`, so they resolve to different _versions_ of the same
-resource rather than separate resources. Worker versions carry their own bindings independently
-(confirmed live 2026-08-11: a `wrangler versions upload --env preview` version genuinely gets
-`flaretower-preview`'s D1, the promoted production version keeps `flaretower-production`'s), so
-Cloudflare's native per-branch preview-URL mechanism just works with a single Workers Builds
-connection — no second GitHub connection or second resource needed. (An earlier, incorrect version
-of this setup gave each environment a distinct `name`, which does create two independent Worker
-resources with no automatic preview linking between them — confirmed by deploying that way and
-having to push a probe commit to prove neither triggered the other. Not what's wanted here.)
-
-Production deploys are gated by release, not by every push — see [Releases](#releases) below for why
-and how. Preview keeps deploying on every push/PR, unaffected.
+they share the same `name`, so they resolve to different _versions_ of the same resource (each still
+with its own bindings — a preview version genuinely gets `flaretower-preview`'s D1). That's what
+makes Cloudflare's native per-branch preview-URL mechanism work with a single Workers Builds
+connection, no second GitHub connection needed. (Giving each environment a distinct `name` instead
+creates two independent Worker resources with no automatic preview linking — not what's wanted
+here.)
 
 Connect **once**: Cloudflare dashboard → **Workers & Pages** → `flaretower` → **Settings** →
-**Build**, connect the GitHub repo, then set:
+**Build** → connect the GitHub repo, then set:
 
-- **Production branch** (`release`, **not** `main`) deploy command: `deno task deploy`
-  (`wrangler deploy --env
-  production`).
-- **Preview deploy command** (every other branch/PR): `deno task deploy:preview`
-  (`wrangler
-  versions upload --env preview`) — Workers Builds posts each PR's own preview URL as a
-  PR comment automatically.
+| Field                                          | Value                                                                 |
+| ---------------------------------------------- | --------------------------------------------------------------------- |
+| Build command (both)                           | `deno task build`                                                     |
+| Production branch                              | `release` (**not** `main`)                                            |
+| Production deploy command                      | `deno task deploy` (`wrangler deploy --env production`)               |
+| Preview deploy command (every other branch/PR) | `deno task deploy:preview` (`wrangler versions upload --env preview`) |
 
-Build command for both: `deno task build`. **Also set, defensively**: both `deno task deploy` and
-`deno task deploy:preview` run `deno task build` themselves before invoking `wrangler` — discovered
-live (2026-08-12) that Workers Builds' configured Build command does not reliably run before the
-**Version command** field specifically (used for the preview/non-production-branch flow); every
-preview build failed with `wrangler`'s "assets.directory does not exist" error as a result,
-silently, since Workers Builds also doesn't post the documented PR-comment preview link when its own
-deploy step fails this way. The Deploy command field (production, via the `release` branch) was not
-observed to have this problem, but both tasks now build themselves regardless, so neither depends on
-Workers Builds' own step-sequencing being correct.
+Production deploys are gated by release, not by every push to `main` — see [Releases](#releases)
+below. Preview keeps deploying on every push/PR, unaffected. Workers Builds posts each PR's own
+preview URL as a comment automatically.
+
+> Both `deno task deploy*` tasks run `deno task build` themselves before invoking `wrangler`,
+> defensively — Workers Builds' configured Build command doesn't reliably run before its **Version
+> command** field (the preview flow), which silently failed every preview build until this was
+> added.
 
 ## Releases
 
