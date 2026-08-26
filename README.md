@@ -274,16 +274,16 @@ capable of reading (and eventually writing) the entire Cloudflare account — pu
 
 ## ⚠️ Required manual step: scope Access to the app and API paths
 
-FlareTower's public pages (`/` for a signed-out visitor, `/docs` unconditionally) must be reachable
-**without** an Access session — that's the whole point of a public entry point (spec
-[`028-public-entry-landing-docs-signin/`](specs/028-public-entry-landing-docs-signin/)) — while
-everything else needs a real session. Rather than excluding the public paths from an
-"protect-everything" policy (fragile — a missed path is silently exposed instead of silently
-over-protected), the entire authenticated app lives under one path prefix,
-[`/app`](specs/028-public-entry-landing-docs-signin/) (issue #516), so the Access Application's path
-pattern is a single, unambiguous **allow-list**: protect `/app/*` and `/api/*`, nothing else needs
-naming. `/` and `/docs` need zero Access configuration to be public — they're simply outside that
-pattern.
+FlareTower's public pages (`/`, `/docs`, `/changelog` — all reachable regardless of session state)
+must be reachable **without** an Access session — that's the whole point of a public entry point
+(spec [`028-public-entry-landing-docs-signin/`](specs/028-public-entry-landing-docs-signin/), issue
+#526 for why `/` in particular no longer diverges by session) — while everything else needs a real
+session. Rather than excluding the public paths from an "protect-everything" policy (fragile — a
+missed path is silently exposed instead of silently over-protected), the entire authenticated app
+lives under one path prefix, [`/app`](specs/028-public-entry-landing-docs-signin/) (issue #516), so
+the Access Application's path pattern is a single, unambiguous **allow-list**: protect `/app/*` and
+`/api/*`, nothing else needs naming. `/`, `/docs`, and `/changelog` need zero Access configuration
+to be public — they're simply outside that pattern.
 
 After the first deploy:
 
@@ -294,8 +294,8 @@ After the first deploy:
    - `/api/*` (also independently JWT-validated per-request regardless of Access's own edge-level
      coverage — constitution Principle II's defense-in-depth — but still needs its own real Access
      challenge as the primary layer, the same as `/app/*`)
-3. Remove any broader "protect everything" rule this application previously had. `/` and `/docs`
-   need no rule of their own — they're public by not being named, not by an exclusion.
+3. Remove any broader "protect everything" rule this application previously had. `/`, `/docs`, and
+   `/changelog` need no rule of their own — they're public by not being named, not by an exclusion.
 
 Skipping this step (or leaving the old "protect everything" policy in place) doesn't break anything
 for an already-authenticated operator, but it means a signed-out visitor hits Access's own challenge

@@ -22,6 +22,8 @@
 export function pathForPage(key: string): string | null {
   if (key === "landing") return "/";
   if (key === "docs") return "/docs";
+  // issue #528 — same public, session-independent treatment as "docs".
+  if (key === "changelog") return "/changelog";
   if (key === "overview") return "/app";
   return `/app/${key}`;
 }
@@ -40,6 +42,9 @@ export function pageForPath(pathname: string, validKeys: readonly string[]): str
   const normalized = pathname.replace(/\/+$/, "") || "/";
   if (normalized === "/") return "landing";
   if (normalized === "/docs") return validKeys.includes("docs") ? "docs" : "landing";
+  if (normalized === "/changelog") {
+    return validKeys.includes("changelog") ? "changelog" : "landing";
+  }
   if (normalized === "/app") return "overview";
   if (normalized.startsWith("/app/")) {
     const key = normalized.slice("/app/".length);

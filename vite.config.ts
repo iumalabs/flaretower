@@ -1,4 +1,4 @@
-import { defineConfig } from "vite";
+import { defineConfig, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 import { cloudflare } from "@cloudflare/vite-plugin";
 
@@ -33,6 +33,49 @@ function readAppVersion(): string {
   }
 }
 
+// issue #528 — the public /changelog page renders the repo's real, release-
+// please-generated CHANGELOG.md (app/lib/changelog-parser.ts does the actual
+// parsing) rather than a hand-authored duplicate that inevitably drifts —
+// exactly the kind of content drift issue #525 already found between /docs
+// and the README. CHANGELOG.md lives at the repo root, outside Vite's own
+// `root: "app"` (and therefore outside its default `publicDir`, which is
+// resolved relative to that root) — so it needs an explicit plugin rather
+// than just dropping the file in app/public/, the same way readAppVersion()
+// above needs its own file read rather than relying on Vite's defaults.
+function changelogPlugin(): Plugin {
+  const changelogUrl = new URL("./CHANGELOG.md", import.meta.url);
+  return {
+    name: "flaretower-serve-changelog",
+    configureServer(server) {
+      // Dev only: always reads the file fresh, so editing CHANGELOG.md
+      // (e.g. via `deno task release` locally) doesn't need a server
+      // restart to show up at GET /CHANGELOG.md.
+      server.middlewares.use((req: import("node:http").IncomingMessage, res, next) => {
+        if (req.url !== "/CHANGELOG.md") {
+          next();
+          return;
+        }
+        res.setHeader("Content-Type", "text/markdown; charset=utf-8");
+        res.end(Deno.readTextFileSync(changelogUrl));
+      });
+    },
+    // Copies the file straight into the built client output rather than
+    // using Rollup's own per-environment emitFile() — the @cloudflare/
+    // vite-plugin builds more than one environment (client + worker) and
+    // there's no simple way from here to target only the "client" one's
+    // bundle, so this writes directly to the hardcoded "dist/client/" path
+    // instead (the same path wrangler.jsonc's own assets.directory and the
+    // #520 incident fix above both already hardcode). Runs once per
+    // environment build; re-copying identical bytes on a second run is
+    // harmless.
+    closeBundle() {
+      const destDir = new URL("./dist/client/", import.meta.url);
+      Deno.mkdirSync(destDir, { recursive: true });
+      Deno.copyFileSync(changelogUrl, new URL("./CHANGELOG.md", destDir));
+    },
+  };
+}
+
 export default defineConfig({
   root: "app",
   // issue #488 — @cloudflare/vite-plugin resolves an unspecified `configPath`
@@ -45,7 +88,7 @@ export default defineConfig({
   // router/asset/proxy workers. That's why `/` (served as a static asset,
   // with SPA-fallback masking the missing Worker) worked while every
   // `/api/*` request 404'd with no `worker/index.ts` code ever running.
-  plugins: [react(), cloudflare({ configPath: "../wrangler.jsonc" })],
+  plugins: [react(), cloudflare({ configPath: "../wrangler.jsonc" }), changelogPlugin()],
   define: {
     __APP_VERSION__: JSON.stringify(readAppVersion()),
   },
