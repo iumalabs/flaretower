@@ -13,6 +13,7 @@ import { TokenToolsPage } from "./pages/TokenToolsPage.tsx";
 import { WorkerDetailPage } from "./pages/WorkerDetailPage.tsx";
 import { LandingPage } from "./pages/LandingPage.tsx";
 import { DocumentationPage } from "./pages/DocumentationPage.tsx";
+import { ChangelogPage } from "./pages/ChangelogPage.tsx";
 import { Sidebar } from "./components/Sidebar.tsx";
 import { PageErrorBoundary } from "./components/PageErrorBoundary.tsx";
 import { Logo } from "./components/Logo.tsx";
@@ -76,21 +77,23 @@ const PAGES = [
 // special-case below, never via `active.render()`. spec 028 — "docs" is the
 // same: no sidebar item, no render() placeholder, always reached via its
 // own top-level special-case in the return statement below (it doesn't
-// render inside the authenticated Sidebar+content shell at all). issue
+// render inside the authenticated Sidebar+content shell at all). issue #528
+// — "changelog" is the same public, no-shell treatment as "docs". issue
 // #516 — "landing" (`/`) and "overview" (`/app`) are genuinely different
 // paths now, not one path branching on session state, so they're two
 // distinct PageKey values.
-type PageKey = typeof PAGES[number]["key"] | "worker-detail" | "docs" | "landing";
+type PageKey = typeof PAGES[number]["key"] | "worker-detail" | "docs" | "changelog" | "landing";
 
 const NAV_KEYS = NAV_ITEMS.map((item) => item.key);
 
 // spec 028 — "docs" is a real, public page-routes.ts key, included here so
 // pageForPath()/popstate resolve /docs correctly instead of falling back
-// to the landing page. "landing" is deliberately NOT in this list — it has
-// no `/app/<key>` shape for pageForPath's generic branch to match against
-// (see page-routes.ts's own comment on why bare "/" resolves to "landing"
-// directly, before this list is even consulted).
-const ROUTABLE_KEYS = [...NAV_KEYS, "docs"];
+// to the landing page. issue #528 — "changelog" is the same. "landing" is
+// deliberately NOT in this list — it has no `/app/<key>` shape for
+// pageForPath's generic branch to match against (see page-routes.ts's own
+// comment on why bare "/" resolves to "landing" directly, before this list
+// is even consulted).
+const ROUTABLE_KEYS = [...NAV_KEYS, "docs", "changelog"];
 
 // issue #495 — a full page load on /app/workers/<name> must land directly
 // on that worker's detail page (with the right worker selected), not fall
@@ -323,7 +326,7 @@ export function App(): JSX.Element | null {
   // spec 028 — the one new top-level fork: /docs is public and has no
   // Sidebar/authenticated shell of its own, reachable regardless of
   // session state (spec.md Edge Cases), so it's handled before anything
-  // shell-related below.
+  // shell-related below. issue #528 — /changelog is the same.
   if (page === "docs") {
     return (
       <DocumentationPage
@@ -334,6 +337,17 @@ export function App(): JSX.Element | null {
         // way back. An already-authenticated visitor lands on "landing" too
         // and simply sees it — no forced bounce into "overview" anymore.
         onBack={() => navigate("landing")}
+        onNavigateToChangelog={() => navigate("changelog")}
+      />
+    );
+  }
+
+  if (page === "changelog") {
+    return (
+      <ChangelogPage
+        onSignIn={handleSignIn}
+        onBack={() => navigate("landing")}
+        onNavigateToDocs={() => navigate("docs")}
       />
     );
   }
@@ -366,7 +380,13 @@ export function App(): JSX.Element | null {
   // works correctly: it's a real navigation to SIGN_IN_PATH ("/app"), which
   // just renders Overview directly since a session is already present.
   if (page === "landing") {
-    return <LandingPage onSignIn={handleSignIn} onNavigateToDocs={() => navigate("docs")} />;
+    return (
+      <LandingPage
+        onSignIn={handleSignIn}
+        onNavigateToDocs={() => navigate("docs")}
+        onNavigateToChangelog={() => navigate("changelog")}
+      />
+    );
   }
 
   if (page === "overview" && session === null) {

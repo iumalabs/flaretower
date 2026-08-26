@@ -104,7 +104,11 @@ const LINK_BUTTON_STYLE: React.CSSProperties = {
 };
 
 export function LandingPage(
-  { onSignIn, onNavigateToDocs }: { onSignIn: () => void; onNavigateToDocs: () => void },
+  { onSignIn, onNavigateToDocs, onNavigateToChangelog }: {
+    onSignIn: () => void;
+    onNavigateToDocs: () => void;
+    onNavigateToChangelog: () => void;
+  },
 ): JSX.Element {
   return (
     <div
@@ -151,6 +155,22 @@ export function LandingPage(
             </a>
             <button
               type="button"
+              onClick={onNavigateToChangelog}
+              style={{
+                background: "none",
+                border: "none",
+                padding: 0,
+                color: "var(--fg-secondary)",
+                fontFamily: "inherit",
+                fontSize: "inherit",
+                letterSpacing: "inherit",
+                cursor: "pointer",
+              }}
+            >
+              CHANGELOG
+            </button>
+            <button
+              type="button"
               onClick={onNavigateToDocs}
               style={{
                 background: "none",
@@ -165,6 +185,18 @@ export function LandingPage(
             >
               DOCUMENTATION
             </button>
+            <a
+              href="https://github.com/iumalabs/flaretower"
+              style={{
+                color: "var(--fg-secondary)",
+                textDecoration: "none",
+                fontFamily: "inherit",
+                fontSize: "inherit",
+                letterSpacing: "inherit",
+              }}
+            >
+              GITHUB
+            </a>
             <button
               type="button"
               onClick={onSignIn}
@@ -500,6 +532,21 @@ export function LandingPage(
           <span style={{ display: "flex", alignItems: "center", gap: 16 }}>
             <button
               type="button"
+              onClick={onNavigateToChangelog}
+              style={{
+                background: "none",
+                border: "none",
+                padding: 0,
+                color: "var(--fg-faint)",
+                fontFamily: "inherit",
+                fontSize: "inherit",
+                cursor: "pointer",
+              }}
+            >
+              CHANGELOG
+            </button>
+            <button
+              type="button"
               onClick={onNavigateToDocs}
               style={{
                 background: "none",
@@ -513,6 +560,12 @@ export function LandingPage(
             >
               DOCUMENTATION
             </button>
+            <a
+              href="https://github.com/iumalabs/flaretower"
+              style={{ color: "var(--fg-faint)", textDecoration: "none" }}
+            >
+              GITHUB
+            </a>
             <span>not affiliated with Cloudflare</span>
           </span>
         </div>

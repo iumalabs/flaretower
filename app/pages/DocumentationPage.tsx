@@ -95,7 +95,7 @@ const TOKEN_SCOPES: { scope: string; module: string; why: string }[] = [
   },
 ];
 
-function Callout({ children }: { children: JSX.Element | string }): JSX.Element {
+function Callout({ children }: { children: React.ReactNode }): JSX.Element {
   return (
     <div
       style={{
@@ -209,15 +209,13 @@ const SECTIONS: Section[] = [
           invocation this repository actually defines.
         </p>
         <Callout>
-          <>
-            After the first deploy, two manual, one-time steps are required and cannot be automated
-            via Wrangler config: restricting Workers Preview URLs, and scoping your Access
-            Application's path rules to exactly{" "}
-            <code style={{ fontFamily: "var(--font-mono)" }}>/app/*</code> and{" "}
-            <code style={{ fontFamily: "var(--font-mono)" }}>/api/*</code>{" "}
-            — an allow-list, not an exclusion — so this page and the landing page need no rule of
-            their own. Both steps are documented prominently in the README, not buried here.
-          </>
+          After the first deploy, two manual, one-time steps are required and cannot be automated
+          via Wrangler config: restricting Workers Preview URLs, and scoping your Access
+          Application's path rules to exactly{" "}
+          <code style={{ fontFamily: "var(--font-mono)" }}>/app/*</code> and{" "}
+          <code style={{ fontFamily: "var(--font-mono)" }}>/api/*</code>{" "}
+          — an allow-list, not an exclusion — so this page and the landing page need no rule of
+          their own. Both steps are documented prominently in the README, not buried here.
         </Callout>
       </>
     ),
@@ -519,7 +517,11 @@ const SECTIONS: Section[] = [
 ];
 
 export function DocumentationPage(
-  { onSignIn, onBack }: { onSignIn: () => void; onBack: () => void },
+  { onSignIn, onBack, onNavigateToChangelog }: {
+    onSignIn: () => void;
+    onBack: () => void;
+    onNavigateToChangelog: () => void;
+  },
 ): JSX.Element {
   return (
     <div
@@ -577,6 +579,34 @@ export function DocumentationPage(
             </button>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+            <button
+              type="button"
+              onClick={onNavigateToChangelog}
+              style={{
+                background: "none",
+                border: "none",
+                padding: 0,
+                color: "var(--fg-faint)",
+                fontFamily: "var(--font-mono)",
+                fontSize: "var(--text-label-size)",
+                letterSpacing: "var(--text-label-ls)",
+                cursor: "pointer",
+              }}
+            >
+              CHANGELOG
+            </button>
+            <a
+              href="https://github.com/iumalabs/flaretower"
+              style={{
+                color: "var(--fg-faint)",
+                fontFamily: "var(--font-mono)",
+                fontSize: "var(--text-label-size)",
+                letterSpacing: "var(--text-label-ls)",
+                textDecoration: "none",
+              }}
+            >
+              GITHUB
+            </a>
             <span
               style={{
                 fontFamily: "var(--font-mono)",

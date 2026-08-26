@@ -80,6 +80,18 @@ test.describe("unauthenticated visitor", () => {
     await expect(page).toHaveURL(/\/docs$/);
     await expect(page.getByRole("heading", { name: "Documentation" })).toBeVisible();
   });
+
+  // issue #528 — a real, clickable GitHub project link; previously the only
+  // "GitHub" mention anywhere on the public site was inside a plain-text
+  // `$ git clone ...` line in the self-hosting code block.
+  test("GITHUB in the header nav is a real link to the project repository", async ({ page }) => {
+    await page.goto("/");
+
+    await expect(page.getByRole("link", { name: "GITHUB" }).first()).toHaveAttribute(
+      "href",
+      "https://github.com/iumalabs/flaretower",
+    );
+  });
 });
 
 test.describe("authenticated visitor", () => {

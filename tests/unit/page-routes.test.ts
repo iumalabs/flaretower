@@ -20,6 +20,10 @@ Deno.test("pathForPage - docs maps to /docs", () => {
   assertEquals(pathForPage("docs"), "/docs");
 });
 
+Deno.test("pathForPage - changelog maps to /changelog", () => {
+  assertEquals(pathForPage("changelog"), "/changelog");
+});
+
 Deno.test("pathForPage - every other key maps to /app/<key>", () => {
   assertEquals(pathForPage("workers"), "/app/workers");
   assertEquals(pathForPage("zero-trust"), "/app/zero-trust");
@@ -39,6 +43,14 @@ Deno.test("pageForPath - /docs resolves to the docs key when it's a valid key", 
 
 Deno.test("pageForPath - /docs falls back to landing when docs isn't a valid key", () => {
   assertEquals(pageForPath("/docs", VALID_KEYS), "landing");
+});
+
+Deno.test("pageForPath - /changelog resolves to the changelog key when it's a valid key", () => {
+  assertEquals(pageForPath("/changelog", [...VALID_KEYS, "changelog"]), "changelog");
+});
+
+Deno.test("pageForPath - /changelog falls back to landing when changelog isn't a valid key", () => {
+  assertEquals(pageForPath("/changelog", VALID_KEYS), "landing");
 });
 
 Deno.test("pageForPath - a known page's path resolves back to its key (issue #480)", () => {
