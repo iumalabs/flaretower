@@ -35,7 +35,17 @@ function readAppVersion(): string {
 
 export default defineConfig({
   root: "app",
-  plugins: [react(), cloudflare()],
+  // issue #488 — @cloudflare/vite-plugin resolves an unspecified `configPath`
+  // relative to Vite's own `root` (`app/`, above), not the repo root, so it
+  // was silently looking for `app/wrangler.jsonc` (which doesn't exist),
+  // never finding the real one, and falling back to a default "assets-only"
+  // config with no Worker at all — confirmed via the plugin's own Local
+  // Explorer API (`/cdn-cgi/local/explorer/api/local/workers`), which never
+  // listed a "flaretower" service, only the plugin's internal
+  // router/asset/proxy workers. That's why `/` (served as a static asset,
+  // with SPA-fallback masking the missing Worker) worked while every
+  // `/api/*` request 404'd with no `worker/index.ts` code ever running.
+  plugins: [react(), cloudflare({ configPath: "../wrangler.jsonc" })],
   define: {
     __APP_VERSION__: JSON.stringify(readAppVersion()),
   },
