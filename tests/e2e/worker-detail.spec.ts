@@ -123,10 +123,12 @@ test("US1 — clicking a Worker row opens its detail page with per-route status"
 });
 
 // issue #495 — clicking into a Worker's detail must update the URL to
-// /workers/<name> (not leave it at /workers, or nowhere at all), and a
-// fresh load of that URL must land directly on that worker's detail page —
-// the same deep-link guarantee issue #480 already established for the
-// flat top-level pages, extended to this one parameterized route.
+// /app/workers/<name> (not leave it at /app/workers, or nowhere at all),
+// and a fresh load of that URL must land directly on that worker's detail
+// page — the same deep-link guarantee issue #480 already established for
+// the flat top-level pages, extended to this one parameterized route.
+// issue #516 — gained the /app prefix along with every other authenticated
+// route.
 test("issue #495 — worker detail updates the URL, and a fresh load of it renders that worker directly", async ({ page }) => {
   await page.route(
     "**/api/workers/dashboard*",
@@ -151,7 +153,7 @@ test("issue #495 — worker detail updates the URL, and a fresh load of it rende
   await page.getByRole("button", { name: "Workers" }).click();
   await page.getByTestId("findings-row-api-gateway").click();
   await expect(page.getByRole("heading", { name: "api-gateway" })).toBeVisible();
-  await expect(page).toHaveURL(/\/workers\/api-gateway$/);
+  await expect(page).toHaveURL(/\/app\/workers\/api-gateway$/);
 
   // A bare page.reload() would hit this suite's dev server directly, which
   // (unlike production's Cloudflare Workers Assets) has no SPA fallback for
@@ -160,14 +162,14 @@ test("issue #495 — worker detail updates the URL, and a fresh load of it rende
   // navigation with the already-loaded shell HTML.
   const shell = await (await page.request.get("/")).text();
   await page.route(
-    "**/workers/api-gateway",
+    "**/app/workers/api-gateway",
     (route) => route.fulfill({ status: 200, contentType: "text/html", body: shell }),
   );
   await page.reload();
 
   await expect(page.getByRole("heading", { name: "api-gateway" })).toBeVisible();
   await expect(page.getByText("api.acme.dev")).toBeVisible();
-  await expect(page).toHaveURL(/\/workers\/api-gateway$/);
+  await expect(page).toHaveURL(/\/app\/workers\/api-gateway$/);
 });
 
 // issue #431 — a real breadcrumb, and visual-only action buttons derived

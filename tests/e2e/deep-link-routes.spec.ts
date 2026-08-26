@@ -2,7 +2,8 @@ import { expect, test } from "./fixtures.ts";
 
 // Issue #480 — a full page load on a non-root route (typed URL, bookmark,
 // refresh) must render that route's page, not silently fall back to
-// Overview with the URL/sidebar left pointing at the wrong thing.
+// Overview with the URL/sidebar left pointing at the wrong thing. Issue
+// #516 — every authenticated route moved under `/app`.
 
 const EMPTY_INVENTORY = { run_id: null, evaluated_at: null, workers: [] };
 
@@ -106,7 +107,7 @@ test.beforeEach(async ({ page }) => {
 // index.html for any unmapped path — that part is confirmed working (issue
 // #480's own repro: "URL bar and browser history keep the requested path").
 // The local `vite dev` server this suite runs against has no equivalent —
-// it 404s a bare GET for e.g. /workers instead of falling back to
+// it 404s a bare GET for e.g. /app/workers instead of falling back to
 // index.html — so these tests stand in for Cloudflare's asset-serving layer
 // by fulfilling the navigation request with the real dev shell HTML
 // (fetched from "/", which `vite dev` does serve). What's under test is
@@ -120,9 +121,9 @@ async function mockDeepLinkShell(page: import("@playwright/test").Page, path: st
   );
 }
 
-test("issue #480 — a direct load of /workers renders Workers, not Overview", async ({ page }) => {
-  await mockDeepLinkShell(page, "/workers");
-  await page.goto("/workers");
+test("issue #480 — a direct load of /app/workers renders Workers, not Overview", async ({ page }) => {
+  await mockDeepLinkShell(page, "/app/workers");
+  await page.goto("/app/workers");
 
   await expect(page.getByRole("heading", { name: "Workers", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Workers" })).toHaveAttribute(
@@ -133,12 +134,12 @@ test("issue #480 — a direct load of /workers renders Workers, not Overview", a
     "aria-current",
     "page",
   );
-  await expect(page).toHaveURL(/\/workers$/);
+  await expect(page).toHaveURL(/\/app\/workers$/);
 });
 
-test("issue #480 — a direct load of /token-tools renders Token Tools, not Overview", async ({ page }) => {
-  await mockDeepLinkShell(page, "/token-tools");
-  await page.goto("/token-tools");
+test("issue #480 — a direct load of /app/token-tools renders Token Tools, not Overview", async ({ page }) => {
+  await mockDeepLinkShell(page, "/app/token-tools");
+  await page.goto("/app/token-tools");
 
   await expect(page.getByRole("heading", { name: "Token Tools", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Token Tools" })).toHaveAttribute(
@@ -147,17 +148,17 @@ test("issue #480 — a direct load of /token-tools renders Token Tools, not Over
   );
 });
 
-test("issue #480 — a direct load of /dns renders DNS records, not Overview", async ({ page }) => {
-  await mockDeepLinkShell(page, "/dns");
-  await page.goto("/dns");
+test("issue #480 — a direct load of /app/dns renders DNS records, not Overview", async ({ page }) => {
+  await mockDeepLinkShell(page, "/app/dns");
+  await page.goto("/app/dns");
 
   await expect(page.getByRole("heading", { name: "DNS records", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "DNS" })).toHaveAttribute("aria-current", "page");
 });
 
-test("an unrecognized path falls back to Overview instead of a blank page", async ({ page }) => {
-  await mockDeepLinkShell(page, "/this-route-does-not-exist");
-  await page.goto("/this-route-does-not-exist");
+test("issue #516 — an unrecognized key under /app falls back to Overview, not a blank page", async ({ page }) => {
+  await mockDeepLinkShell(page, "/app/this-route-does-not-exist");
+  await page.goto("/app/this-route-does-not-exist");
 
   await expect(page.getByRole("button", { name: "Overview" })).toHaveAttribute(
     "aria-current",
@@ -165,12 +166,29 @@ test("an unrecognized path falls back to Overview instead of a blank page", asyn
   );
 });
 
+test("issue #516 — a stale pre-move bookmark to an old unprefixed path falls back to the landing page, not a blank page", async ({ page }) => {
+  // A signed-out visitor's perspective: no dashboard shell must render at
+  // this now-unprotected-by-Access URL, even for a stale bookmark that
+  // used to be a real dashboard route (e.g. `/workers`, before #516).
+  await page.route(
+    "**/api/identity/session",
+    (route) => route.fulfill({ status: 403, contentType: "text/plain", body: "Forbidden" }),
+  );
+  await mockDeepLinkShell(page, "/workers");
+  await page.goto("/workers");
+
+  await expect(page.getByRole("heading", { name: /every door into your cloudflare account/i }))
+    .toBeVisible();
+  await expect(page.getByRole("button", { name: "Overview" })).not.toBeVisible();
+});
+
 test("clicking a sidebar destination updates the URL, and a refresh from it lands on the same page", async ({ page }) => {
   await page.goto("/");
+  await expect(page).toHaveURL(/\/app$/);
   await page.getByRole("button", { name: "Workers" }).click();
-  await expect(page).toHaveURL(/\/workers$/);
+  await expect(page).toHaveURL(/\/app\/workers$/);
 
-  await mockDeepLinkShell(page, "/workers");
+  await mockDeepLinkShell(page, "/app/workers");
   await page.reload();
 
   await expect(page.getByRole("heading", { name: "Workers", exact: true })).toBeVisible();
@@ -182,6 +200,7 @@ test("clicking a sidebar destination updates the URL, and a refresh from it land
 
 test("the browser back button restores the previous page after in-app navigation", async ({ page }) => {
   await page.goto("/");
+  await expect(page).toHaveURL(/\/app$/);
   await page.getByRole("button", { name: "Workers" }).click();
   await expect(page.getByRole("button", { name: "Workers" })).toHaveAttribute(
     "aria-current",
@@ -190,7 +209,11 @@ test("the browser back button restores the previous page after in-app navigation
 
   await page.goBack();
 
-  await expect(page).toHaveURL(/\/$/);
+  // Not "/" — the landing-to-overview redirect uses replaceState, so it
+  // never occupies its own history entry; back from /app/workers lands
+  // directly on /app (Overview), the same as it would for any other
+  // sidebar-to-sidebar back navigation.
+  await expect(page).toHaveURL(/\/app$/);
   await expect(page.getByRole("button", { name: "Overview" })).toHaveAttribute(
     "aria-current",
     "page",
