@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.15.11](https://github.com/iumalabs/flaretower/compare/v1.15.10...v1.15.11) (2026-08-26)
+
+
+### Bug Fixes
+
+* authenticated visitors can view the public landing page at / again ([#523](https://github.com/iumalabs/flaretower/issues/523)) ([c590569](https://github.com/iumalabs/flaretower/commit/c590569c38e57f8702629d42cb3e74c99bf854b9))
+
 ## [1.15.10](https://github.com/iumalabs/flaretower/compare/v1.15.9...v1.15.10) (2026-08-26)
 
 
