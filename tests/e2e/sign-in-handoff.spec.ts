@@ -19,8 +19,11 @@ import { expect, test } from "@playwright/test";
 // suite).
 async function mockWorkersShell(page: import("@playwright/test").Page) {
   const shell = await (await page.request.get("/")).text();
+  // "*" (not an exact "/workers" match) — handleSignIn now appends
+  // issue #512's own "?post-sign-in=1" marker, so the real navigation
+  // target is "/workers?post-sign-in=1", not a bare "/workers".
   await page.route(
-    "**/workers",
+    "**/workers*",
     (route) => route.fulfill({ status: 200, contentType: "text/html", body: shell }),
   );
 }
@@ -47,7 +50,7 @@ for (
     await mockWorkersShell(page);
     await page.getByRole("button", { name: locatorName }).first().click();
 
-    await expect(page).toHaveURL(/\/workers$/);
+    await expect(page).toHaveURL(/\/workers\?post-sign-in=1$/);
     // FR-006 — no protocol detail (issuer/scope/callback) is ever rendered
     // client-side, before or after the click.
     for (const term of ["issuer", "scope", "callback", "oauth", "oidc"]) {
@@ -55,3 +58,114 @@ for (
     }
   });
 }
+
+// issue #512 — landing on SIGN_IN_PATH is an implementation detail of how
+// the hand-off guarantees a real Access challenge (see App.tsx's own
+// comment); it must never be the operator's actual resting place once
+// Access's challenge completes. This simulates that completed state
+// directly (identity/session now resolves to a real identity, exactly as
+// it would once Access has redirected back with a valid session) rather
+// than driving a real Access challenge, which this suite has no way to do.
+test("once Access's challenge completes, the operator lands on Overview, not stranded on Workers", async ({ page }) => {
+  const shell = await (await page.request.get("/")).text();
+  await page.route(
+    "**/workers*",
+    (route) => route.fulfill({ status: 200, contentType: "text/html", body: shell }),
+  );
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "SIGN IN" }).first().click();
+  await expect(page).toHaveURL(/\/workers\?post-sign-in=1$/);
+
+  // From here on, the browser is "back from Access" with a real session —
+  // re-route the session probe (and everything Overview needs) to reflect
+  // that, then reload to re-run the boot sequence against the new state.
+  await page.unroute("**/api/identity/session");
+  await page.route(
+    "**/api/identity/session",
+    (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ email: "operator@example.com", role: "admin" }),
+      }),
+  );
+  await page.route("**/api/audit/summary", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ modules: [], unavailable_sources: [] }),
+    }));
+  await page.route(
+    "**/api/exposure/inventory",
+    (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ run_id: null, evaluated_at: null, workers: [] }),
+      }),
+  );
+  await page.route(
+    "**/api/workers/dashboard*",
+    (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          generated_at: "2026-08-13T12:00:00Z",
+          summary: {
+            deployed_count: 0,
+            deployed_by_environment: { production: 0, preview: 0 },
+            requests_24h_total: null,
+            requests_24h_change_pct: null,
+            error_rate_pct: null,
+            errors_24h_total: null,
+            cpu_p99_ms: null,
+          },
+          workers: [],
+          workers_pagination: { page: 1, page_size: 50, total: 0, total_pages: 1 },
+          recent_changes: [],
+          unavailable: [],
+        }),
+      }),
+  );
+  await page.route("**/api/audit/alerts*", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        alerts: [],
+        unavailable_sources: [],
+        pagination: { page: 1, page_size: 5, total: 0, total_pages: 1 },
+      }),
+    }));
+  await page.route("**/api/audit/changes*", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        since: "",
+        until: "",
+        changes: [],
+        unavailable_sources: [],
+        pagination: { page: 1, page_size: 5, total: 0, total_pages: 1 },
+      }),
+    }));
+  await page.route(
+    "**/api/audit/trend*",
+    (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ points: [] }),
+      }),
+  );
+
+  await page.reload();
+
+  await expect(page).toHaveURL(/\/$/);
+  await expect(page.getByRole("button", { name: "Overview" })).toHaveAttribute(
+    "aria-current",
+    "page",
+  );
+});
