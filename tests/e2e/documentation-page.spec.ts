@@ -80,6 +80,19 @@ test("issue #508/quickstart Scenario 4 — the Deploy it section matches this re
   await expect(page.getByText("FT_STATE")).toHaveCount(0);
 });
 
+test("issue #525 — the Deploy it callout describes the current /app/* + /api/* allow-list, not the pre-#519 exclusion model", async ({ page }) => {
+  await mockDeepLinkShell(page, "/docs");
+  await page.goto("/docs");
+
+  const deploySection = page.locator("#deploy-it");
+  await expect(deploySection.getByText("/app/*", { exact: false })).toBeVisible();
+  await expect(deploySection.getByText("/api/*", { exact: false })).toBeVisible();
+  // The pre-#519 wording this callout used to have — README's own Access-scoping
+  // instructions moved from an exclusion policy to an allow-list, but this
+  // in-app copy wasn't updated to match until now.
+  await expect(page.getByText("excluding this page", { exact: false })).toHaveCount(0);
+});
+
 test("issue #508/quickstart Scenario 4 — What each screen shows lists every current nav item, worded identically", async ({ page }) => {
   await mockDeepLinkShell(page, "/docs");
   await page.goto("/docs");

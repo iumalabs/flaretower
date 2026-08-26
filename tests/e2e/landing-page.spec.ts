@@ -69,6 +69,17 @@ test.describe("unauthenticated visitor", () => {
     await expect(page).toHaveURL(/\/docs$/);
     await expect(page.getByRole("heading", { name: "Documentation" })).toBeVisible();
   });
+
+  // issue #525 — the self-hosting section's "see Documentation" mention used
+  // to be plain unstyled text with no click behavior at all, unlike every
+  // other "Documentation" mention on this page.
+  test('the self-hosting section\'s "Documentation" mention is a real link, not plain text', async ({ page }) => {
+    await page.goto("/");
+    await page.getByRole("button", { name: "Documentation", exact: true }).click();
+
+    await expect(page).toHaveURL(/\/docs$/);
+    await expect(page.getByRole("heading", { name: "Documentation" })).toBeVisible();
+  });
 });
 
 test.describe("authenticated visitor", () => {
