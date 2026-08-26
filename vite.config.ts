@@ -49,8 +49,24 @@ export default defineConfig({
   define: {
     __APP_VERSION__: JSON.stringify(readAppVersion()),
   },
+  // INCIDENT (2026-08-26, v1.15.9) — this used to be outDir: "../dist/client",
+  // which worked only because the #488 fix above hadn't landed yet: while
+  // @cloudflare/vite-plugin still silently ran in "assets-only" mode (no
+  // configPath, so no real Worker recognized), `outDir` was the SOLE build
+  // target and was used as-is. The moment #488's configPath fix made the
+  // plugin correctly recognize this as a real "workers" project (a real
+  // entry Worker + a client environment), Vite's own multi-environment
+  // build convention started nesting each environment's output under
+  // `<outDir>/<environmentName>/` — so the already-"client"-suffixed outDir
+  // produced `dist/client/client/...` instead of `dist/client/...`,
+  // silently leaving `wrangler.jsonc`'s `assets.directory` ("./dist/client")
+  // pointing at an empty directory. Production served a bare 404 for every
+  // path except `/api/*` (which bypasses ASSETS entirely) until this was
+  // caught and fixed. `outDir` must be the shared *parent* directory now —
+  // the plugin's own "client" environment naming is what produces the
+  // `dist/client/` layout `wrangler.jsonc` actually expects.
   build: {
-    outDir: "../dist/client",
+    outDir: "../dist",
     emptyOutDir: true,
   },
   server: {
