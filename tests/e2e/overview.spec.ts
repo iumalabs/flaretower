@@ -517,7 +517,7 @@ test("US2 — the row's contextual action navigates to that finding's module, wi
   await expect(button).toBeVisible();
   await button.click();
 
-  await expect(page).toHaveURL(/\/exposure$/);
+  await expect(page).toHaveURL(/\/app\/exposure$/);
   await expect(page.getByRole("button", { name: "Exposure" })).toHaveAttribute(
     "aria-current",
     "page",
