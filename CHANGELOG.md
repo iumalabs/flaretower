@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.15.8](https://github.com/iumalabs/flaretower/compare/v1.15.7...v1.15.8) (2026-08-26)
+
+
+### Bug Fixes
+
+* Sign in lands on Overview after auth, not stranded on Workers ([#514](https://github.com/iumalabs/flaretower/issues/514)) ([6ddb8af](https://github.com/iumalabs/flaretower/commit/6ddb8afb051a3d28fb126cc185729c553f1aa0ee))
+
 ## [1.15.7](https://github.com/iumalabs/flaretower/compare/v1.15.6...v1.15.7) (2026-08-25)
 
 
