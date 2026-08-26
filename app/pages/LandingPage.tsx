@@ -92,6 +92,17 @@ function Section(
   );
 }
 
+const LINK_BUTTON_STYLE: React.CSSProperties = {
+  background: "none",
+  border: "none",
+  padding: 0,
+  color: "var(--brand-primary)",
+  fontFamily: "inherit",
+  fontSize: "inherit",
+  textDecoration: "underline",
+  cursor: "pointer",
+};
+
 export function LandingPage(
   { onSignIn, onNavigateToDocs }: { onSignIn: () => void; onNavigateToDocs: () => void },
 ): JSX.Element {
@@ -458,7 +469,10 @@ export function LandingPage(
             <div>$ deno run -A npm:wrangler secret put CF_API_TOKEN</div>
             <div>$ deno task deploy</div>
             <div style={{ color: "var(--fg-faint)", marginTop: 8 }}>
-              full setup (D1 migrations, Access config): see Documentation
+              full setup (D1 migrations, Access config): see{" "}
+              <button type="button" onClick={onNavigateToDocs} style={LINK_BUTTON_STYLE}>
+                Documentation
+              </button>
             </div>
           </div>
         </div>

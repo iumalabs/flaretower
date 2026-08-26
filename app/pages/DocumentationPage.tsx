@@ -209,10 +209,15 @@ const SECTIONS: Section[] = [
           invocation this repository actually defines.
         </p>
         <Callout>
-          After the first deploy, two manual, one-time steps are required and cannot be automated
-          via Wrangler config: restricting Workers Preview URLs, and excluding this page and the
-          landing page from your Access Application's protected-path coverage. Both are documented
-          prominently in the README, not buried here.
+          <>
+            After the first deploy, two manual, one-time steps are required and cannot be automated
+            via Wrangler config: restricting Workers Preview URLs, and scoping your Access
+            Application's path rules to exactly{" "}
+            <code style={{ fontFamily: "var(--font-mono)" }}>/app/*</code> and{" "}
+            <code style={{ fontFamily: "var(--font-mono)" }}>/api/*</code>{" "}
+            — an allow-list, not an exclusion — so this page and the landing page need no rule of
+            their own. Both steps are documented prominently in the README, not buried here.
+          </>
         </Callout>
       </>
     ),

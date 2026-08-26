@@ -63,8 +63,12 @@ visitor into an operator; every other public-page element exists to lead here.
 confirm the browser is carried to a URL that Cloudflare Access itself intercepts and
 challenges — i.e., the action is a plain navigation, not a screen FlareTower renders and
 resolves on its own. Separately, with a valid Access session already established, confirm
-"Sign in" (or opening the root URL) lands the operator on the authenticated dashboard
-directly, skipping the public landing page.
+"Sign in" lands the operator on the authenticated dashboard directly, with Cloudflare
+Access passing them straight through with no further challenge. (Opening the root URL
+itself, with or without a session, still shows the public landing page — see the
+Assumptions section and [issue #526](https://github.com/iumalabs/flaretower/issues/526)
+for why this feature does not attempt to detect an authenticated visitor at `/` and divert
+them away from it.)
 
 **Acceptance Scenarios**:
 
@@ -73,9 +77,13 @@ directly, skipping the public landing page.
    the documentation page), **Then** the browser navigates toward the real, Access-protected
    application — control passes to Cloudflare Access, not to any sign-in screen FlareTower
    renders and completes by itself.
-2. **Given** an operator with an active, valid Access session, **When** they open the
-   instance's root URL, **Then** they see their authenticated dashboard (Overview), not the
-   public landing page.
+2. **Given** an operator with an active, valid Access session, **When** they click "Sign
+   in" from the landing or documentation page, **Then** they land on their authenticated
+   dashboard (Overview) directly, with no additional challenge or intermediate screen.
+2a. **Given** that same operator, **When** they instead open the instance's root URL
+   directly (bookmark or typed address), **Then** they still see the public landing page,
+   not an automatic redirect into the dashboard — an authenticated visitor can view the
+   public landing page the same as anyone else (see Assumptions).
 3. **Given** a visitor mid-sign-in is shown any transitional "redirecting…" state by
    FlareTower's own UI, **When** that state is inspected, **Then** it displays no protocol
    detail FlareTower does not actually possess or control — no identity-provider issuer,
@@ -145,6 +153,13 @@ generic placeholder.
   regardless of session state — it's public reference material, not part of the
   authenticated app, and forcing a signed-in visitor away from a page they intentionally
   opened would be surprising.)
+- The same question, but for the landing page itself: an operator with an active session
+  opens `/` directly — redirected into the dashboard, or shown the landing page?
+  (Expectation, as of [issue #526](https://github.com/iumalabs/flaretower/issues/526):
+  shown the landing page, same as the documentation-page case just above — the feature's
+  original design redirected them instead, which turned out to make it impossible for an
+  authenticated operator to ever view the public landing page at all. FR-002 was revised to
+  match.)
 - The landing page's sample exposure panel must never be reachable in a state that shows
   real account data — what prevents that? (Expectation: the four sample rows are fixed,
   hardcoded content, not the result of any API call — there is no code path by which real
@@ -163,9 +178,14 @@ generic placeholder.
   what FlareTower does, a labeled sample/preview of the Exposure screen using fixed
   placeholder data (never real account data), a summary of the product's key properties,
   and an explanation of the self-hosting model.
-- **FR-002**: The system MUST show the existing authenticated dashboard (not the public
-  landing page) to any visitor who already has an active, valid Cloudflare Access session,
-  when they open the instance's root URL.
+- **FR-002**: The system MUST show the public landing page at the instance's root URL
+  (`/`) to every visitor, regardless of Cloudflare Access session state — it MUST NOT
+  attempt to detect an already-authenticated visitor and automatically redirect them into
+  the dashboard. **Revised** from this feature's original design (which did exactly that
+  auto-redirect) after [issue #526](https://github.com/iumalabs/flaretower/issues/526)
+  found it made it impossible for an authenticated operator to ever view the public landing
+  page. Reaching the dashboard is unaffected: the "Sign in" action (FR-005) takes any
+  visitor, authenticated or not, straight to the dashboard's own URL (`/app`).
 - **FR-003**: The system MUST provide a publicly reachable documentation page, containing
   at minimum: what the product is and isn't, how to deploy/self-host it, how sign-in works,
   which Cloudflare API token permissions it requires and why, how a scan works, what each
@@ -212,7 +232,9 @@ with no locally-persisted session or identity record.)*
   visibly labeled as sample/preview content, distinguishable from real account data at a
   glance.
 - **SC-003**: An operator with an existing, valid Access session reaches their dashboard
-  from the instance's root URL without ever seeing the public landing page.
+  via the "Sign in" action in one click, with no additional challenge or intermediate
+  screen — while still being able to view the public landing page itself at `/` without
+  being automatically diverted into the dashboard.
 - **SC-004**: Every documentation section is reachable from its table-of-contents entry in
   a single click/tap, and every documentation claim about setup steps, required token
   permissions, and sign-in behavior matches this project's actual current behavior (zero
@@ -222,13 +244,15 @@ with no locally-persisted session or identity record.)*
 
 ## Assumptions
 
-- The instance's root URL (`/`) is the single place unauthenticated and authenticated
-  visitors diverge: unauthenticated visitors see the new public landing page, authenticated
-  visitors see the existing Overview dashboard, at the same URL. How that divergence is
-  achieved (e.g. an Access policy covering the whole app except a small explicit public
-  allowlist, versus some other routing arrangement) is an implementation decision for
-  planning, not fixed by this spec — but the *outcome* described above is a hard
-  requirement (FR-001/FR-002).
+- The instance's root URL (`/`) always shows the public landing page, regardless of session
+  state (FR-002) — it is not the place unauthenticated and authenticated visitors diverge.
+  They diverge instead at the "Sign in" action (FR-005), which takes either kind of visitor
+  to the dashboard's own URL (`/app`): Cloudflare Access challenges an unauthenticated
+  visitor there and passes an already-authenticated one straight through. (Issue #516 moved
+  the dashboard to its own `/app` prefix shortly after this spec's original version shipped;
+  issue #526 then found that the original root-URL-diverges design actively broke the
+  landing page for authenticated operators, which is why FR-002 no longer describes that
+  design.)
 - Every existing authenticated dashboard route continues to sit entirely behind Cloudflare
   Access exactly as it does today; this feature only adds new *public* routes (landing,
   documentation) and a sign-in entry point — it does not loosen protection on any existing
