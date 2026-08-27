@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.16.1](https://github.com/iumalabs/flaretower/compare/v1.16.0...v1.16.1) (2026-08-27)
+
+
+### Bug Fixes
+
+* Pages Reason column overflow ([#531](https://github.com/iumalabs/flaretower/issues/531)) and Zero Trust list-name resolution ([#530](https://github.com/iumalabs/flaretower/issues/530)) ([#534](https://github.com/iumalabs/flaretower/issues/534)) ([0e57d96](https://github.com/iumalabs/flaretower/commit/0e57d9625fadf9d86d26d369f193dcffb633b4a0))
+
 ## [1.16.0](https://github.com/iumalabs/flaretower/compare/v1.15.11...v1.16.0) (2026-08-26)
 
 
