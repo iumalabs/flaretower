@@ -132,6 +132,30 @@ test("US1 — branch shows the real branch or an explicit not-set state", async 
   await expect(withoutBranch.getByText("not set", { exact: true })).toBeVisible();
 });
 
+// issue #531 — the Reason column's cell used to be squeezed into whatever
+// sliver of width the 5 fixed-width columns before it didn't claim (83%
+// combined, leaving ~17%), wrapping a full-sentence reason one word per
+// line and forcing the whole table into horizontal scroll at a normal
+// desktop width. Reduced those 5 columns' combined width (60%, same ratio
+// DNS's own Finding column already uses — issue #409) so Reason gets a
+// real share to wrap normally in, with no scroll needed.
+test("US1 — a long reason sentence wraps normally, without forcing the table into horizontal scroll", async ({ page }) => {
+  const row = page.getByTestId("findings-row-empty-project");
+  await expect(row.getByText("no Access application covers this hostname")).toBeVisible();
+
+  const overflowsHorizontally = await row.evaluate((el) => {
+    let node: Element | null = el;
+    while (node) {
+      if (getComputedStyle(node).overflowX === "auto") {
+        return node.scrollWidth > node.clientWidth;
+      }
+      node = node.parentElement;
+    }
+    return false;
+  });
+  expect(overflowsHorizontally).toBe(false);
+});
+
 test("US1 — last build shows success, failure, and no-deployment-yet as three distinct states", async ({ page }) => {
   const succeeded = page.getByTestId("findings-row-marketing-site");
   await expect(succeeded.getByText("success", { exact: false })).toBeVisible();
