@@ -1,7 +1,12 @@
 import { Hono } from "hono";
 import { requireRole } from "../../auth/access-jwt.ts";
 import { type PageQuery, paginateArray, PaginationParamError } from "../../pagination.ts";
-import { buildZeroTrustInventory, listAccessGroups, listIdentityProviders } from "./inventory.ts";
+import {
+  buildZeroTrustInventory,
+  listAccessGroups,
+  listAccessLists,
+  listIdentityProviders,
+} from "./inventory.ts";
 import { evaluateApplications, evaluateServiceTokens } from "./evaluate.ts";
 import {
   diffForAppAlerts,
@@ -106,13 +111,14 @@ export async function runZeroTrustEvaluation(
 > {
   const creds = { accountId: env.CF_ACCOUNT_ID, apiToken: env.CF_API_TOKEN };
   const reader = previousStatusReader(env);
-  // Identity providers and groups are fetched here too (not persisted
-  // themselves, research.md §3) purely to resolve login_method/group rule
-  // names into policyRules at evaluation time — GET /inventory separately
-  // live-fetches groups again for the Groups panel itself (routes.ts
-  // below), so a group renamed between evaluation runs may briefly show a
-  // stale name in a persisted policy line until the next run, matching
-  // this project's existing "findings are as of the last evaluation run"
+  // Identity providers, groups, and lists (issue #530) are fetched here too
+  // (not persisted themselves, research.md §3) purely to resolve
+  // login_method/group/email_list/ip_list rule names into policyRules at
+  // evaluation time — GET /inventory separately live-fetches groups and
+  // lists again for the Groups panel itself (routes.ts below), so a
+  // group/list renamed between evaluation runs may briefly show a stale
+  // name in a persisted policy line until the next run, matching this
+  // project's existing "findings are as of the last evaluation run"
   // convention everywhere else.
   const [
     { applications, serviceTokens },
@@ -120,6 +126,7 @@ export async function runZeroTrustEvaluation(
     previousTokenStatuses,
     identityProviders,
     groups,
+    lists,
     openAppAlerts,
     openTokenAlerts,
   ] = await Promise.all([
@@ -128,12 +135,19 @@ export async function runZeroTrustEvaluation(
     getPreviousTokenStatuses(reader),
     listIdentityProviders(creds).catch(() => []),
     listAccessGroups(creds),
+    listAccessLists(creds).catch(() => []),
     getOpenAppAlerts(reader),
     getOpenTokenAlerts(reader),
   ]);
   const identityProviderNames = new Map(identityProviders.map((p) => [p.id, p.name]));
   const groupNames = new Map((groups ?? []).map((g) => [g.groupId, g.name]));
-  const appResults = evaluateApplications(applications, identityProviderNames, groupNames);
+  const listNames = new Map(lists.map((l) => [l.listId, l.name]));
+  const appResults = evaluateApplications(
+    applications,
+    identityProviderNames,
+    groupNames,
+    listNames,
+  );
   const tokenResults = evaluateServiceTokens(serviceTokens);
 
   const runId = crypto.randomUUID();
@@ -289,12 +303,13 @@ function serializeAccessGroup(
   g: AccessGroup,
   identityProviderNames: ReadonlyMap<string, string>,
   groupNames: ReadonlyMap<string, string>,
+  listNames: ReadonlyMap<string, string>,
   referencedByAppCount: number,
 ) {
   return {
     group_id: g.groupId,
     name: g.name,
-    rule_summary: summarizeGroupRules(g.include, identityProviderNames, groupNames),
+    rule_summary: summarizeGroupRules(g.include, identityProviderNames, groupNames, listNames),
     referenced_by_app_count: referencedByAppCount,
   };
 }
@@ -329,19 +344,22 @@ async function fetchAccessGroupsPanel(
   appRows: AppFindingRow[],
 ): Promise<ReturnType<typeof serializeAccessGroup>[] | null> {
   const creds = { accountId: env.CF_ACCOUNT_ID, apiToken: env.CF_API_TOKEN };
-  const [groups, identityProviders] = await Promise.all([
+  const [groups, identityProviders, lists] = await Promise.all([
     listAccessGroups(creds),
     listIdentityProviders(creds).catch(() => []),
+    listAccessLists(creds).catch(() => []),
   ]);
   if (groups === null) return null;
 
   const identityProviderNames = new Map(identityProviders.map((p) => [p.id, p.name]));
   const groupNames = new Map(groups.map((g) => [g.groupId, g.name]));
+  const listNames = new Map(lists.map((l) => [l.listId, l.name]));
   return groups.map((g) =>
     serializeAccessGroup(
       g,
       identityProviderNames,
       groupNames,
+      listNames,
       countAppReferences(g.groupId, appRows),
     )
   );

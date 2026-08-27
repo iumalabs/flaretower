@@ -12,8 +12,9 @@ function ruleValue(rule: RawAccessRule, type: string): Record<string, unknown> {
   return (v && typeof v === "object") ? v as Record<string, unknown> : {};
 }
 
-// `identityProviderNames`/`groupNames` are id -> name maps (research.md §2,
-// §3) — a lookup miss (a deleted provider/group) renders as "unknown
+// `identityProviderNames`/`groupNames`/`listNames` are id -> name maps
+// (research.md §2, §3; issue #530 for listNames) — a lookup miss (a deleted
+// provider/group, or a list name genuinely unavailable) renders as "unknown
 // provider"/an id-only label rather than being silently dropped (spec.md
 // Edge Cases).
 export function humanizeRule(
@@ -21,6 +22,7 @@ export function humanizeRule(
   verb: RuleVerb,
   identityProviderNames: ReadonlyMap<string, string>,
   groupNames: ReadonlyMap<string, string>,
+  listNames: ReadonlyMap<string, string> = new Map(),
 ): PolicyRuleLine {
   const type = ruleType(rule);
   if (!type) {
@@ -44,12 +46,16 @@ export function humanizeRule(
     }
     case "ip":
       return { verb, label: `IP address ${String(value.ip ?? "?")}` };
-    case "ip_list":
-      return { verb, label: `IP list · ${String(value.id ?? "?")}` };
+    case "ip_list": {
+      const id = String(value.id ?? "?");
+      return { verb, label: `IP list · ${listNames.get(id) ?? id}` };
+    }
     case "geo":
       return { verb, label: `country ${String(value.country_code ?? "?")}` };
-    case "email_list":
-      return { verb, label: `email list · ${String(value.id ?? "?")}` };
+    case "email_list": {
+      const id = String(value.id ?? "?");
+      return { verb, label: `email list · ${listNames.get(id) ?? id}` };
+    }
     case "any_valid_service_token":
       return { verb, label: "any valid service token" };
     case "group": {
@@ -78,11 +84,16 @@ export function humanizePolicy(
   policy: AccessPolicy,
   identityProviderNames: ReadonlyMap<string, string>,
   groupNames: ReadonlyMap<string, string>,
+  listNames: ReadonlyMap<string, string> = new Map(),
 ): PolicyRuleLine[] {
   const verb = decisionVerb(policy.decision);
   return [
-    ...policy.include.map((r) => humanizeRule(r, verb, identityProviderNames, groupNames)),
-    ...policy.require.map((r) => humanizeRule(r, "REQUIRE", identityProviderNames, groupNames)),
+    ...policy.include.map((r) =>
+      humanizeRule(r, verb, identityProviderNames, groupNames, listNames)
+    ),
+    ...policy.require.map((r) =>
+      humanizeRule(r, "REQUIRE", identityProviderNames, groupNames, listNames)
+    ),
   ];
 }
 
@@ -90,8 +101,9 @@ export function humanizePolicies(
   policies: readonly AccessPolicy[],
   identityProviderNames: ReadonlyMap<string, string>,
   groupNames: ReadonlyMap<string, string>,
+  listNames: ReadonlyMap<string, string> = new Map(),
 ): PolicyRuleLine[][] {
-  return policies.map((p) => humanizePolicy(p, identityProviderNames, groupNames));
+  return policies.map((p) => humanizePolicy(p, identityProviderNames, groupNames, listNames));
 }
 
 // The table's Identity column (research.md §2) — the distinct set of
@@ -146,9 +158,10 @@ export function summarizeGroupRules(
   include: readonly RawAccessRule[],
   identityProviderNames: ReadonlyMap<string, string>,
   groupNames: ReadonlyMap<string, string>,
+  listNames: ReadonlyMap<string, string> = new Map(),
 ): string {
   if (include.length === 0) return "no rules";
   return include
-    .map((r) => humanizeRule(r, "ALLOW", identityProviderNames, groupNames).label)
+    .map((r) => humanizeRule(r, "ALLOW", identityProviderNames, groupNames, listNames).label)
     .join(", ");
 }

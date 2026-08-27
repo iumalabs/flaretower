@@ -29,14 +29,16 @@ function isAppOpenOrUnconfigured(app: AccessApplication): boolean {
   return app.policies.some(isPolicyEffectivelyOpen);
 }
 
-// identityProviderNames/groupNames: id -> name maps (specs/014-access-dashboard
-// research.md §2/§3), threaded through by routes.ts's runZeroTrustEvaluation —
-// used only for the new descriptive fields below, never for the
-// safe/warning/not_evaluated status logic above (spec.md FR-002: unchanged).
+// identityProviderNames/groupNames/listNames: id -> name maps (specs/014-
+// access-dashboard research.md §2/§3; issue #530 for listNames), threaded
+// through by routes.ts's runZeroTrustEvaluation — used only for the new
+// descriptive fields below, never for the safe/warning/not_evaluated status
+// logic above (spec.md FR-002: unchanged).
 export function evaluateApplication(
   app: AccessApplication,
   identityProviderNames: ReadonlyMap<string, string> = new Map(),
   groupNames: ReadonlyMap<string, string> = new Map(),
+  listNames: ReadonlyMap<string, string> = new Map(),
 ): AppEvaluation {
   const descriptive = {
     appName: app.appName,
@@ -44,7 +46,7 @@ export function evaluateApplication(
     coveredHostnameCount: app.coveredHostnames.length,
     identitySummary: summarizeIdentity(app.policies, identityProviderNames),
     sessionDuration: app.sessionDuration,
-    policyRules: humanizePolicies(app.policies, identityProviderNames, groupNames),
+    policyRules: humanizePolicies(app.policies, identityProviderNames, groupNames, listNames),
     referencedGroupIds: extractReferencedGroupIds(app.policies),
   };
 
@@ -125,8 +127,9 @@ export function evaluateApplications(
   apps: AccessApplication[],
   identityProviderNames: ReadonlyMap<string, string> = new Map(),
   groupNames: ReadonlyMap<string, string> = new Map(),
+  listNames: ReadonlyMap<string, string> = new Map(),
 ): AppEvaluation[] {
-  return apps.map((app) => evaluateApplication(app, identityProviderNames, groupNames));
+  return apps.map((app) => evaluateApplication(app, identityProviderNames, groupNames, listNames));
 }
 
 export function evaluateServiceTokens(

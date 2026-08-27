@@ -3,6 +3,7 @@ import {
   buildZeroTrustInventory,
   listAccessApplications,
   listAccessGroups,
+  listAccessLists,
   listIdentityProviders,
   listServiceTokens,
 } from "../../worker/modules/zero-trust/inventory.ts";
@@ -163,6 +164,22 @@ Deno.test("listIdentityProviders - maps id/name", async () => {
 
   const providers = await listIdentityProviders(creds, fetchImpl);
   assertEquals(providers, [{ id: "idp-1", name: "Okta" }]);
+});
+
+// issue #530 — resolves an email_list/ip_list rule's id to its real name,
+// same purpose as listIdentityProviders/listAccessGroups above.
+Deno.test("listAccessLists - maps id/name, one endpoint for both email and IP lists", async () => {
+  const fetchImpl = mockFetch([
+    ["/gateway/lists", () =>
+      jsonResponse({
+        success: true,
+        result: [{ id: "list-1", name: "Privileged Emails Rule" }],
+        errors: [],
+      })],
+  ]);
+
+  const lists = await listAccessLists(creds, fetchImpl);
+  assertEquals(lists, [{ listId: "list-1", name: "Privileged Emails Rule" }]);
 });
 
 // specs/014-access-dashboard research.md §3

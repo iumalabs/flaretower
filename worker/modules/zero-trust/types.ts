@@ -88,3 +88,12 @@ export interface AccessGroup {
   name: string;
   include: RawAccessRule[];
 }
+
+// issue #530 — a Zero Trust "List" (Gateway/Access reusable email or IP
+// list), resolved the same "id -> name" way identity providers and groups
+// already are, so an email_list/ip_list rule (rule-humanizer.ts) shows the
+// list's real name instead of its raw id.
+export interface AccessList {
+  listId: string;
+  name: string;
+}
