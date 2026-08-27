@@ -6,6 +6,7 @@ import { withGlobalFetchSlot } from "../../concurrency.ts";
 import type {
   AccessApplication,
   AccessGroup,
+  AccessList,
   AccessPolicy,
   IdentityProvider,
   ServiceToken,
@@ -107,6 +108,11 @@ interface RawAccessGroup {
   include?: Array<Record<string, unknown>>;
 }
 
+interface RawAccessList {
+  id: string;
+  name: string;
+}
+
 function summarizePolicy(policy: RawAccessPolicy): AccessPolicy {
   const include = policy.include ?? [];
   return {
@@ -190,6 +196,28 @@ export async function listAccessGroups(
     console.error(`listAccessGroups failed: ${errorMessage(err)}`);
     return null;
   }
+}
+
+// issue #530 — resolves an email_list/ip_list rule's id (rule-humanizer.ts)
+// to its real name, the same purpose listIdentityProviders/listAccessGroups
+// already serve for login_method/group rules. Cloudflare's Zero Trust
+// "Lists" feature (Gateway + Access reusable email/IP lists) lives under
+// this one endpoint regardless of list type — no separate email-vs-IP
+// lookup needed. Requires a token permission this project hasn't confirmed
+// the exact name of yet (tracked alongside issue #482's still-open
+// Identity-Providers gap) — .catch(() => []) at every call site means a
+// missing/wrong scope just keeps today's raw-id fallback, never breaks the
+// rest of the response.
+export async function listAccessLists(
+  creds: CloudflareZtCredentials,
+  fetchImpl: typeof fetch = fetch,
+): Promise<AccessList[]> {
+  const lists = await cfFetch<RawAccessList[]>(
+    `/accounts/${creds.accountId}/gateway/lists`,
+    creds,
+    fetchImpl,
+  );
+  return lists.map((l) => ({ listId: l.id, name: l.name }));
 }
 
 export async function listServiceTokens(

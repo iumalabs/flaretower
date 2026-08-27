@@ -141,11 +141,19 @@ function accessLabel(access: ProductionDomainAccess | null): string {
   return "N/A";
 }
 
+// issue #531 — same fix DNS's own Finding column already got (issue #409):
+// the 5 fixed-width columns below used to claim 83% combined, leaving the
+// unwidthed "reason" column (FindingsTable gives an unwidthed column
+// flex:1 of whatever the others don't claim) only ~17% — nowhere near
+// enough for a full-sentence reason like "no Access application covers
+// this hostname", which wrapped one word per line and still forced
+// horizontal scroll. Reduced to 60% combined, the same ratio DNS's fix
+// landed on, so "reason" gets a real ~40% share to wrap normally in.
 const COLUMNS: FindingsTableColumn<FlatFinding>[] = [
   {
     key: "project",
     label: "Project",
-    width: "18%",
+    width: "13%",
     sortValue: (r) => r.project_name,
     render: (r) => (
       <span
@@ -162,7 +170,7 @@ const COLUMNS: FindingsTableColumn<FlatFinding>[] = [
   {
     key: "domain",
     label: "Production domain",
-    width: "20%",
+    width: "15%",
     sortValue: (r) => r.production_domain ?? "",
     render: (r) => (
       <span
@@ -179,7 +187,7 @@ const COLUMNS: FindingsTableColumn<FlatFinding>[] = [
   {
     key: "access",
     label: "Access",
-    width: "13%",
+    width: "10%",
     sortValue: (r) => accessLabel(r.production_domain_access),
     render: (r) => {
       const access = r.production_domain_access;
@@ -201,7 +209,7 @@ const COLUMNS: FindingsTableColumn<FlatFinding>[] = [
   {
     key: "branch",
     label: "Branch",
-    width: "12%",
+    width: "9%",
     sortValue: (r) => r.production_branch ?? "",
     render: (r) => (
       <span
@@ -218,7 +226,7 @@ const COLUMNS: FindingsTableColumn<FlatFinding>[] = [
   {
     key: "last_build",
     label: "Last build",
-    width: "20%",
+    width: "13%",
     render: (r) => (
       <span style={{ fontSize: "var(--text-body-size)", color: "var(--fg-secondary)" }}>
         {lastBuildText(r)}
@@ -234,7 +242,10 @@ const COLUMNS: FindingsTableColumn<FlatFinding>[] = [
     key: "reason",
     label: "Reason",
     render: (r) => (
-      <span style={{ fontSize: "var(--text-body-size)", color: "var(--fg-muted)" }}>
+      <span
+        title={r.health_reason}
+        style={{ fontSize: "var(--text-body-size)", color: "var(--fg-muted)" }}
+      >
         {r.health_reason}
       </span>
     ),

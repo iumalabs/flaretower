@@ -9,6 +9,7 @@ import type { AccessPolicy } from "../../worker/modules/zero-trust/types.ts";
 
 const idp = new Map([["idp-1", "Okta"]]);
 const groups = new Map([["grp-1", "platform"]]);
+const lists = new Map([["list-1", "Privileged Emails Rule"]]);
 
 function policy(overrides: Partial<AccessPolicy>): AccessPolicy {
   return {
@@ -98,6 +99,37 @@ Deno.test("humanizeRule - email_list", () => {
   assertEquals(
     humanizeRule({ email_list: { id: "privileged-emails" } }, "ALLOW", idp, groups),
     { verb: "ALLOW", label: "email list · privileged-emails" },
+  );
+});
+
+// issue #530 — "Privileged Emails Rule" showed the list's raw Cloudflare
+// UUID instead of its name (email_list and ip_list both reference the same
+// Zero Trust "Lists" resource by id) — resolved the same "id -> name" way
+// login_method/group already are, with the existing raw-id behavior above
+// staying as the fallback when no name is available (lookup failure,
+// missing token scope, or a genuinely deleted list).
+Deno.test("humanizeRule - email_list resolves to the list's real name when known", () => {
+  assertEquals(
+    humanizeRule({ email_list: { id: "list-1" } }, "ALLOW", idp, groups, lists),
+    { verb: "ALLOW", label: "email list · Privileged Emails Rule" },
+  );
+});
+
+Deno.test("humanizeRule - ip_list resolves to the list's real name when known", () => {
+  assertEquals(
+    humanizeRule({ ip_list: { id: "list-1" } }, "ALLOW", idp, groups, lists),
+    { verb: "ALLOW", label: "IP list · Privileged Emails Rule" },
+  );
+});
+
+Deno.test("humanizeRule - email_list/ip_list fall back to the raw id when the list isn't in listNames", () => {
+  assertEquals(
+    humanizeRule({ email_list: { id: "list-deleted" } }, "ALLOW", idp, groups, lists),
+    { verb: "ALLOW", label: "email list · list-deleted" },
+  );
+  assertEquals(
+    humanizeRule({ ip_list: { id: "list-deleted" } }, "ALLOW", idp, groups, lists),
+    { verb: "ALLOW", label: "IP list · list-deleted" },
   );
 });
 
@@ -206,4 +238,11 @@ Deno.test("summarizeGroupRules - never fabricates a member count, just humanizes
 
 Deno.test("summarizeGroupRules - zero rules -> explicit 'no rules', not blank", () => {
   assertEquals(summarizeGroupRules([], idp, groups), "no rules");
+});
+
+// issue #530 — this is the exact call site that rendered "Privileged
+// Emails Rule" as "email list · <raw UUID>" on the Access Groups panel.
+Deno.test("summarizeGroupRules - an email_list rule resolves to the list's real name", () => {
+  const summary = summarizeGroupRules([{ email_list: { id: "list-1" } }], idp, groups, lists);
+  assertEquals(summary, "email list · Privileged Emails Rule");
 });
